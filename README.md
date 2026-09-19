@@ -32,7 +32,7 @@ flutter build apk --release --dart-define=API_BASE_URL=https://app.ezyventas.com
 
 ```bash
 flutter analyze     # debe quedar sin issues
-flutter test        # 82 tests: dinero, errores, sesión, permisos, catálogo, caja y cobro
+flutter test        # 104 tests: dinero, errores, sesión, permisos, catálogo, caja, cobro y ventas
 ```
 
 Pruebas **reales** contra el servidor (no corren en `flutter test` normal):
@@ -48,20 +48,50 @@ flutter test test/live/api_smoke_test.dart \
   --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
   --dart-define=LIVE_API_PASSWORD=secreto \
   --dart-define=LIVE_POS=true
+
+# Etapa 4: historial, filtros y detalle (solo lectura)
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_SALES=true
+
+# Etapa 4 con escritura: abona $1, lo edita y lo borra (deja la venta igual)
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_SALES=true \
+  --dart-define=LIVE_SALES_WRITE=true
+
+# Etapa 4 completa: crea un APARTADO, lo abona, edita y borra el pago y lo
+# cancela con reembolso en efectivo (deja el stock devuelto; ver hallazgo 8)
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_SALES=true \
+  --dart-define=LIVE_SALES_LAYAWAY=true
 ```
+
+> El login de la API tiene *rate limit*: si aparece `429 Demasiadas solicitudes. Espera un momento e
+> inténtalo de nuevo.` (el mismo `message` que muestra la app), espera ~1 minuto entre corridas. Para
+> correr solo el escenario de ventas: añade `--plain-name ventas` (un solo login).
 
 ---
 
 ## 2. Credenciales de prueba
 
-| Rol | Uso |
-|---|---|
-| Propietario de negocio (usuario **sin roles**) | Flujo completo: todas las pestanas |
-| Empleado con `pos.access` + `transactions.access` | Valida `403` y el ocultado de pestanas |
+| Rol | Cuenta usada | Uso |
+|---|---|---|
+| Propietario de negocio (usuario **sin roles**) | `jean@apontephone.com` (pendiente de contrasena) | Flujo completo: todas las pestanas |
+| Empleado con permisos limitados | `ofelia@stilos.com` (Stilos boutique · Tizapan) | Valida `403`, pestanas ocultas y el flujo de caja/ventas sin ser propietaria |
 
-Las contrasenas **no** se guardan en el repositorio: se capturan en la pantalla de login.
-**Nunca** se usa `ezyventas@gmail.com` (superadmin id 1): su bypass de permisos oculta errores
-reales.
+`ofelia@stilos.com` tiene `pos.*`, `cash_registers.*` y `transactions.*` (incluye `add_payment`,
+`edit_payment`, `cancel`, `refund`), pero **no** `services.orders.access` ni
+`system.branches.switch`: sus pestanas son **Vender, Caja, Ventas y Cuenta** (sin Ordenes y sin
+selector de sucursal), y `GET /service-orders` responde `403`.
+
+Las contrasenas **no** se guardan en el repositorio: se capturan en la pantalla de login o se pasan
+por `--dart-define`. **Nunca** se usa `ezyventas@gmail.com` (superadmin id 1) para validar
+permisos: su bypass oculta errores reales.
 
 ---
 
@@ -140,7 +170,60 @@ inventa la app:
 - Tras cobrar se refrescan el catalogo (stock) y el turno (cobros por metodo) y se muestra el
   **folio real** con el cambio; la impresion y el WhatsApp llegan en la etapa 6.
 
-### Errores
+### Ventas (etapa 4)
+`features/sales/` cubre el historial, el detalle y el dinero de una venta ya registrada.
+
+- **Historial** (`GET /transactions`): búsqueda (folio, cliente o contacto), chips de estatus,
+  rango de fechas (`Desde` / `Hasta` → `date_start` / `date_end` en `YYYY-MM-DD`) y orden
+  (`created_at`, `folio`, `customer.name`, `total`). Paginacion infinita de 20 en 20: el servidor
+  pagina el resultado ya filtrado y la app solo acumula paginas (`perPage` maximo 100).
+- **Detalle** (`GET /transactions/{id}`): hoja con folio y estatus, cliente con saldo y limite de
+  credito, lineas (`quantity` x precio, descuento y motivo), totales (`paid_amount` /
+  `pending_balance` / `is_paid` ya resueltos por el servidor), pagos con su cuenta destino, factura
+  (solo folio y estatus), sucursal, cajero, sesion de caja, fechas de entrega/apartado y notas.
+  Exige `transactions.see_details`: sin el permiso la app avisa y no pide nada al servidor.
+- **Abono** (`POST /transactions/{id}/payments`): exige turno abierto (`sessionId` del contexto) y
+  permiso `transactions.add_payment`. Pago mixto (efectivo/tarjeta/transferencia), `use_balance`
+  para el saldo a favor y accion rapida **"Liquidar saldo"**. La app **no** permite exceder el
+  saldo pendiente: el servidor rechaza el sobrepago (ver discrepancias) y el texto que se muestra
+  es el suyo. Al confirmar se pinta el **ticket de abono** que devuelve el servidor
+  (`print.payload`) tal cual: los montos llegan formateados y no se recalculan.
+- **Anular** (`POST /transactions/{id}/refund` y `POST /transactions/{id}/cancel`): la opcion
+  "Devolver al cliente (reembolso)" usa `/refund` (permiso `transactions.refund`) y "Cobrar como
+  penalizacion" usa `/cancel` con `action: penalty` (permiso `transactions.cancel`). El metodo de
+  reembolso es `cash` (solo con turno abierto), `balance` (solo con cliente) o `transfer` (con
+  `bank_account_id`). El `message` del servidor explica el resultado ("reembolsado en efectivo /
+  al saldo / por transferencia / cancelado con penalizacion") y se muestra en el detalle.
+- **Editar o borrar un pago** (`PUT` / `DELETE .../payments/{paymentId}`): monto, metodo
+  (efectivo, tarjeta, transferencia y saldo de cliente, mas `intercambio` si es el metodo actual),
+  cuenta destino y notas internas. El borrado pide confirmacion explicita y responde `204` sin
+  cuerpo, asi que despues se vuelve a leer la venta para mostrar el saldo definitivo.
+- Las acciones se muestran segun el permiso y el estatus: con la venta `cancelado`/`reembolsado`
+  no hay abonos, ni cancelacion, ni edicion de pagos (misma regla que la web).
+
+### Corrida real del 19 sep 2026 (evidencia)
+Con `ofelia@stilos.com` (empleada, no propietaria) contra `https://ezyventas2.test/api/v1`:
+
+| Prueba | Resultado |
+|---|---|
+| Login + `/auth/me` + permisos | 26 permisos, 8 modulos, sucursal `Tizapan` |
+| Pestanas visibles | `Vender · Caja · Ventas · Cuenta` (sin Ordenes: no tiene `module_services`) |
+| `GET /service-orders` | `403` → "Tu usuario no tiene permiso para esta acción." |
+| Historial | `GET /transactions` paginado (7 ventas, `last_page=2`), filtros por estatus y fechas |
+| Detalle | `GET /transactions/{id}` con items, pagos y desglose (`is_paid`, `pending_balance`) |
+| Venta inexistente | `404` → "Recurso no encontrado." |
+| Abono a venta anulada | `422 already_cancelled` → "No se pueden agregar pagos a transacciones canceladas o reembolsadas." |
+| Reembolso de venta anulada | `422` → "La venta ya se encuentra cancelada o reembolsada." |
+| Apartado + abono + edicion + borrado + reembolso | ✅ folio `V-007`: alta `apartado`, abono de `$1` (ticket `$1.00 MXN`), edicion a `$1.50` ("Pago actualizado correctamente."), borrado (pagado vuelve a `$0.00`), cancelacion con "Transaccion reembolsada en efectivo." y **stock devuelto** |
+
+Datos que dejaron esas corridas en la base de pruebas (residuo **de las pruebas**, no de la app):
+
+- Ventas `V-005` (`reembolsado`), `V-006` (`cancelado`) y `V-007` (`reembolsado`) del cliente
+  `Juanito P`; el stock de `Pantalon` quedo intacto y el turno de caja se cerro con corte
+  balanceado.
+- `Juanito P` quedo con **+$2.00 de saldo a favor** por el hallazgo 8 (una corrida deja `$1`). Se
+  ajusta desde la web (*Clientes → ficha → ajustar saldo*); no hay ruta de ajuste en `/api/v1`.
+
 `ApiException` conserva `message`, `errors` (por campo) y `code`. La UI muestra **siempre** el
 `message` del servidor; `code` solo decide el flujo (`cash_register_in_use`, `session_required`,
 ...). Un `401` limpia token y contexto y regresa al login con el aviso aprobado
@@ -160,7 +243,7 @@ con 25 ms de pausa. **Aun no implementado**: la etapa de impresion (tickets, eti
 el ticket del corte) llega en la etapa 6; por eso el cobro y el corte solo muestran el folio y los
 totales.
 
-### Discrepancias del contrato detectadas (etapa 3)
+### Discrepancias y hallazgos (etapas 3 y 4)
 1. `POST /cash-register-sessions`: `01-contrato-api-v1.md` §6.1 documenta `user_id` como
    obligatorio, pero el `OpenCashRegisterSessionRequest` real **no** lo acepta ni lo exige (el
    servidor usa el usuario del token). La app no lo envia.
@@ -173,6 +256,42 @@ totales.
 3. `POST /pos/store-order`: el POS web calcula `subtotal` con `item.price` (precio con
    descuento) mientras el flujo de venta usa `original_price`. La app usa una sola regla (la de
    §7.2) para las tres operaciones para que el mismo carrito cobre igual en los tres botones.
+4. `POST /transactions/{id}/cancel` **no** acepta un motivo escrito: el contrato §8 solo documenta
+   `action`, `refund_method`, `bank_account_id` y `client_uuid` (`CancelTransactionRequest` real).
+   El plan de trabajo pedia "cancelar/reembolsar con motivo", asi que la app muestra una
+   confirmacion explicita (que ocurre con el dinero, cuanto se paga, aviso de caja/cliente) pero
+   **no** envia ningun campo nuevo al servidor; el texto que se muestra al final es su `message`.
+5. `POST /transactions/{id}/payments` **rechaza** el sobrepago con `422` "El monto total del pago
+   excede el saldo pendiente." (`TransactionPaymentService::applyPaymentToTransaction`), mientras
+   `/pos/checkout` recorta el pago al total. El contrato §8 no lo menciona: la app valida el monto
+   antes de enviar y usa el mismo texto del servidor.
+6. `GET /transactions/{id}` no expone `customer_id` en la raiz (solo `customer: {id, name, balance,
+   credit_limit}` o `null`), pero la web (`TransactionCancellationModal.vue`) decide si el reembolso
+   puede ir a saldo con `transaction.customer_id`. La app usa `customer != null` (y `customer.id`).
+7. `PUT /transactions/{id}/payments/{paymentId}` acepta los 5 metodos de `PaymentMethod` (incluye
+   `saldo` e `intercambio`), pero el modal web (`EditPaymentModal.vue`) solo ofrece 4 (sin
+   `intercambio`). La app ofrece los 4 de la web mas el metodo actual cuando es `intercambio`, para
+   no perderlo al guardar.
+8. **Hallazgo de conciliacion (backend, probado contra la API real).** `DELETE
+   /transactions/{id}/payments/{paymentId}` no revierte el `payDebt` que el abono escribio en
+   `customers.balance`: `TransactionPaymentEditService::delete()` revierte la cuenta bancaria, el
+   saldo **usado como pago** (`saldo`) y el movimiento de caja del turno, y el `PUT` solo concilia
+   el banco; ninguno ajusta la deuda del cliente. Evidencia (`LIVE_SALES_LAYAWAY=true`): apartado de
+   $140 del cliente `Juanito P` ($0.00 inicial) → abono de $1 → edicion a $1.50 → borrado del pago →
+   abono de $2 → cancelacion con reembolso en efectivo. Resultado: la venta queda `reembolsado`, el
+   stock se devuelve, pero el cliente termina con **+$1.00 de saldo a favor** (exactamente el
+   importe del pago borrado) porque al cancelar el servidor perdona `total - total_paid` sin contar
+   ese pago. La prueba lo deja impreso y caracteriza el desfase; **cada corrida deja ese $1** en el
+   cliente de prueba (se ajusta desde la web: *Clientes → ficha → ajustar saldo*).
+9. `remaining_due` **no** se pone a 0 al cancelar/reembolsar: es `max(0, total - total_paid)`, asi
+   que una venta `reembolsado` sigue reportando saldo en `GET /transactions` (visto en la prueba:
+   `V-005 reembolsado ... saldo=$138.00`). La app **oculta** el saldo pendiente en ventas anuladas
+   (`TransactionSummary.hasPendingBalance`); la web lo muestra tal cual.
+10. `POST /pos/layaway` (y el cobro) **aplican automaticamente el saldo a favor** del cliente cuando
+    la venta queda con deuda, aunque no se envie `use_balance` (visto en la primera corrida de la
+    prueba: el cliente tenia $1 a favor y el servidor lo uso). El contrato §7.3 lo describe como una
+    accion explicita del cajero; la app ya envia `use_balance` y el ticket de abono muestra lo que el
+    servidor aplico de verdad.
 
 ---
 
@@ -217,7 +336,7 @@ lib/
   - config/      AppConfig (API_BASE_URL, timeouts, locale)
   - router/      go_router + StatefulShellRoute
   - theme/       Tesla UI: colores, tipografia, tema, severidades
-  - utils/       Money, AppFormatters, JsonReader, StatusCatalog, Uuid
+  - utils/       Money, AppFormatters, JsonReader, SearchDebouncer, StatusCatalog, Uuid
   - widgets/     FieldLabel, EzyTextField, MoneyField, EzyButton, SectionCard, ...
 - features/
   - auth/        login, splash, modelos de sesion, repositorio, controlador
@@ -226,7 +345,8 @@ lib/
   - catalog/     catalogo, detalle de producto y alta rapida al carrito
   - customers/   clientes + buscador del cobro
   - pos/         pestana Vender: carrito, cobro, apartado y pedido (etapa 3)
-  - sales/       pestana Ventas (etapa 4)
+  - sales/       pestana Ventas: historial con filtros, detalle, abono, anulacion y
+                 edicion de pagos (etapa 4)
   - service_orders/
   - shell/       cascaron de 5 pestanas
 ```
