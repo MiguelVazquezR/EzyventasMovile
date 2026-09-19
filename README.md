@@ -202,7 +202,23 @@ inventa la app:
   no hay abonos, ni cancelacion, ni edicion de pagos (misma regla que la web).
 
 ### Corrida real del 19 sep 2026 (evidencia)
-Con `ofelia@stilos.com` (empleada, no propietaria) contra `https://ezyventas2.test/api/v1`:
+Contra `https://ezyventas2.test/api/v1`, con las dos cuentas.
+
+**Propietario de negocio** (`jean@apontephone.com`, ApontePhone · sucursal `Melchor Ocampo`):
+
+| Prueba | Resultado |
+|---|---|
+| Login + `/auth/me` | `owner=true`, **85 permisos**, 9 modulos |
+| Pestanas visibles | `Vender · Ordenes · Caja · Ventas · Cuenta` (las 5) |
+| Catalogo (`GET /catalog/products`) | 2 productos: `Funda iphone` ($35, stock 35, **2 variantes**) e `Iphone 20` ($12,000, stock 5) |
+| Categorias y servicios | 2 categorias de producto + 1 de servicio, 1 servicio |
+| Clientes | `Juanito babanas` (saldo $0.00, credito $20,000.00, disponible $20,000.00) + ficha con apartados/movimientos |
+| Caja | turno abierto con fondo `$1,000.00` + 3 saldos bancarios precargados (terminal libre) |
+| Venta de contado | folio **`V-001`**, variante `Color Rojo`, total `$70.00`, `completado`, cambio `$0.00`, plantilla de impresion `[3]` |
+| Corte (`GET /summary` + `PUT`) | esperado `$1,070.00` = contado `$1,070.00`, **diferencia `$0.00`**, sesion `cerrada` |
+| Historial y detalle | `V-001` con 1 linea, 1 pago, `pagada=true`; filtros por estatus/fecha |
+
+**Empleada con permisos limitados** (`ofelia@stilos.com`, Stilos boutique · `Tizapan`):
 
 | Prueba | Resultado |
 |---|---|
@@ -218,12 +234,14 @@ Con `ofelia@stilos.com` (empleada, no propietaria) contra `https://ezyventas2.te
 
 Datos que dejaron esas corridas en la base de pruebas (residuo **de las pruebas**, no de la app):
 
-- Ventas `V-005` (`reembolsado`), `V-006` (`cancelado`) y `V-007` (`reembolsado`) del cliente
-  `Juanito P`; el stock de `Pantalon` quedo intacto y el turno de caja se cerro con corte
-  balanceado.
+- ApontePhone: venta `V-001` (la de la prueba de cobro) y su corte cerrado. `Juanito babanas`
+  conserva su saldo en `$0.00`.
+- Stilos: ventas `V-005` (`reembolsado`), `V-006` (`cancelado`) y `V-007` (`reembolsado`) del
+  cliente `Juanito P`; el stock de `Pantalon` quedo intacto.
 - `Juanito P` quedo con **+$2.00 de saldo a favor** por el hallazgo 8 (una corrida deja `$1`). Se
   ajusta desde la web (*Clientes → ficha → ajustar saldo*); no hay ruta de ajuste en `/api/v1`.
 
+### Errores
 `ApiException` conserva `message`, `errors` (por campo) y `code`. La UI muestra **siempre** el
 `message` del servidor; `code` solo decide el flujo (`cash_register_in_use`, `session_required`,
 ...). Un `401` limpia token y contexto y regresa al login con el aviso aprobado
