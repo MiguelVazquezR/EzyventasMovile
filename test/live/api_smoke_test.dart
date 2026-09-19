@@ -5,9 +5,12 @@ import 'package:ezyventas_app/core/api/api_endpoints.dart';
 import 'package:ezyventas_app/core/api/api_exception.dart';
 import 'package:ezyventas_app/core/auth/permissions_service.dart';
 import 'package:ezyventas_app/core/auth/session_store.dart';
+import 'package:ezyventas_app/core/utils/money.dart';
 import 'package:ezyventas_app/features/auth/data/auth_repository.dart';
 import 'package:ezyventas_app/features/auth/data/models/access_context.dart';
 import 'package:ezyventas_app/features/auth/data/models/auth_session.dart';
+import 'package:ezyventas_app/features/catalog/data/catalog_repository.dart';
+import 'package:ezyventas_app/features/customers/data/customers_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -188,9 +191,87 @@ void main() {
         : 'Define LIVE_API_EMAIL y LIVE_API_PASSWORD para correrlo',
     timeout: const Timeout(Duration(minutes: 2)),
   );
+
+  liveCatalogTest();
 }
 
-/// Ejecuta una llamada y devuelve el [ApiException] que produce.
+/// Verifica el catálogo y los clientes **reales** de la sucursal del token.
+///
+/// Requiere una cuenta propietaria (un empleado sin `pos.access` recibiría 403).
+void liveCatalogTest() {
+  test(
+    'catálogo y clientes reales (productos, categorías, servicios, clientes)',
+    () async {
+      final store = _MemorySessionStore();
+      final api = ApiClient(baseUrl: liveBaseUrl, readToken: store.readToken);
+      final auth = AuthRepository(api: api, sessionStore: store);
+
+      await auth.login(email: liveEmail, password: livePassword);
+
+      final catalog = CatalogRepository(api: api);
+      final products = await catalog.fetchProducts();
+
+      debugPrint(
+        '[live] productos=${products.total} '
+        'pagina=${products.currentPage}/${products.lastPage}',
+      );
+      for (final product in products.items.take(3)) {
+        debugPrint(
+          '[live]   ${product.name} · ${Money.format(product.price)} '
+          '(lista ${Money.format(product.sellingPrice)}) · '
+          'stock ${Money.formatQuantity(product.stock)} · '
+          'variantes ${product.variantCombinations.length} · '
+          'tiers ${product.priceTiers.length} · '
+          'promos ${product.promotions.length}',
+        );
+      }
+      expect(products.items, isNotEmpty);
+      expect(products.total, greaterThan(0));
+
+      final productCategories = await catalog.fetchCategories();
+      final serviceCategories = await catalog.fetchCategories(
+        type: CatalogCategoryType.service,
+      );
+      debugPrint(
+        '[live] categorias producto=${productCategories.length} '
+        'servicio=${serviceCategories.length}',
+      );
+
+      final services = await catalog.fetchServices();
+      debugPrint('[live] servicios=${services.total}');
+      expect(services.total, greaterThanOrEqualTo(0));
+
+      final customers = CustomersRepository(api: api);
+      final page = await customers.fetchCustomers();
+
+      debugPrint('[live] clientes=${page.total}');
+      for (final customer in page.items.take(3)) {
+        debugPrint(
+          '[live]   ${customer.displayName} · saldo '
+          '${Money.format(customer.balance)} · credito '
+          '${Money.format(customer.creditLimit)} · disponible '
+          '${Money.format(customer.availableCredit)}',
+        );
+      }
+      expect(page.total, greaterThan(0));
+
+      final detail = await customers.fetchCustomer(page.items.first.id);
+      debugPrint(
+        '[live] ficha ${detail.customer.id}: '
+        'apartados=${detail.layaways.length} '
+        'movimientos=${detail.balanceMovements.length} '
+        'direccion=${detail.addressLine ?? "sin direccion"}',
+      );
+      expect(detail.customer.id, page.items.first.id);
+
+      await auth.logout();
+    },
+    skip: (liveEmail.isNotEmpty && livePassword.isNotEmpty && liveExpectOwner)
+        ? false
+        : 'Requiere LIVE_API_EMAIL/LIVE_API_PASSWORD de una cuenta propietaria',
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+}
 Future<ApiException> _capture(Future<Object?> Function() action) async {
   try {
     await action();
