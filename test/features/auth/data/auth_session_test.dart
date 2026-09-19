@@ -99,6 +99,42 @@ void main() {
       expect(context.availableCashRegisters.single.name, 'Caja 2');
     });
 
+    test('aplana available_branches agrupadas por suscripción (soporte id 1)', () {
+      final session = AuthSession.fromJson(<String, dynamic>{
+        'token': '1|soporte',
+        'user': <String, dynamic>{'id': 1, 'name': 'Admin ezyventas'},
+        // Forma real del usuario id 1: 14 entradas {subscription_name, branches}
+        'available_branches': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'subscription_name': 'Refaccionaria López',
+            'branches': <Map<String, dynamic>>[
+              <String, dynamic>{'id': 2, 'name': 'Sucursal Centro'},
+              <String, dynamic>{'id': 3, 'name': 'Sucursal Norte'},
+            ],
+          },
+          <String, dynamic>{
+            'subscription_name': 'Taller Pérez',
+            'branches': <Map<String, dynamic>>[
+              <String, dynamic>{'id': 9, 'name': 'Matriz'},
+            ],
+          },
+        ],
+      });
+
+      expect(
+        session.context.availableBranches.map((branch) => branch.label),
+        <String>['Sucursal Centro', 'Sucursal Norte', 'Matriz'],
+      );
+      expect(
+        session.context.availableBranches.every((branch) => branch.id > 0),
+        isTrue,
+      );
+      // El servidor no marca `is_current` en esta forma: la cabecera usa la
+      // sucursal del usuario como respaldo.
+      expect(session.context.currentBranch, isNull);
+      expect(session.context.hasSingleBranch, isFalse);
+    });
+
     test('acepta payloads parciales sin romperse', () {
       final session = AuthSession.fromJson(<String, dynamic>{
         'token': '1|abc',

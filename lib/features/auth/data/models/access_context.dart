@@ -25,9 +25,7 @@ class AccessContext {
       user: AuthUser.fromJson(JsonReader.toMap(json['user'])),
       moduleKeys: JsonReader.stringList(json['module_keys']),
       modules: JsonReader.stringList(json['modules']),
-      availableBranches: JsonReader.toMapList(
-        json['available_branches'],
-      ).map(AvailableBranch.fromJson).toList(growable: false),
+      availableBranches: _parseBranches(json['available_branches']),
       activeSession: json['active_session'] == null
           ? null
           : ActiveCashSession.fromJson(
@@ -74,6 +72,31 @@ class AccessContext {
 
   /// Solo hay una sucursal: no se ofrece el selector.
   bool get hasSingleBranch => availableBranches.length <= 1;
+
+  /// `available_branches` tiene dos formas según el usuario:
+  /// - sucursales del negocio: `[{id, name, is_current}]`
+  /// - usuario de soporte (id 1): `[{subscription_name, branches: [{id, name}]}]`
+  ///
+  /// Se aplanan ambas para que el selector de sucursal siempre tenga nombres
+  /// reales (y nunca un `Sucursal 0` cuando el servidor agrupa).
+  static List<AvailableBranch> _parseBranches(Object? raw) {
+    final branches = <AvailableBranch>[];
+
+    for (final entry in JsonReader.toMapList(raw)) {
+      final nested = JsonReader.toMapList(entry['branches']);
+
+      if (nested.isEmpty) {
+        branches.add(AvailableBranch.fromJson(entry));
+        continue;
+      }
+
+      for (final branch in nested) {
+        branches.add(AvailableBranch.fromJson(branch));
+      }
+    }
+
+    return List<AvailableBranch>.unmodifiable(branches);
+  }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'user': user.toJson(),

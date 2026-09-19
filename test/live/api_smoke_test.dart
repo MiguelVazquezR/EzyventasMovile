@@ -55,11 +55,9 @@ void main() {
   test(
     'login real, /auth/me, permisos y logout',
     () async {
-      final api = ApiClient(baseUrl: liveBaseUrl);
-      final repository = AuthRepository(
-        api: api,
-        sessionStore: _MemorySessionStore(),
-      );
+      final store = _MemorySessionStore();
+      final api = ApiClient(baseUrl: liveBaseUrl, readToken: store.readToken);
+      final repository = AuthRepository(api: api, sessionStore: store);
 
       // 1) Credenciales incorrectas: el mensaje del servidor llega intacto.
       final wrong = await _capture(
