@@ -8,6 +8,7 @@ import 'package:ezyventas_app/core/auth/session_store.dart';
 import 'package:ezyventas_app/features/auth/data/auth_repository.dart';
 import 'package:ezyventas_app/features/auth/data/models/access_context.dart';
 import 'package:ezyventas_app/features/auth/data/models/auth_session.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Persistencia en memoria: la prueba de humo no toca el almacenamiento seguro.
@@ -36,12 +37,24 @@ class _MemorySessionStore implements SessionPersistence {
 ///   --dart-define=LIVE_API_PASSWORD=secreto
 /// ```
 ///
-/// Opcional: `--dart-define=LIVE_API_URL=https://ezyventas2.test/api/v1`.
+/// Opcionales:
+/// - `LIVE_API_URL` (default `https://ezyventas2.test/api/v1`)
+/// - `LIVE_EXPECT_OWNER` (`true` para la cuenta propietaria, `false` para un
+///   empleado con permisos limitados)
+/// - `LIVE_EXPECT_FORBIDDEN_PATH` (ruta que el usuario **no** puede leer; debe
+///   responder `403`). Ej. `/service-orders` para un empleado solo de POS.
 const String liveEmail = String.fromEnvironment('LIVE_API_EMAIL');
 const String livePassword = String.fromEnvironment('LIVE_API_PASSWORD');
 const String liveBaseUrl = String.fromEnvironment(
   'LIVE_API_URL',
   defaultValue: 'https://ezyventas2.test/api/v1',
+);
+const bool liveExpectOwner = bool.fromEnvironment(
+  'LIVE_EXPECT_OWNER',
+  defaultValue: true,
+);
+const String liveForbiddenPath = String.fromEnvironment(
+  'LIVE_EXPECT_FORBIDDEN_PATH',
 );
 
 void main() {
@@ -80,11 +93,28 @@ void main() {
       );
       expect(session.token, isNotEmpty);
       expect(session.context.user.id, greaterThan(0));
-      expect(session.context.user.permissions, isNotEmpty);
-      expect(session.context.user.isSubscriptionOwner, isTrue,
-          reason: 'la cuenta de pruebas es propietaria (sin roles)');
       expect(session.context.availableBranches, isNotEmpty);
       expect(session.context.moduleKeys, isNotEmpty);
+
+      // Un empleado puede legítimamente tener 0 permisos (rol sin permisos
+      // asignados): el servidor lo deja entrar y la app debe ocultar todo
+      // menos "Cuenta". El propietario siempre recibe permisos.
+      if (liveExpectOwner) {
+        expect(session.context.user.permissions, isNotEmpty);
+      }
+
+      expect(
+        session.context.user.isSubscriptionOwner,
+        liveExpectOwner,
+        reason: 'la cuenta debe ser propietaria (sin roles) o empleado',
+      );
+
+      debugPrint(
+        '[smoke] user=${session.context.user.id} '
+        'owner=${session.context.user.isSubscriptionOwner} '
+        'permisos=${session.context.user.permissions.length} '
+        'modulos=${session.context.moduleKeys.join(",")}',
+      );
 
       // 3) El token sirve para `GET /auth/me`.
       final me = await api.getJson(ApiEndpoints.me);
@@ -101,10 +131,53 @@ void main() {
         permissions: context.user.permissions,
         moduleKeys: context.moduleKeys,
       );
-      expect(permissions.visibleTabs, isNotEmpty);
-      expect(permissions.can('pos.access'), isTrue);
+      final visibleTabs = permissions.visibleTabs;
 
-      // 5) Logout revoca el token de este dispositivo.
+      expect(visibleTabs, contains(AppTab.account));
+      expect(
+        visibleTabs.contains(AppTab.sell),
+        permissions.can('pos.access') && permissions.hasModule('module_pos'),
+      );
+      expect(
+        visibleTabs.contains(AppTab.sales),
+        permissions.can('transactions.access'),
+      );
+      expect(
+        visibleTabs.contains(AppTab.serviceOrders),
+        permissions.can('services.orders.access') &&
+            permissions.hasModule('module_services'),
+      );
+
+      if (permissions.permissions.isEmpty) {
+        // Sin ningún permiso efectivo la app solo deja entrar a "Cuenta".
+        expect(visibleTabs, <AppTab>[AppTab.account]);
+      }
+
+      debugPrint(
+        '[smoke] pestanas=${visibleTabs.map((tab) => tab.label).join(" | ")}',
+      );
+
+      // 5) Un endpoint permitido responde 200 paginado.
+      if (permissions.can('transactions.access')) {
+        final transactions = await api.getJson(ApiEndpoints.transactions);
+        expect(transactions['data'], isA<List<dynamic>>());
+        debugPrint('[smoke] /transactions ok (${transactions['total']} ventas)');
+      }
+
+      // 6) Un endpoint sin permiso responde 403 con el mensaje del servidor.
+      if (liveForbiddenPath.isNotEmpty) {
+        final forbidden = await _capture(() => api.getJson(liveForbiddenPath));
+        expect(forbidden.statusCode, 403);
+        expect(
+          forbidden.message,
+          'Tu usuario no tiene permiso para esta acción.',
+        );
+        debugPrint(
+          '[smoke] 403 en $liveForbiddenPath: ${forbidden.message}',
+        );
+      }
+
+      // 7) Logout revoca el token de este dispositivo.
       await repository.logout();
       final afterLogout = await _capture(() => api.getJson(ApiEndpoints.me));
       expect(afterLogout.isUnauthorized, isTrue);
