@@ -164,6 +164,48 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  /// Sincroniza el turno de caja con la sesión **sin** volver a pedir
+  /// `/auth/me`: la apertura, la unión y el corte ya devuelven la sesión
+  /// definitiva, así que el POS queda habilitado de inmediato.
+  ///
+  /// Con `null` se limpia el turno (corte o salida del turno).
+  Future<void> setActiveSession(ActiveCashSession? session) async {
+    final current = state.session;
+    if (current == null) {
+      return;
+    }
+
+    // Sin cambios reales no se reescribe el almacenamiento seguro (el POS
+    // refresca el turno cada vez que vuelve a primer plano).
+    if (_sameSession(current.context.activeSession, session)) {
+      return;
+    }
+
+    final updated = AuthSession(
+      token: current.token,
+      context: current.context.copyWith(
+        activeSession: session,
+        clearActiveSession: session == null,
+      ),
+    );
+
+    await ref.read(authRepositoryProvider).saveSession(updated);
+    _setState(
+      state.copyWith(session: updated, status: AuthStatus.authenticated),
+    );
+  }
+
+  static bool _sameSession(ActiveCashSession? a, ActiveCashSession? b) {
+    if (a == null || b == null) {
+      return a == null && b == null;
+    }
+
+    return a.id == b.id &&
+        a.status == b.status &&
+        a.users.length == b.users.length &&
+        a.totals.total == b.totals.total;
+  }
+
   void _handleUnauthorized() {
     if (_isDisposed || state.status == AuthStatus.unauthenticated) {
       return;

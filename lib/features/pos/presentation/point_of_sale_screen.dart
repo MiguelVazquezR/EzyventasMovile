@@ -8,17 +8,50 @@ import '../../../core/widgets/app_screen_header.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../cash/application/cash_register_controller.dart';
+import '../../catalog/application/catalog_providers.dart';
 import '../../catalog/presentation/widgets/product_catalog_view.dart';
+import 'widgets/cart_bar.dart';
 
-/// Pestana "Vender" (POS).
+/// Pestaña "Vender" (POS): catálogo + carrito + cobro.
 ///
-/// En esta etapa: catalogo con busqueda, categorias, stock y promociones, con
-/// detalle de producto. El carrito y el cobro llegan en la siguiente etapa.
-class PointOfSaleScreen extends ConsumerWidget {
+/// El cobro exige una sesión de caja abierta: si no la hay, la barra del
+/// carrito avisa y la pestaña Caja ofrece abrir el turno.
+class PointOfSaleScreen extends ConsumerStatefulWidget {
   const PointOfSaleScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PointOfSaleScreen> createState() => _PointOfSaleScreenState();
+}
+
+class _PointOfSaleScreenState extends ConsumerState<PointOfSaleScreen>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Al volver la app a primer plano se refresca el turno: si otro usuario lo
+  /// cerró desde la web, el POS vuelve a la pantalla de apertura.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+
+    ref.read(cashRegisterControllerProvider.notifier).refresh();
+    ref.read(productsControllerProvider.notifier).refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final session = ref.watch(activeCashSessionProvider);
     final permissions = ref.watch(permissionsProvider);
 
@@ -32,7 +65,7 @@ class PointOfSaleScreen extends ConsumerWidget {
               const Expanded(
                 child: EmptyState(
                   icon: Icons.lock_outline,
-                  title: 'Tu usuario no tiene permiso para esta accion.',
+                  title: 'Tu usuario no tiene permiso para esta acción.',
                   message:
                       'Pide al administrador el permiso de acceso al punto de venta.',
                 ),
@@ -54,7 +87,7 @@ class PointOfSaleScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: NoticeBanner(
                   message:
-                      'Necesitas una sesion de caja abierta para registrar ventas.',
+                      'Necesitas una sesión de caja abierta para registrar ventas.',
                   tone: EzySeverity.warn,
                   icon: Icons.warning_amber_rounded,
                   actionLabel: 'Ir a Caja',
@@ -65,12 +98,13 @@ class PointOfSaleScreen extends ConsumerWidget {
               const Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: NoticeBanner(
-                  message: 'Tu usuario no tiene permiso para esta accion.',
+                  message: 'Tu usuario no tiene permiso para esta acción.',
                   tone: EzySeverity.info,
                   icon: Icons.lock_outline,
                 ),
               ),
             const Expanded(child: ProductCatalogView()),
+            const CartBar(),
           ],
         ),
       ),

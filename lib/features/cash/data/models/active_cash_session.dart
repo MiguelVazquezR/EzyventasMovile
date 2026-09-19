@@ -3,6 +3,7 @@ import '../../../../core/utils/json_reader.dart';
 import '../../../../core/utils/money.dart';
 import 'cash_register_ref.dart';
 import 'cash_session_totals.dart';
+import 'opening_bank_balance.dart';
 import 'user_ref.dart';
 
 /// Sesión de caja en la que el usuario está trabajando (`active_session`).
@@ -12,6 +13,7 @@ class ActiveCashSession {
     required this.status,
     required this.openedAt,
     required this.openingCashBalance,
+    required this.openingBankBalances,
     required this.cashRegister,
     required this.opener,
     required this.users,
@@ -24,6 +26,9 @@ class ActiveCashSession {
       status: JsonReader.stringOr(json['status'], 'abierta'),
       openedAt: AppFormatters.parse(json['opened_at']),
       openingCashBalance: Money.toDouble(json['opening_cash_balance']),
+      openingBankBalances: JsonReader.toMapList(
+        json['opening_bank_balances'],
+      ).map(OpeningBankBalance.fromJson).toList(growable: false),
       cashRegister: json['cash_register'] == null
           ? null
           : CashRegisterRef.fromJson(JsonReader.toMap(json['cash_register'])),
@@ -41,6 +46,10 @@ class ActiveCashSession {
   final String status;
   final DateTime? openedAt;
   final double openingCashBalance;
+
+  /// Snapshot de los saldos bancarios declarados al abrir el turno: es el saldo
+  /// inicial que muestra el corte.
+  final List<OpeningBankBalance> openingBankBalances;
   final CashRegisterRef? cashRegister;
   final UserRef? opener;
   final List<UserRef> users;

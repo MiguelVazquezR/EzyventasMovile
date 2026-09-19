@@ -9,10 +9,18 @@ import '../../data/models/product.dart';
 /// Tarjeta de producto del catálogo: imagen, nombre, precio con promoción y
 /// stock de la sucursal (Tesla UI: panel `#232323`, radio 24, borde de 1 px).
 class ProductCard extends StatelessWidget {
-  const ProductCard({super.key, required this.product, this.onTap});
+  const ProductCard({
+    super.key,
+    required this.product,
+    this.onTap,
+    this.onAdd,
+  });
 
   final Product product;
   final VoidCallback? onTap;
+
+  /// Agregado rápido de una unidad (solo productos sin variantes y con stock).
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +41,7 @@ class ProductCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              _Thumbnail(product: product),
+              _Thumbnail(product: product, onAdd: onAdd),
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
                 child: Column(
@@ -63,9 +71,12 @@ class ProductCard extends StatelessWidget {
 }
 
 class _Thumbnail extends StatelessWidget {
-  const _Thumbnail({required this.product});
+  const _Thumbnail({required this.product, this.onAdd});
 
   final Product product;
+
+  /// Botón de agregado rápido (una unidad) para productos simples.
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -106,6 +117,28 @@ class _Thumbnail extends StatelessWidget {
                   background: surfaces.panel,
                   foreground: surfaces.textSecondary,
                   border: surfaces.border,
+                ),
+              ),
+            if (onAdd != null && !product.isOutOfStock)
+              Positioned(
+                bottom: 10,
+                right: 10,
+                child: Material(
+                  color: EzyColors.primary,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    onTap: onAdd,
+                    customBorder: const CircleBorder(),
+                    child: const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Icon(
+                        Icons.add,
+                        size: 20,
+                        color: EzyColors.black1,
+                      ),
+                    ),
+                  ),
                 ),
               ),
           ],

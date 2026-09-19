@@ -74,4 +74,8 @@ class Money {
 
   /// Convierte una captura del usuario (`"1,240.00"`, `"1240"`) en `double`.
   static double parseInput(String? raw) => toDouble(raw);
+
+  /// Redondeo a centavos: toda la aritmética del carrito pasa por aquí para que
+  /// el total que se envía al servidor no arrastre errores de coma flotante.
+  static double round2(double value) => (value * 100).round() / 100;
 }

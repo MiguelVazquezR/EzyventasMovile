@@ -98,6 +98,34 @@ class AccessContext {
     return List<AvailableBranch>.unmodifiable(branches);
   }
 
+  /// Copia del contexto cambiando solo lo indicado.
+  ///
+  /// El turno abierto/cortado se sincroniza sin volver a pedir `/auth/me`
+  /// (la apertura, la unión y el corte ya devuelven la sesión definitiva).
+  AccessContext copyWith({
+    AuthUser? user,
+    List<String>? moduleKeys,
+    List<String>? modules,
+    List<AvailableBranch>? availableBranches,
+    ActiveCashSession? activeSession,
+    List<JoinableCashSession>? joinableSessions,
+    List<CashRegisterRef>? availableCashRegisters,
+    bool clearActiveSession = false,
+  }) {
+    return AccessContext(
+      user: user ?? this.user,
+      moduleKeys: moduleKeys ?? this.moduleKeys,
+      modules: modules ?? this.modules,
+      availableBranches: availableBranches ?? this.availableBranches,
+      activeSession: clearActiveSession
+          ? null
+          : (activeSession ?? this.activeSession),
+      joinableSessions: joinableSessions ?? this.joinableSessions,
+      availableCashRegisters:
+          availableCashRegisters ?? this.availableCashRegisters,
+    );
+  }
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     'user': user.toJson(),
     'module_keys': moduleKeys,
@@ -120,6 +148,9 @@ class AccessContext {
             'status': activeSession!.status,
             'opened_at': activeSession!.openedAt?.toUtc().toIso8601String(),
             'opening_cash_balance': activeSession!.openingCashBalance,
+            'opening_bank_balances': activeSession!.openingBankBalances
+                .map((balance) => balance.toJson())
+                .toList(growable: false),
             'cash_register': activeSession!.cashRegister == null
                 ? null
                 : <String, dynamic>{

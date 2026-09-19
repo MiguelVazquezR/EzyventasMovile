@@ -5,6 +5,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/notice_banner.dart';
+import '../../../auth/application/auth_controller.dart';
+import '../../../pos/application/cart_controller.dart';
 import '../../application/catalog_providers.dart';
 import 'catalog_controls.dart';
 import 'product_card.dart';
@@ -56,6 +58,7 @@ class _ProductCatalogViewState extends ConsumerState<ProductCatalogView> {
   Widget build(BuildContext context) {
     final state = ref.watch(productsControllerProvider);
     final controller = ref.read(productsControllerProvider.notifier);
+    final canSell = ref.watch(permissionsProvider).can('pos.create_sale');
 
     return RefreshIndicator(
       onRefresh: controller.refresh,
@@ -118,6 +121,11 @@ class _ProductCatalogViewState extends ConsumerState<ProductCatalogView> {
                   return ProductCard(
                     product: product,
                     onTap: () => showProductDetail(context, product),
+                    onAdd: canSell && !product.hasVariants
+                        ? () => ref
+                              .read(cartControllerProvider.notifier)
+                              .addProduct(product)
+                        : null,
                   );
                 }, childCount: state.items.length),
               ),

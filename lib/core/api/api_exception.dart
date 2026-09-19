@@ -1,19 +1,24 @@
 import 'dart:convert';
 
+import '../utils/json_reader.dart';
+
 /// Error uniforme de la API `/api/v1`.
 ///
 /// El backend siempre responde `{ "message": "...", "errors": { campo: [...] } }`
 /// y, en los errores de negocio, añade `code` (`session_required`,
-/// `cash_register_in_use`, `cash_register_in_use`, `already_cancelled`, ...).
+/// `cash_register_in_use`, `customer_required`, `already_cancelled`, ...).
 ///
 /// Regla de la app: se muestra **siempre** `message` (ya viene en español) y se
 /// usa `code` únicamente para decidir el flujo, nunca para inventar texto.
+/// Algunos `code` traen datos extra ([details]): `cash_register_in_use` incluye
+/// `session_id` y `opened_by`, que la app usa para ofrecer "Unirme a esa sesión".
 class ApiException implements Exception {
   const ApiException({
     required this.message,
     this.statusCode,
     this.code,
     this.errors = const <String, List<String>>{},
+    this.details = const <String, dynamic>{},
     this.isNetworkError = false,
   });
 
@@ -34,6 +39,7 @@ class ApiException implements Exception {
       statusCode: statusCode,
       code: map?['code'] is String ? map!['code'] as String : null,
       errors: _parseErrors(map?['errors']),
+      details: map ?? const <String, dynamic>{},
     );
   }
 
@@ -60,7 +66,21 @@ class ApiException implements Exception {
   /// Errores de validación por campo (`422`).
   final Map<String, List<String>> errors;
 
+  /// Cuerpo completo del error. Solo se leen datos que el contrato documenta
+  /// (por ejemplo `session_id` / `opened_by` en `cash_register_in_use`).
+  final Map<String, dynamic> details;
+
   final bool isNetworkError;
+
+  /// Entero del cuerpo del error (`session_id`).
+  int? detailInt(String key) => JsonReader.integer(details[key]);
+
+  /// Texto del cuerpo del error.
+  String? detailString(String key) => JsonReader.string(details[key]);
+
+  /// Objeto anidado del cuerpo del error (`opened_by`).
+  Map<String, dynamic> detailMap(String key) =>
+      JsonReader.toMap(details[key]);
 
   bool get isUnauthorized => statusCode == 401;
   bool get isForbidden => statusCode == 403;

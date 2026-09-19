@@ -5,8 +5,11 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
+import '../../../auth/application/auth_controller.dart';
+import '../../../pos/application/cart_controller.dart';
 import '../../application/catalog_providers.dart';
 import '../../data/models/product.dart';
 
@@ -121,11 +124,17 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
             ),
           ],
           const SizedBox(height: 16),
-          const NoticeBanner(
-            message:
-                'El carrito y el cobro se habilitan en la siguiente entrega de la app.',
-            tone: EzySeverity.info,
-          ),
+          if (stock <= 0)
+            const NoticeBanner(
+              message: 'El producto ya no tiene stock suficiente.',
+              tone: EzySeverity.warn,
+            )
+          else
+            _AddToCartSection(
+              product: product,
+              variant: selected,
+              onAdded: () => Navigator.of(context).maybePop(),
+            ),
         ],
       ),
     );
@@ -143,6 +152,164 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
     }
 
     return product.variantCombinations.first;
+  }
+}
+
+/// Cantidad y botón "Agregar al carrito" del detalle de producto.
+///
+/// Solo aparece con `pos.create_sale`: la sesión de caja la valida el carrito
+/// (y el servidor con `session_required`).
+class _AddToCartSection extends ConsumerStatefulWidget {
+  const _AddToCartSection({
+    required this.product,
+    required this.variant,
+    required this.onAdded,
+  });
+
+  final Product product;
+  final VariantCombination? variant;
+  final VoidCallback onAdded;
+
+  @override
+  ConsumerState<_AddToCartSection> createState() => _AddToCartSectionState();
+}
+
+class _AddToCartSectionState extends ConsumerState<_AddToCartSection> {
+  double _quantity = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final canSell = ref.watch(permissionsProvider).can('pos.create_sale');
+    final stock = widget.variant?.stock ?? widget.product.stock;
+    final step = widget.product.isBulk ? 0.5 : 1.0;
+
+    if (!canSell) {
+      return const NoticeBanner(
+        message: 'Tu usuario no tiene permiso para esta acción.',
+        tone: EzySeverity.info,
+        icon: Icons.lock_outline,
+      );
+    }
+
+    return SectionCard(
+      title: 'Agregar a la venta',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Text(
+                'Cantidad',
+                style: EzyTextStyles.microLabel.copyWith(
+                  color: surfaces.textMuted,
+                ),
+              ),
+              const Spacer(),
+              _QuantityControl(
+                quantity: _quantity,
+                measureUnit: widget.product.measureUnit,
+                onDecrease: _quantity > step
+                    ? () => setState(() => _quantity = _quantity - step)
+                    : null,
+                onIncrease: _quantity + step <= stock
+                    ? () => setState(() => _quantity = _quantity + step)
+                    : null,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Total de la línea: '
+            '${Money.format(_lineTotal())}',
+            style: EzyTextStyles.moneyMedium.copyWith(
+              color: surfaces.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          EzyButton(
+            label: 'Agregar al carrito',
+            icon: Icons.add_shopping_cart_outlined,
+            onPressed: _add,
+          ),
+        ],
+      ),
+    );
+  }
+
+  double _unitPrice() {
+    final variant = widget.variant;
+    if (variant != null) {
+      return variant.price;
+    }
+
+    return widget.product.priceForQuantity(_quantity);
+  }
+
+  double _lineTotal() => Money.round2(_unitPrice() * _quantity);
+
+  void _add() {
+    ref
+        .read(cartControllerProvider.notifier)
+        .addProduct(
+          widget.product,
+          variant: widget.variant,
+          quantity: _quantity,
+        );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${widget.product.name} agregado al carrito '
+          '(${Money.formatQuantity(_quantity)}).',
+        ),
+      ),
+    );
+
+    widget.onAdded();
+  }
+}
+
+/// Control de cantidad con botones − / +.
+class _QuantityControl extends StatelessWidget {
+  const _QuantityControl({
+    required this.quantity,
+    required this.measureUnit,
+    required this.onDecrease,
+    required this.onIncrease,
+  });
+
+  final double quantity;
+  final String measureUnit;
+  final VoidCallback? onDecrease;
+  final VoidCallback? onIncrease;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final unit = measureUnit.isEmpty ? '' : ' $measureUnit';
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        IconButton(
+          onPressed: onDecrease,
+          tooltip: 'Quitar una unidad',
+          icon: const Icon(Icons.remove, size: 18),
+        ),
+        Text(
+          '${Money.formatQuantity(quantity)}$unit',
+          style: EzyTextStyles.bodyStrong.copyWith(
+            color: surfaces.textPrimary,
+          ),
+        ),
+        IconButton(
+          onPressed: onIncrease,
+          tooltip: 'Agregar una unidad',
+          icon: const Icon(Icons.add, size: 18),
+        ),
+      ],
+    );
   }
 }
 

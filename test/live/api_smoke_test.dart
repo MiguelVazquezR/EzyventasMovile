@@ -6,11 +6,18 @@ import 'package:ezyventas_app/core/api/api_exception.dart';
 import 'package:ezyventas_app/core/auth/permissions_service.dart';
 import 'package:ezyventas_app/core/auth/session_store.dart';
 import 'package:ezyventas_app/core/utils/money.dart';
+import 'package:ezyventas_app/core/utils/uuid_generator.dart';
 import 'package:ezyventas_app/features/auth/data/auth_repository.dart';
 import 'package:ezyventas_app/features/auth/data/models/access_context.dart';
 import 'package:ezyventas_app/features/auth/data/models/auth_session.dart';
+import 'package:ezyventas_app/features/cash/data/cash_register_repository.dart';
 import 'package:ezyventas_app/features/catalog/data/catalog_repository.dart';
 import 'package:ezyventas_app/features/customers/data/customers_repository.dart';
+import 'package:ezyventas_app/features/pos/application/cart_state.dart';
+import 'package:ezyventas_app/features/pos/application/product_line_builder.dart';
+import 'package:ezyventas_app/features/pos/data/models/cart_line.dart';
+import 'package:ezyventas_app/features/pos/data/models/payment_draft.dart';
+import 'package:ezyventas_app/features/pos/data/pos_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -59,6 +66,13 @@ const bool liveExpectOwner = bool.fromEnvironment(
 const String liveForbiddenPath = String.fromEnvironment(
   'LIVE_EXPECT_FORBIDDEN_PATH',
 );
+
+/// Habilita la prueba real de la etapa 3 (caja + cobro). Crea una venta y un
+/// corte **reales**, por eso está apagada por defecto: `LIVE_POS=true`.
+const bool livePos = bool.fromEnvironment('LIVE_POS');
+
+/// Producto con el que se prueba el cobro (si es 0 se usa el primero con stock).
+const int livePosProductId = int.fromEnvironment('LIVE_POS_PRODUCT_ID');
 
 void main() {
   final hasCredentials = liveEmail.isNotEmpty && livePassword.isNotEmpty;
@@ -193,6 +207,7 @@ void main() {
   );
 
   liveCatalogTest();
+  liveCashAndSaleTest();
 }
 
 /// Verifica el catálogo y los clientes **reales** de la sucursal del token.
@@ -272,6 +287,166 @@ void liveCatalogTest() {
     timeout: const Timeout(Duration(minutes: 2)),
   );
 }
+/// Prueba de humo de la etapa 3 contra la API real: turno de caja + cobro.
+///
+/// - Si el usuario no tiene turno, abre uno en la primera terminal libre con un
+///   fondo de `1000` y los saldos bancarios que devuelve el servidor.
+/// - Registra **una venta de contado** (efectivo exacto) del primer producto con
+///   stock y comprueba folio, total, cambio y pistas de impresión.
+/// - Lee el corte (`summary`) y, **solo si este dispositivo abrió el turno**, lo
+///   cierra con el efectivo esperado (para no cortar el turno de otra persona).
+void liveCashAndSaleTest() {
+  test(
+    'caja y cobro reales (turno, venta de contado y corte)',
+    () async {
+      final store = _MemorySessionStore();
+      final api = ApiClient(baseUrl: liveBaseUrl, readToken: store.readToken);
+      final auth = AuthRepository(api: api, sessionStore: store);
+
+      await auth.login(email: liveEmail, password: livePassword);
+
+      final cash = CashRegisterRepository(api: api);
+      final current = await cash.fetchCurrent();
+
+      debugPrint(
+        '[live] turno=${current.activeSession?.id ?? "ninguno"} '
+        'terminales libres=${current.availableCashRegisters.length} '
+        'turnos a unir=${current.joinableSessions.length} '
+        'cuentas bancarias=${current.bankAccounts.length}',
+      );
+
+      var openedHere = false;
+      var activeSession = current.activeSession;
+
+      if (activeSession == null) {
+        expect(
+          current.canStartShift,
+          isTrue,
+          reason:
+              'No hay terminal libre ni turno abierto: no se puede probar el cobro',
+        );
+
+        activeSession = await cash.openSession(
+          cashRegisterId: current.availableCashRegisters.first.id,
+          openingCashBalance: 1000,
+          declaredBankBalances: <int, double>{
+            for (final account in current.bankAccounts)
+              account.id: account.balance,
+          },
+        );
+        openedHere = true;
+
+        debugPrint(
+          '[live] turno abierto id=${activeSession.id} '
+          'terminal=${activeSession.cashRegisterName} '
+          'fondo=${Money.format(activeSession.openingCashBalance)} '
+          'bancos=${activeSession.openingBankBalances.length}',
+        );
+      }
+
+      // Producto con stock: el indicado por env o el primero disponible.
+      final catalog = CatalogRepository(api: api);
+      final products = await catalog.fetchProducts(perPage: 50);
+      final product = livePosProductId > 0
+          ? await catalog.fetchProduct(livePosProductId)
+          : products.items.firstWhere(
+              (item) => item.stock > 0 || item.variantCombinations.isNotEmpty,
+              orElse: () => products.items.first,
+            );
+      final variant = product.variantCombinations
+          .where((combination) => combination.stock > 0)
+          .firstOrNull;
+
+      final line = ProductLineBuilder.build(
+        product,
+        variant: variant,
+        quantity: 1,
+      );
+
+      debugPrint(
+        '[live] producto=${product.name} '
+        'variante=${variant?.label ?? "sin variante"} '
+        'precio=${Money.format(line.unitPrice)} '
+        'total línea=${Money.format(line.lineTotal)}',
+      );
+
+      final cart = CartState(
+        lines: <CartLine>[line],
+        payments: <PaymentDraft>[
+          PaymentDraft(
+            method: PosPaymentMethod.cash,
+            amount: line.lineTotal,
+          ),
+        ],
+      );
+
+      final checkout = await PosRepository(api: api).checkout(
+        cart.buildSalePayload(
+          sessionId: activeSession.id,
+          clientUuid: UuidGenerator.v4(),
+        ),
+      );
+
+      debugPrint(
+        '[live] venta folio=${checkout.transaction.folio} '
+        'estado=${checkout.transaction.status} '
+        'canal=${checkout.transaction.channel} '
+        'total=${Money.format(checkout.transaction.total)} '
+        'pagado=${Money.format(checkout.transaction.totalPaid)} '
+        'saldo=${Money.format(checkout.transaction.remainingDue)} '
+        'cambio=${Money.format(checkout.change)} '
+        'plantillas=${checkout.printHint.templateIds}',
+      );
+
+      expect(checkout.transaction.folio, isNotEmpty);
+      expect(checkout.transaction.total, greaterThan(0));
+      expect(checkout.transaction.totalPaid, greaterThan(0));
+      expect(checkout.transaction.customerName, isNull);
+
+      final summary = await cash.fetchSummary(activeSession.id);
+
+      debugPrint(
+        '[live] corte esperado=${Money.format(summary.expectedTotal)} '
+        'ventas efectivo=${Money.format(summary.cashSales)} '
+        'cobros=${Money.format(summary.payments.total)} '
+        'bancos=${summary.bankAccounts.length} '
+        'movimientos=${summary.cashMovements.length} '
+        'operaciones=${summary.transactionsCount}',
+      );
+
+      expect(summary.expectedTotal, greaterThan(0));
+
+      if (openedHere) {
+        final closed = await cash.closeSession(
+          sessionId: activeSession.id,
+          closingCashBalance: summary.expectedTotal,
+          notes: 'Corte de la prueba de humo de la app',
+        );
+
+        debugPrint(
+          '[live] corte estado=${closed.session.status} '
+          'esperado=${Money.format(closed.session.calculatedCashTotal)} '
+          'contado=${Money.format(closed.session.closingCashBalance)} '
+          'diferencia=${Money.format(closed.session.cashDifference)}',
+        );
+
+        expect(closed.session.status, 'cerrada');
+        expect(closed.session.hasDifference, isFalse);
+      } else {
+        debugPrint(
+          '[live] el turno ya estaba abierto: no se corta desde la prueba',
+        );
+      }
+
+      await auth.logout();
+    },
+    skip: (liveEmail.isNotEmpty && livePassword.isNotEmpty && livePos)
+        ? false
+        : 'Requiere LIVE_API_EMAIL/LIVE_API_PASSWORD y LIVE_POS=true',
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+}
+
 Future<ApiException> _capture(Future<Object?> Function() action) async {
   try {
     await action();
