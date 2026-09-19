@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -147,6 +148,45 @@ class ApiClient {
       options: Options(receiveTimeout: receiveTimeout),
     ),
   );
+
+  /// Respuesta que es una **lista** JSON (p. ej. `GET /catalog/categories`).
+  Future<List<Map<String, dynamic>>> getJsonList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    try {
+      final response = await dio.get<Object?>(
+        path,
+        queryParameters: cleanQuery(query),
+      );
+
+      return _asMapList(response.data);
+    } on DioException catch (error) {
+      throw toApiException(error);
+    }
+  }
+
+  static List<Map<String, dynamic>> _asMapList(Object? data) {
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map((item) => item.map((key, value) => MapEntry('$key', value)))
+          .toList(growable: false);
+    }
+
+    if (data is String && data.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(data);
+        if (decoded is List) {
+          return _asMapList(decoded);
+        }
+      } on FormatException {
+        return const <Map<String, dynamic>>[];
+      }
+    }
+
+    return const <Map<String, dynamic>>[];
+  }
 
   Future<Map<String, dynamic>> postJson(
     String path, {
