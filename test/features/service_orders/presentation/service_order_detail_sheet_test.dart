@@ -95,19 +95,40 @@ Map<String, dynamic> detailFixture() => <String, dynamic>{
   ],
 };
 
+/// Detalle de una orden **antigua**: sin venta vinculada (`transaction: null`),
+/// que es el caso que exige `POST /service-orders/{id}/ensure-transaction`.
+Map<String, dynamic> legacyDetailFixture() => <String, dynamic>{
+  ...detailFixture(),
+  'has_transaction': false,
+  'transaction': null,
+};
+
 /// Repositorio falso de órdenes: sirve para pintar el detalle y provocar el
 /// `422` del cambio de estatus sin tocar la red.
 class _FakeOrdersRepository extends ServiceOrdersRepository {
-  _FakeOrdersRepository({this.statusFailure})
+  _FakeOrdersRepository({this.statusFailure, this.isLegacy = false})
     : super(api: ApiClient(baseUrl: 'https://api.test/api/v1'));
 
   final ApiException? statusFailure;
 
+  /// Orden antigua sin venta vinculada.
+  final bool isLegacy;
+
   ServiceOrderSummary? lastStatusSummary;
+  int? ensuredTransactionCalls;
 
   @override
   Future<ServiceOrderDetail> fetchServiceOrder(int serviceOrderId) async =>
-      ServiceOrderDetail.fromJson(detailFixture());
+      ServiceOrderDetail.fromJson(
+        isLegacy ? legacyDetailFixture() : detailFixture(),
+      );
+
+  @override
+  Future<int> ensureTransaction(int serviceOrderId) async {
+    ensuredTransactionCalls = (ensuredTransactionCalls ?? 0) + 1;
+
+    return 1201;
+  }
 
   @override
   Future<Paginated<ServiceOrderSummary>> fetchServiceOrders({
@@ -294,5 +315,30 @@ void main() {
 
     expect(find.text('El estatus ya es el seleccionado.'), findsOneWidget);
     expect(find.text('Ocultar'), findsOneWidget);
+  });
+
+  testWidgets('una orden sin venta vinculada avisa y ofrece cobrar', (
+    tester,
+  ) async {
+    await useTallScreen(tester);
+    await tester.pumpWidget(
+      _wrap(_FakeOrdersRepository(isLegacy: true)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Abrir detalle'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('OS-014'), findsOneWidget);
+    expect(
+      find.text(
+        'Esta orden no tiene venta vinculada: al cobrar se creará '
+        'automáticamente.',
+      ),
+      findsOneWidget,
+    );
+    // El botón sigue disponible: el cobro crea la venta con
+    // `ensure-transaction` antes de registrar el anticipo.
+    expect(find.text('Cobrar ahora'), findsOneWidget);
   });
 }
