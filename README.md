@@ -32,7 +32,7 @@ flutter build apk --release --dart-define=API_BASE_URL=https://app.ezyventas.com
 
 ```bash
 flutter analyze     # debe quedar sin issues
-flutter test        # 134 tests: dinero, errores, sesión, permisos, catálogo, caja, cobro, ventas y órdenes
+flutter test        # 137 tests: dinero, errores, sesión, permisos, catálogo, caja, cobro, ventas y órdenes
 ```
 
 Pruebas **reales** contra el servidor (no corren en `flutter test` normal):
