@@ -70,16 +70,22 @@ class EvidencePicker {
   static const List<int> _qualities = <int>[85, 70, 55, 40, 30];
 
   /// Una foto desde la cámara.
-  static Future<EvidencePickResult> pickFromCamera() =>
-      _pick(source: ImageSource.camera, limit: 1);
+  ///
+  /// [maxKb] permite apuntar a un límite distinto del de las evidencias (la foto
+  /// de perfil acepta 1 MB, contrato §11b.4).
+  static Future<EvidencePickResult> pickFromCamera({int? maxKb}) =>
+      _pick(source: ImageSource.camera, limit: 1, maxKb: maxKb);
 
   /// Varias fotos desde la galería (hasta [limit]).
-  static Future<EvidencePickResult> pickFromGallery({required int limit}) =>
-      _pick(source: ImageSource.gallery, limit: limit);
+  static Future<EvidencePickResult> pickFromGallery({
+    required int limit,
+    int? maxKb,
+  }) => _pick(source: ImageSource.gallery, limit: limit, maxKb: maxKb);
 
   static Future<EvidencePickResult> _pick({
     required ImageSource source,
     required int limit,
+    int? maxKb,
   }) async {
     if (limit <= 0) {
       return const EvidencePickResult.empty();
@@ -117,7 +123,7 @@ class EvidencePicker {
     var skipped = 0;
 
     for (final file in files) {
-      final image = await _compress(file);
+      final image = await _compress(file, maxKb: maxKb);
 
       if (image == null) {
         skipped++;
@@ -131,8 +137,8 @@ class EvidencePicker {
   }
 
   /// Comprime la foto bajando calidad hasta que el archivo entra en el límite.
-  static Future<EvidenceImage?> _compress(XFile file) async {
-    final limitBytes = AppConfig.maxEvidenceImageKb * 1024;
+  static Future<EvidenceImage?> _compress(XFile file, {int? maxKb}) async {
+    final limitBytes = (maxKb ?? AppConfig.maxEvidenceImageKb) * 1024;
 
     Uint8List? best;
 

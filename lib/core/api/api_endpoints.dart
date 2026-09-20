@@ -78,8 +78,4 @@ class ApiEndpoints {
   static const String subscriptionDocuments = '/subscription/documents';
   static String requestSubscriptionInvoice(int paymentId) =>
       '/subscription/payments/$paymentId/request-invoice';
-
-  /// Pantalla web de checkout para renovar o mejorar el plan.
-  static const String subscriptionManageUrl =
-      'https://ezyventas2.test/subscription/manage';
 }

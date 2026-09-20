@@ -32,10 +32,11 @@ flutter build apk --release --dart-define=API_BASE_URL=https://app.ezyventas.com
 
 ```bash
 flutter analyze     # debe quedar sin issues
-flutter test        # 194 tests: dinero, errores, sesión, permisos, catálogo, caja, cobro,
-                    # ventas, órdenes e impresión (CP850, ESC/POS del corte, plantillas,
-                    # ESC/POS/HTML/WhatsApp, filtro de plantillas por contexto y la hoja
-                    # de impresión en pantalla)
+flutter test        # 219 tests: dinero, errores, sesion, permisos, catalogo, caja, cobro,
+                    # ventas, ordenes, impresion (CP850, ESC/POS del corte, plantillas,
+                    # ESC/POS/HTML/WhatsApp, filtro de plantillas por contexto, la hoja de
+                    # impresion en pantalla) y cuenta (sucursal, notificaciones, soporte,
+                    # perfil y suscripcion)
 ```
 
 Pruebas **reales** contra el servidor (no corren en `flutter test` normal):
@@ -113,6 +114,39 @@ flutter test test/live/api_smoke_test.dart \
   --dart-define=LIVE_SERVICE_ORDERS=true \
   --dart-define=LIVE_PRINTING=true \
   --plain-name "de servicio reales"
+
+# Etapa 7: cuenta real (solo lectura) — notificaciones, soporte y perfil
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_ACCOUNT=true \
+  --plain-name notificaciones
+
+# Etapa 7 con suscripción: plan, límites, historial y escrituras REVERSIBLES
+# (guarda el perfil y la suscripción con los mismos datos, comprueba los 422 de
+# contraseña/documento y el 404 de una factura inexistente)
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_ACCOUNT=true \
+  --dart-define=LIVE_ACCOUNT_WRITE=true \
+  --plain-name plan
+
+# Etapa 7: cambio de sucursal de ida y vuelta (deja la cuenta como estaba)
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_ACCOUNT_BRANCH=true \
+  --plain-name ida
+
+# Etapa 7 con un empleado: la vista de suscripción debe responder 403 y el
+# mensaje del servidor es el que se muestra
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=empleado@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_EXPECT_OWNER=false \
+  --dart-define=LIVE_ACCOUNT=true \
+  --plain-name plan
 ```
 
 > El login de la API tiene *rate limit*: si aparece `429 Demasiadas solicitudes. Espera un momento e
@@ -136,7 +170,13 @@ selector de sucursal), y `GET /service-orders` responde `403`.
 
 `daniel@apontephone.com` **no** sirve para validar el `403` de las órdenes (tiene
 `services.orders.access`): sirve para verificar que un usuario sin `system.branches.switch` no ve el
-selector de sucursal y que sus pestañas excluyen lo que no le toca (`settings.*`, reportes).
+selector de sucursal y que sus pestañas excluyen lo que no le toca (`settings.*`, reportes). En la
+etapa 7 también se usó para comprobar que **no** es propietario de la suscripción: la opción «Mi
+suscripción» no aparece en su menú y `GET /subscription` responde `403`.
+
+> Al correr las pruebas reales con `--plain-name <texto>` conviene usar un fragmento **sin acentos**
+> (`notificaciones`, `plan`, `ida`): `cmd`/PowerShell del entorno recorta las tildes al pasar el
+> argumento y el filtro no encontraría la prueba.
 
 Las contrasenas **no** se guardan en el repositorio: se capturan en la pantalla de login o se pasan
 por `--dart-define`. **Nunca** se usa `ezyventas@gmail.com` (superadmin id 1) para validar
@@ -405,6 +445,116 @@ Contra `https://ezyventas2.test/api/v1` con `jean@apontephone.com` (propietario)
 | `POST /print/payload` (producto 6, plantilla 4) | `1` operación `EscribirTexto` con el TSPL completo (`SIZE 47 mm,28 mm … PRINT 1,1`), `noSoportadas=false` |
 | Empleado limitado (`daniel@apontephone.com`) | También lista plantillas y obtiene ESC/POS, HTML, TSPL y WhatsApp: el endpoint exige `pos.access` **o** `transactions.access` **o** `services.orders.access` |
 
+### Cuenta: sucursal, perfil, suscripción, soporte y notificaciones (etapa 7)
+
+`features/account/` implementa el menú de usuario del topbar web en la pestaña **Cuenta**
+(contrato §11b y documento maestro §9b), con las mismas opciones que ve el usuario según lo que
+el servidor autoriza:
+
+| Opción | Endpoints | Regla de visibilidad |
+|---|---|---|
+| Mi perfil | `GET /profile`, `PUT /profile`, `DELETE /profile/photo`, `PUT /profile/password`, `POST /profile/logout-other-devices` | siempre (sesión válida) |
+| Mi suscripción | `GET /subscription`, `PUT /subscription`, `POST /subscription/documents`, `POST /subscription/payments/{id}/request-invoice` | solo `is_subscription_owner` (los empleados reciben `403`) |
+| Notificaciones | `GET /notifications` | campana con `transactions.access`; la pantalla se abre desde la cabecera y desde Cuenta |
+| Centro de soporte | `GET /support` | siempre |
+| Sucursal activa | `PUT /branch/switch/{id}` | botón y pantalla solo con `system.branches.switch` y más de una sucursal |
+| Cerrar sesión | `POST /auth/logout` | siempre, con confirmación |
+
+- **Cambio de sucursal**: `PUT /branch/switch/{id}` devuelve el contexto completo ya recalculado
+  (`context`), así que la app lo aplica con `AuthController.applyContext`, **invalida la caché de la
+  sucursal anterior** (catálogo, categorías, servicios, detalle de producto, buscador de productos,
+  clientes, ventas, órdenes, caja, corte, cuentas bancarias y carrito), refresca `GET /auth/me`, vuelve a
+  pedir los contadores de notificaciones y regresa a la pestaña **Caja** (el turno anterior era de la otra
+  sucursal). Confirmación previa: «¿Cambiar a «Guacamayas.Comercial»?».
+- **Perfil**: foto con cámara/galería comprimida a **≤ 1 MB** (`AppConfig.maxProfilePhotoKb`) y enviada
+  como `multipart`; sin foto el cuerpo va en JSON. Al cambiar el correo el servidor responde
+  `email_verification_sent: true` y la app avisa («Te enviamos un código de verificación a tu nuevo
+  correo», el `message` del servidor) y refresca el contexto para volver a mostrar «Correo sin verificar».
+- **Notificaciones**: los cinco contadores que devuelve el servidor, con el total como badge. La pantalla
+  pinta las cuatro categorías y las abre en el listado que **sí** existe en la app (Ventas, con el filtro
+  `por_entregar` en «Entregas próximas»); «Novedades» y «Pedidos pendientes» se explican porque su
+  gestión es de la web. El último valor se guarda en el almacenamiento seguro (`LocalCache`) y se muestra
+  marcado cuando no hay conexión (§9b.5).
+- **Suscripción**: estado con la etiqueta del servidor y color por `is_expired` / `days_left` +
+  `warning` (banner también en la parte alta de la pestaña Cuenta), datos generales editables
+  (`PUT /subscription`), plan con módulos y límites con su consumo, uso, historial de versiones con su
+  pago y **«Renovar o mejorar plan»** que abre `https://<host>/subscription/manage` en el navegador
+  externo (`url_launcher`), sin reimplementar el checkout de Mercado Pago.
+- **Soporte**: todo el contenido viene de `GET /support` (mensaje, horario, canales y temas). Los canales
+  se abren con el manejador del sistema (`mailto:`, `wa.me`) y el Centro de ayuda en el navegador
+  externo. Cambiar `config/support.php` en el servidor no requiere publicar una app nueva.
+- **Caché local mínima** (`lib/core/storage/local_cache.dart`): solo los contadores de notificaciones,
+  para la regla «sin conexión se muestra el último valor cacheado». No guarda datos de negocio (folios,
+  saldos y stock siempre vienen del servidor) y se limpia al cerrar sesión.
+
+### Corrida real del 20 sep 2026 — etapa 7 (evidencia)
+
+Contra `https://ezyventas2.test/api/v1` con `jean@apontephone.com` (propietario de ApontePhone) y
+`daniel@apontephone.com` (empleado, **sin** `system.branches.switch` y **sin** ser propietario).
+
+| Prueba | Resultado |
+|---|---|
+| `GET /notifications` (propietario y empleado) | `{expiring_debts: 0, upcoming_deliveries: 0, unread_updates: 0, pending_orders: 0, total: 0}` — el total que suma el servidor coincide con los cuatro contadores |
+| `GET /support` | Título «Centro de soporte», 2 horarios, 2 canales (`mailto:notificaciones@ezyventas.com`, `https://wa.me/5213321705650`), 4 temas y `help_center_url=https://ezyventas2.test/centro-ayuda` |
+| `GET /profile` | `id=2`, `jean@apontephone.com`, `email_verified_at` presente, `phone=7531107389`, `has_photo=false` con `profile_photo_url` de **ui-avatars** (hallazgo 22) |
+| `PUT /profile` (mismos datos, JSON) | `200` → «Tus datos se guardaron.» · `email_verification_sent=false` |
+| `DELETE /profile/photo` | `200` → «Foto eliminada.» (la cuenta no tenía foto) |
+| `PUT /profile/password` (actual incorrecta) | `422` → `code=invalid_current_password` · «La contraseña actual no es correcta.» |
+| `POST /profile/logout-other-devices` (contraseña incorrecta) | `422` → `code=invalid_current_password` · mismo mensaje (no se cerró ninguna sesión real) |
+| `POST /subscription/documents` (archivo `.txt`) | `422` → «El documento debe ser un PDF o una imagen.» con `errors.fiscal_document[0]` |
+| `POST /subscription/payments/999999/request-invoice` | `404` → «Recurso no encontrado.» |
+| `PUT /subscription` (mismos datos) | `200` → «Los datos de la suscripción se guardaron.» |
+| `GET /subscription` (propietario) | `ApontePhone`, `status=activo`, `status_data.label=Activa`, «Vence el 30 oct 2026 (quedan 40 días)», 9 módulos, 6 límites, 12 versiones en el historial; última `v12` con `total="439.00"` (texto) y `payment.status=approved` |
+| `GET /subscription` (empleado `daniel`) | `403` → «Tu usuario no tiene permiso para esta acción.» (la app oculta la opción) |
+| `PUT /branch/switch/3` y vuelta a `2` | «Cambiado a la sucursal: Guacamayas.Comercial» con `available_branches` marcando la nueva como `is_current`, `user.branch_id=3` y su terminal (`Caja principal`, `id 3`); la vuelta deja `Melchor Ocampo (id 2)` como activa |
+
+### Discrepancias y hallazgos (etapa 7)
+
+22. **`profile_photo_url` trae un avatar generado aunque el usuario no tenga foto.** La cuenta de prueba
+    responde `has_photo: false` y aun así `profile_photo_url: "https://ui-avatars.com/api/?name=J+A&…"`
+    (accesor de Jetstream `HasProfilePhoto`). El contrato §11b.4 lo describe como «URL de la foto», así que
+    la app decide con **`has_photo`** y `UserProfile.realPhotoUrl` devuelve `null` cuando es `false`; el
+    avatar generado no se pinta (la app ya dibuja iniciales con `UserAvatar`, respetando la paleta Tesla).
+23. **El estado de la suscripción llega en masculino.** El contrato §11b.5 documenta `activa` / `expirada` /
+    `suspendida` y las reglas de color hablan de esos textos, pero el enum real
+    (`App\Enums\SubscriptionStatus`) usa `activo` / `expirado` / `suspendido`; la respuesta real es
+    `"status": "activo"`. La app modela los valores reales (`SubscriptionStatus`) y **no** usa ese texto
+    para la etiqueta visible: pinta `status_data.label` («Activa», «Por vencer», «Expirada») y colorea con
+    `is_expired` + `days_left`/`warning`, que es lo que tampoco depende de traducciones.
+24. **El historial de la suscripción no incluye el `id` del pago, así que la app no puede pedir la
+    factura.** `history[].payment` trae `folio`, `status`, `paid_at` y `can_request_invoice`, pero **no**
+    `id`, y `POST /subscription/payments/{paymentId}/request-invoice` exige ese id. Evidencia real:
+    `[live] última versión: v12 … puedeFactura=true idPago=null`. La app implementa el método completo
+    (`AccountRepository.requestInvoice`) —probado con `404` de un id inexistente—, modela `id` de forma
+    tolerante y **solo** muestra «Solicitar factura» cuando el servidor lo incluya; mientras, el historial
+    explica que la factura se solicita desde la web. **Hueco del backend**, no de la app.
+25. **El historial no expone los pagos `pending` / `rejected` con id tampoco**, solo
+    `pending_payment` / `last_rejected_payment` (que sí traen `id`, pero no son aprobados y el servidor
+    responde `403 payment_not_approved`). Con el contrato actual no hay ningún camino en la app móvil para
+    solicitar una factura de un pago aprobado.
+26. **El `403` de la suscripción usa el mensaje genérico de permisos.** `SubscriptionRequest::authorize`
+    devuelve `false` para un empleado, así que el cuerpo es «Tu usuario no tiene permiso para esta
+    acción.» y **no** el `owner_only` que documenta el catálogo de códigos (§12 del contrato). La app
+    muestra el `message` tal cual y oculta la opción del menú cuando `is_subscription_owner = false`.
+27. **El stack aprobado no incluye un selector de archivos**, así que la constancia de situación fiscal se
+    sube como **imagen** (cámara/galería, ≤ 2 MB) y no como PDF (el servidor sí acepta
+    `pdf,jpg,jpeg,png,webp`). La pantalla lo explica y el envío del PDF queda para la web (pendiente 8).
+28. **`GET /notifications` no distingue por módulo contratado** (los cuatro contadores llegan siempre;
+    `pending_orders` solo se calcula si la tienda en línea está activa). La app pinta los cuatro y explica
+    en «Novedades» y «Pedidos pendientes» que su gestión es de la web, en vez de inventar pantallas.
+29. **`expiring_debts` agrupa dos estatus** (`apartado` y `pendiente`) y el listado de ventas solo acepta
+    **un** `status` por llamada (contrato §8), así que «Deudas por vencer» abre el historial sin filtro
+    (con el texto de la categoría explicando qué cuenta). «Entregas próximas» sí abre filtrado por
+    `por_entregar`, que es exactamente lo que cuenta el servidor.
+30. **`PUT /profile` funciona igual con JSON que con `multipart`.** El contrato exige
+    `multipart/form-data`; la API real acepta JSON cuando no hay foto (verificado: `200` con el mismo
+    `message`). La app envía `multipart` **solo** cuando hay foto y JSON cuando no, para no convertir a
+    texto los campos (mismo criterio que las órdenes de servicio).
+31. **`PUT /branch/switch/{id}` cambia la sucursal del usuario para todos sus dispositivos** (escribe
+    `users.branch_id`), no solo para el teléfono que lo pide. La app lo advierte en la confirmación
+    («Verás la información de esa sucursal en este dispositivo, igual que en la web») y por eso la prueba
+    real deja la cuenta **como estaba** (ida y vuelta).
+
 ### Errores
 `ApiException` conserva `message`, `errors` (por campo) y `code`. La UI muestra **siempre** el
 `message` del servidor; `code` solo decide el flujo (`cash_register_in_use`, `session_required`,
@@ -593,11 +743,15 @@ lib/
   - printing/    BluetoothPrinterService, EscPosBuilder + Cp850, PrinterPreferences (etapa 6)
   - router/      go_router + StatefulShellRoute
   - theme/       Tesla UI: colores, tipografia, tema, severidades
-  - utils/       Money, AppFormatters, JsonReader, SearchDebouncer, StatusCatalog, Uuid
+  - utils/       Money, AppFormatters, JsonReader, SearchDebouncer, StatusCatalog, Uuid,
+                 ExternalLinks (abre enlaces del sistema)
+  - storage/     LocalCache (último valor cacheado de notificaciones)
   - widgets/     FieldLabel, EzyTextField, MoneyField, EzyButton, SectionCard, ...
 - features/
   - auth/        login, splash, modelos de sesion, repositorio, controlador
-  - account/     pestana Cuenta
+  - account/     pestana Cuenta y sus pantallas (etapa 7): perfil, sucursal,
+                 notificaciones, soporte y suscripcion + repositorio,
+                 controladores y modelos
   - cash/        turno de caja: modelos, repositorio, controlador, apertura y corte (etapa 3)
   - catalog/     catalogo, detalle de producto y alta rapida al carrito
   - customers/   clientes + buscador del cobro
@@ -630,7 +784,19 @@ lib/
    tiene el `summary` en memoria). No hay endpoint de impresión de un corte histórico.
 5. **Fase 5 (offline).** No implementada, como pide esta entrega: no hay base local, cola de
    sincronización ni encoder ESC/POS de tickets automáticos. La capa de datos (repositorios/servicios)
-   y el encoder local del corte quedan aislados para añadirla sin reescribir la UI.
-6. **Compilar el APK.** Este entorno no tiene el SDK de Android completo (`flutter doctor` marca
-   `cmdline-tools component is missing`), así que la entrega se validó con `flutter analyze` (limpio),
-   `flutter test` (194 pruebas) y las corridas reales contra `https://ezyventas2.test/api/v1`.
+   y el encoder local del corte quedan aislados para añadirla sin reescribir la UI. Lo único que ya
+   sobrevive sin conexión es el **último valor cacheado de los contadores de notificaciones**
+   (`LocalCache`), como pide §9b.5; el resto de la caché de sucursal se limpia al cambiar de sucursal.
+6. **Lista de dispositivos con sesión abierta.** «Sesiones activas» permite **cerrar** las demás sesiones
+   (`POST /profile/logout-other-devices`, con contraseña), pero el contrato §11b.4 deja la **lista** de
+   dispositivos (`personal_access_tokens`) para una fase posterior: la app no inventa esa lista.
+7. **Contraseña y cierre de otras sesiones con datos reales.** Las pruebas verifican el camino de error
+   (`422 invalid_current_password`) para no cambiar la contraseña de las cuentas de prueba; el camino
+   correcto queda por validar en un entorno desechable.
+8. **Constancia fiscal en PDF.** El servidor acepta `pdf`, pero el stack aprobado no trae selector de
+   archivos: la app solo sube imágenes (≤ 2 MB). El PDF se sube desde la web.
+9. **Solicitar factura desde el teléfono.** Bloqueado por el hueco 24 (el historial no trae el `id` del
+   pago). El método del repositorio ya está listo y probado contra el `404` real.
+10. **Compilar el APK.** Este entorno no tiene el SDK de Android completo (`flutter doctor` marca
+    `cmdline-tools component is missing`), así que la entrega se validó con `flutter analyze` (limpio),
+    `flutter test` (219 pruebas) y las corridas reales contra `https://ezyventas2.test/api/v1`.

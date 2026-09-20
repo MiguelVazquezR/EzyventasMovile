@@ -17,6 +17,12 @@ class SalesLabels {
     'cambiado',
   ];
 
+  /// Estatus de los pedidos con entrega pendiente (`TransactionStatus::TO_DELIVER`).
+  ///
+  /// Lo usan los avisos de "Entregas próximas" para abrir el historial ya
+  /// filtrado por el mismo estatus que cuenta el servidor.
+  static const String toDeliver = 'por_entregar';
+
   /// Canal de la venta (`channel` del contrato §8).
   static const Map<String, String> _channelLabels = <String, String>{
     'punto_de_venta': 'Punto de venta',

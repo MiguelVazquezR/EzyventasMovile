@@ -5,6 +5,7 @@ import '../../../core/api/api_providers.dart';
 import '../../../core/auth/permissions_service.dart';
 import '../../cash/data/models/active_cash_session.dart';
 import '../data/auth_repository.dart';
+import '../data/models/access_context.dart';
 import '../data/models/auth_session.dart';
 import 'auth_state.dart';
 
@@ -116,6 +117,25 @@ class AuthController extends Notifier<AuthState> {
       // Sin conexión o error del servidor: se conserva el contexto en caché
       // (regla de oro: la app no se bloquea por un fallo de red al arrancar).
     }
+  }
+
+  /// Aplica un contexto de acceso ya calculado por el servidor.
+  ///
+  /// Lo usa `PUT /branch/switch/{id}`, que devuelve el contexto completo de la
+  /// sucursal nueva (permisos, módulos, caja). No vuelve a pedir `/auth/me`: el
+  /// refresco se hace después, para confirmar contra el servidor.
+  Future<void> applyContext(AccessContext context) async {
+    final current = state.session;
+    if (current == null) {
+      return;
+    }
+
+    final updated = AuthSession(token: current.token, context: context);
+
+    await ref.read(authRepositoryProvider).saveSession(updated);
+    _setState(
+      state.copyWith(session: updated, status: AuthStatus.authenticated),
+    );
   }
 
   /// `POST /auth/login`. Devuelve `true` si la sesión quedó iniciada.

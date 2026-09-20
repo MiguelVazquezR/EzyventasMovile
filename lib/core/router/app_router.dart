@@ -3,6 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/account/presentation/account_screen.dart';
+import '../../features/account/presentation/branch_switch_screen.dart';
+import '../../features/account/presentation/notifications_screen.dart';
+import '../../features/account/presentation/profile_screen.dart';
+import '../../features/account/presentation/subscription_screen.dart';
+import '../../features/account/presentation/support_screen.dart';
 import '../../features/auth/application/auth_controller.dart';
 import '../../features/auth/application/auth_state.dart';
 import '../../features/auth/presentation/login_screen.dart';
@@ -69,6 +74,26 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ServiceOrderFormScreen(),
       ),
       GoRoute(
+        path: profilePath,
+        builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: branchSwitchPath,
+        builder: (context, state) => const BranchSwitchScreen(),
+      ),
+      GoRoute(
+        path: notificationsPath,
+        builder: (context, state) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: supportPath,
+        builder: (context, state) => const SupportScreen(),
+      ),
+      GoRoute(
+        path: subscriptionPath,
+        builder: (context, state) => const SubscriptionScreen(),
+      ),
+      GoRoute(
         path: serviceOrderEditRoute,
         builder: (context, state) => ServiceOrderFormScreen(
           serviceOrderId: int.tryParse(
@@ -108,6 +133,13 @@ const String serviceOrderNewPath = '/service-orders/new';
 
 /// Edición de una orden existente.
 const String serviceOrderEditRoute = '/service-orders/:serviceOrderId/edit';
+
+/// Pantallas de la sección Cuenta (etapa 7, fuera del cascarón de pestañas).
+const String profilePath = '/account/profile';
+const String branchSwitchPath = '/account/branch';
+const String notificationsPath = '/account/notifications';
+const String supportPath = '/account/support';
+const String subscriptionPath = '/account/subscription';
 
 /// Ruta de edición de una orden concreta.
 String serviceOrderEditPath(int serviceOrderId) =>

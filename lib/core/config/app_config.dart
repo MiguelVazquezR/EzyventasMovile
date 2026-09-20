@@ -38,7 +38,30 @@ class AppConfig {
   static const String currency = 'MXN';
   static const String locale = 'es_MX';
 
+  /// Dominio de la web derivado de la base de la API
+  /// (`https://host/api/v1` → `https://host`).
+  ///
+  /// Evita hardcodear el dominio del entorno: el release apunta al mismo host
+  /// que `API_BASE_URL`.
+  static String get webBaseUrl {
+    final base = apiBaseUrl.endsWith('/')
+        ? apiBaseUrl.substring(0, apiBaseUrl.length - 1)
+        : apiBaseUrl;
+    final marker = base.indexOf('/api/v1');
+
+    return marker > 0 ? base.substring(0, marker) : base;
+  }
+
+  /// Checkout de la web para renovar o mejorar el plan (contrato §11b.5).
+  ///
+  /// La app **no** reimplementa el pago de Mercado Pago: solo abre esta dirección
+  /// en el navegador externo.
+  static String get subscriptionManageUrl => '$webBaseUrl/subscription/manage';
+
   /// Pie máximo (KB) de cada foto de diagnóstico aceptado por el servidor.
   static const int maxEvidenceImageKb = 2048;
   static const int maxEvidenceImages = 5;
+
+  /// Pie máximo (KB) de la foto de perfil (`PUT /profile`, contrato §11b.4).
+  static const int maxProfilePhotoKb = 1024;
 }

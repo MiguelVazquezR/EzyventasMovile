@@ -9,6 +9,7 @@ import 'package:ezyventas_app/core/auth/permissions_service.dart';
 import 'package:ezyventas_app/core/auth/session_store.dart';
 import 'package:ezyventas_app/core/utils/money.dart';
 import 'package:ezyventas_app/core/utils/uuid_generator.dart';
+import 'package:ezyventas_app/features/account/data/account_repository.dart';
 import 'package:ezyventas_app/features/auth/data/auth_repository.dart';
 import 'package:ezyventas_app/features/auth/data/models/access_context.dart';
 import 'package:ezyventas_app/features/auth/data/models/auth_session.dart';
@@ -38,6 +39,8 @@ import 'package:ezyventas_app/features/printing/data/printing_repository.dart';
 import 'package:ezyventas_app/features/printing/data/whatsapp_message_builder.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 
 /// Persistencia en memoria: la prueba de humo no toca el almacenamiento seguro.
 class _MemorySessionStore implements SessionPersistence {
@@ -133,6 +136,30 @@ const int livePrintingServiceOrderId = int.fromEnvironment(
   'LIVE_PRINTING_SERVICE_ORDER_ID',
 );
 
+/// Habilita la prueba real de la etapa 7 (cuenta): notificaciones, soporte,
+/// perfil y suscripción. Solo **lee**: `LIVE_ACCOUNT=true`.
+const bool liveAccount = bool.fromEnvironment('LIVE_ACCOUNT');
+
+/// Además de leer, escribe de forma **reversible**: guarda el perfil con los
+/// mismos datos, borra la foto solo si no hay ninguna, y comprueba los errores
+/// de contraseña/documento/factura sin cambiar nada.
+const bool liveAccountWrite = bool.fromEnvironment('LIVE_ACCOUNT_WRITE');
+
+/// Cambia de sucursal y **vuelve** a la original, para dejar la cuenta como
+/// estaba (`PUT /branch/switch/{id}` aplica a todos los dispositivos).
+const bool liveAccountBranch = bool.fromEnvironment('LIVE_ACCOUNT_BRANCH');
+
+/// Borra la foto de perfil de verdad (destructivo: el usuario la pierde).
+const bool liveAccountDeletePhoto = bool.fromEnvironment(
+  'LIVE_ACCOUNT_DELETE_PHOTO',
+);
+
+/// Id de un pago de la suscripción para `request-invoice` (0 = solo se prueba el
+/// `404` de un id inexistente).
+const int liveAccountInvoicePaymentId = int.fromEnvironment(
+  'LIVE_ACCOUNT_INVOICE_PAYMENT_ID',
+);
+
 
 /// el `multipart/form-data` real (el servidor exige que el archivo sea imagen).
 final Uint8List evidenceJpegBytes = base64Decode(
@@ -146,9 +173,14 @@ final Uint8List evidenceJpegBytes = base64Decode(
 void main() {
   final hasCredentials = liveEmail.isNotEmpty && livePassword.isNotEmpty;
 
-  setUpAll(() {
+  setUpAll(() async {
     // Permite llamadas HTTP reales dentro del runner de pruebas.
     HttpOverrides.global = null;
+
+    // Igual que `main()` de la app: sin esto `DateFormat` de es-MX lanza
+    // `LocaleDataException` al formatear fechas y montos.
+    Intl.defaultLocale = 'es_MX';
+    await initializeDateFormatting('es_MX');
   });
 
   test(
@@ -1871,6 +1903,337 @@ void livePrintingTest() {
     skip: (liveEmail.isNotEmpty && livePassword.isNotEmpty && livePrinting)
         ? false
         : 'Requiere LIVE_API_EMAIL/LIVE_API_PASSWORD y LIVE_PRINTING=true',
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test(
+    'cuenta real: notificaciones, soporte, perfil y suscripción',
+    () async {
+      final store = _MemorySessionStore();
+      final api = ApiClient(baseUrl: liveBaseUrl, readToken: store.readToken);
+      final auth = AuthRepository(api: api, sessionStore: store);
+      final account = AccountRepository(api: api);
+
+      final session = await auth.login(
+        email: liveEmail,
+        password: livePassword,
+      );
+
+      // La cuenta de prueba debe ser propietaria (o empleado, según el flag).
+      expect(session.context.user.isSubscriptionOwner, liveExpectOwner);
+
+      // 1) Contadores de la campana (`GET /notifications`).
+      final counters = await account.fetchNotifications();
+
+      debugPrint(
+        '[live] notificaciones: total=${counters.total} '
+        'deudas=${counters.expiringDebts} '
+        'entregas=${counters.upcomingDeliveries} '
+        'novedades=${counters.unreadUpdates} '
+        'pedidos=${counters.pendingOrders}',
+      );
+
+      expect(counters.total, greaterThanOrEqualTo(0));
+      expect(
+        counters.total,
+        counters.expiringDebts +
+            counters.upcomingDeliveries +
+            counters.unreadUpdates +
+            counters.pendingOrders,
+        reason: 'el total lo suma el servidor con los cuatro contadores',
+      );
+
+      // 2) Centro de soporte (`GET /support`).
+      final support = await account.fetchSupport();
+
+      debugPrint(
+        '[live] soporte: "${support.title}" horarios=${support.schedule.length} '
+        'canales=${support.channels.map((channel) => channel.display).join(' | ')} '
+        'temas=${support.helpTopics.length} ayuda=${support.helpCenterUrl}',
+      );
+
+      expect(support.title, isNotEmpty);
+      expect(support.channels, isNotEmpty);
+      expect(support.helpCenterUrl, isNotNull);
+
+      // 3) Perfil (`GET /profile`).
+      final profile = await account.fetchProfile();
+
+      debugPrint(
+        '[live] perfil: id=${profile.id} correo=${profile.email} '
+        'verificado=${profile.isEmailVerified} fotoPropia=${profile.hasPhoto} '
+        'urlFoto=${profile.profilePhotoUrl}',
+      );
+
+      expect(profile.id, session.context.user.id);
+      expect(profile.email.toLowerCase(), liveEmail.toLowerCase());
+      expect(
+        profile.realPhotoUrl,
+        isNull,
+        reason: 'sin `has_photo` la app no debe pintar el avatar generado',
+      );
+    },
+    skip: (liveEmail.isNotEmpty && livePassword.isNotEmpty && liveAccount)
+        ? false
+        : 'Requiere LIVE_API_EMAIL/LIVE_API_PASSWORD y LIVE_ACCOUNT=true',
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
+    'suscripción real: plan, historial y escrituras reversibles',
+    () async {
+      final store = _MemorySessionStore();
+      final api = ApiClient(baseUrl: liveBaseUrl, readToken: store.readToken);
+      final auth = AuthRepository(api: api, sessionStore: store);
+      final account = AccountRepository(api: api);
+
+      final session = await auth.login(
+        email: liveEmail,
+        password: livePassword,
+      );
+      final owner = session.context.user.isSubscriptionOwner;
+
+      if (!owner) {
+        // El empleado recibe 403: se muestra el mensaje del servidor tal cual.
+        final denied = await _capture(() => account.fetchSubscription());
+
+        debugPrint(
+          '[live] empleado sin suscripción: ${denied.statusCode} '
+          '${denied.message}',
+        );
+
+        expect(denied.statusCode, 403);
+        expect(denied.message, isNotEmpty);
+
+        await auth.logout();
+
+        return;
+      }
+
+      final overview = await account.fetchSubscription();
+      final first = overview.history.isEmpty ? null : overview.history.first;
+
+      debugPrint(
+        '[live] suscripción: ${overview.subscription.commercialName} '
+        'estado=${overview.statusData.label} '
+        'vence=${overview.statusData.expiresLabel} '
+        'módulos=${overview.plan.modules.length} '
+        'límites=${overview.plan.limits.length} '
+        'historial=${overview.history.length}',
+      );
+
+      if (first != null) {
+        debugPrint(
+          '[live] última versión: v${first.version} ${first.createdAt} '
+          'total=${first.amountLabel} estatus=${first.payment?.status.label} '
+          'puedeFactura=${first.canRequestInvoice} idPago=${first.payment?.id}',
+        );
+
+        expect(first.total, isNotNull);
+        expect(
+          first.payment?.id,
+          isNull,
+          reason:
+              'hueco del contrato §11b.5: el historial no trae el id del pago, '
+              'así que la app no puede llamar request-invoice (ver README)',
+        );
+      }
+
+      expect(overview.subscription.commercialName, isNotEmpty);
+      expect(overview.plan.modules, isNotEmpty);
+
+      if (!liveAccountWrite) {
+        await auth.logout();
+
+        return;
+      }
+
+      // --- Escrituras reversibles -------------------------------------------
+
+      // Guardar el perfil con los mismos datos: no cambia nada.
+      final profile = await account.fetchProfile();
+      final saved = await account.updateProfile(
+        name: profile.name,
+        email: profile.email,
+      );
+
+      debugPrint(
+        '[live] perfil guardado: "${saved.message}" '
+        'verificaciónEnviada=${saved.emailVerificationSent}',
+      );
+
+      expect(saved.message, isNotEmpty);
+      expect(saved.emailVerificationSent, isFalse);
+
+      // Contraseña actual incorrecta: `422 invalid_current_password`.
+      final wrongPassword = await _capture(
+        () => account.updatePassword(
+          currentPassword: 'incorrecta-de-prueba',
+          password: 'nueva123456',
+          passwordConfirmation: 'nueva123456',
+        ),
+      );
+
+      debugPrint(
+        '[live] contraseña incorrecta: ${wrongPassword.statusCode} '
+        '${wrongPassword.code} ${wrongPassword.message}',
+      );
+
+      expect(wrongPassword.statusCode, 422);
+      expect(wrongPassword.code, 'invalid_current_password');
+
+      // Cerrar otras sesiones con contraseña incorrecta: mismo error.
+      final wrongLogout = await _capture(
+        () => account.logoutOtherDevices('incorrecta-de-prueba'),
+      );
+
+      debugPrint(
+        '[live] cerrar sesiones sin contraseña válida: '
+        '${wrongLogout.statusCode} ${wrongLogout.message}',
+      );
+
+      expect(wrongLogout.statusCode, 422);
+      expect(wrongLogout.code, 'invalid_current_password');
+
+      // Documento fiscal que no es PDF ni imagen → `422` con el message.
+      final wrongDocument = await _capture(
+        () => account.uploadFiscalDocument(
+          EvidenceImage.fromBytes(
+            fileName: 'constancia.txt',
+            bytes: Uint8List.fromList(utf8.encode('no soy un pdf')),
+          ),
+        ),
+      );
+
+      debugPrint(
+        '[live] documento inválido: ${wrongDocument.statusCode} '
+        '${wrongDocument.message}',
+      );
+
+      expect(wrongDocument.statusCode, 422);
+      expect(wrongDocument.errorFor('fiscal_document'), isNotNull);
+
+      // Factura de un pago inexistente → `404 Recurso no encontrado.`
+      final missingInvoice = await _capture(
+        () => account.requestInvoice(999999),
+      );
+
+      debugPrint(
+        '[live] factura inexistente: ${missingInvoice.statusCode} '
+        '${missingInvoice.message}',
+      );
+
+      expect(missingInvoice.statusCode, 404);
+
+      if (liveAccountInvoicePaymentId > 0) {
+        final invoice = await account.requestInvoice(
+          liveAccountInvoicePaymentId,
+        );
+
+        debugPrint('[live] factura solicitada: ${invoice.message}');
+
+        expect(invoice.message, isNotEmpty);
+      }
+
+      // Foto de perfil: sin foto propia el borrado es inocuo; con foto solo se
+      // borra si se pide con `LIVE_ACCOUNT_DELETE_PHOTO=true`.
+      if (!profile.hasPhoto && !liveAccountDeletePhoto) {
+        final deleted = await account.deleteProfilePhoto();
+
+        debugPrint('[live] foto eliminada (no había foto): ${deleted.message}');
+
+        expect(deleted.profile.hasPhoto, isFalse);
+      } else if (liveAccountDeletePhoto) {
+        final deleted = await account.deleteProfilePhoto();
+
+        debugPrint('[live] foto eliminada: ${deleted.message}');
+
+        expect(deleted.message, isNotEmpty);
+      } else {
+        debugPrint(
+          '[live] la cuenta tiene foto: se omite el borrado '
+          '(usa LIVE_ACCOUNT_DELETE_PHOTO=true para probarlo)',
+        );
+      }
+
+      // Guardar la suscripción con los mismos datos generales.
+      final updated = await account.updateSubscription(
+        overview.subscription.toUpdatePayload(),
+      );
+
+      debugPrint('[live] suscripción guardada: ${updated.message}');
+
+      expect(updated.message, isNotEmpty);
+
+      await auth.logout();
+    },
+    skip: (liveEmail.isNotEmpty && livePassword.isNotEmpty && liveAccount)
+        ? false
+        : 'Requiere LIVE_API_EMAIL/LIVE_API_PASSWORD y LIVE_ACCOUNT=true',
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test(
+    'cambio de sucursal real: ida y vuelta al contexto original',
+    () async {
+      final store = _MemorySessionStore();
+      final api = ApiClient(baseUrl: liveBaseUrl, readToken: store.readToken);
+      final auth = AuthRepository(api: api, sessionStore: store);
+      final account = AccountRepository(api: api);
+
+      final session = await auth.login(
+        email: liveEmail,
+        password: livePassword,
+      );
+      final branches = session.context.availableBranches;
+      final original = session.context.currentBranch;
+
+      debugPrint(
+        '[live] sucursales: ${branches.map((branch) => '${branch.id}:${branch.name}${branch.isCurrent ? ' (activa)' : ''}').join(', ')}',
+      );
+
+      expect(original, isNotNull);
+
+      final other = branches.where((branch) => !branch.isCurrent).toList();
+
+      if (other.isEmpty) {
+        debugPrint(
+          '[live] el usuario tiene una sola sucursal: no se prueba el cambio',
+        );
+
+        await auth.logout();
+
+        return;
+      }
+
+      final target = other.first;
+      final switched = await account.switchBranch(target.id);
+
+      debugPrint(
+        '[live] cambio a ${target.label}: "${switched.message}" '
+        'activa=${switched.context.currentBranch?.label} '
+        'cajas=${switched.context.availableCashRegisters.map((register) => register.name).join(', ')} '
+        'turno=${switched.context.hasActiveSession}',
+      );
+
+      expect(switched.context.currentBranch?.id, target.id);
+      expect(switched.context.user.branchId, target.id);
+
+      // Se regresa a la sucursal original para dejar la cuenta como estaba.
+      final restored = await account.switchBranch(original!.id);
+
+      debugPrint(
+        '[live] de vuelta a ${original.label}: "${restored.message}" '
+        'activa=${restored.context.currentBranch?.label}',
+      );
+
+      expect(restored.context.currentBranch?.id, original.id);
+
+      await auth.logout();
+    },
+    skip: (liveEmail.isNotEmpty && livePassword.isNotEmpty && liveAccountBranch)
+        ? false
+        : 'Requiere LIVE_API_EMAIL/LIVE_API_PASSWORD y LIVE_ACCOUNT_BRANCH=true',
     timeout: const Timeout(Duration(minutes: 3)),
   );
 }
