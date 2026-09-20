@@ -41,7 +41,11 @@ class ProductCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              _Thumbnail(product: product, onAdd: onAdd),
+              // La imagen cede el espacio que necesita el texto: en la reja de
+              // dos columnas del teléfono (174.4 x 256.4 px) un nombre de dos
+              // líneas desbordaba el `Column` por 1.1 px
+              // (`RenderFlex overflowed by 1.1 pixels on the bottom`).
+              Expanded(child: _Thumbnail(product: product, onAdd: onAdd)),
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
                 child: Column(
@@ -85,8 +89,9 @@ class _Thumbnail extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: AspectRatio(
-        aspectRatio: 1.1,
+      // `SizedBox.expand` en lugar de `AspectRatio`: la imagen ocupa el alto que
+      // le deja el texto y nunca empuja al `Column` fuera de su tarjeta.
+      child: SizedBox.expand(
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
@@ -173,11 +178,19 @@ class _PriceLine extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
-        Text(
-          Money.format(product.price),
-          style: EzyTextStyles.moneyList.copyWith(
-            fontSize: 16,
-            color: surfaces.textPrimary,
+        // Flexible: con la letra agrandada (hasta 1.3x) el monto y el precio de
+        // lista tachado no caben en la columna de 174 px y la fila desbordaba
+        // (`RenderFlex overflowed by 0.95 pixels on the right`, visto en la
+        // prueba de la tarjeta con escala de texto 1.3).
+        Flexible(
+          child: Text(
+            Money.format(product.price),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: EzyTextStyles.moneyList.copyWith(
+              fontSize: 16,
+              color: surfaces.textPrimary,
+            ),
           ),
         ),
         if (product.hasPromotion) ...<Widget>[

@@ -1,0 +1,53 @@
+{
+  // Tareas de desarrollo. La primera la ejecuta `launch.json` antes de arrancar
+  // la app en el telefono (ver tool/android_tunnel.ps1 y README §4).
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "tunel android (adb reverse)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tool\\android_tunnel.ps1"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "tunel android (cerrar)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\tool\\android_tunnel.ps1",
+        "-Remove"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "flutter analyze",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["analyze"],
+      "problemMatcher": []
+    },
+    {
+      "label": "flutter test",
+      "type": "shell",
+      "command": "flutter",
+      "args": ["test"],
+      "problemMatcher": []
+    }
+  ]
+}

@@ -29,6 +29,34 @@ class AppConfig {
     defaultValue: true,
   );
 
+  /// Header `Host` que [ApiClient] añade a **todas** las peticiones.
+  ///
+  /// Por defecto vacío: en producción lo envía el sistema operativo a partir de
+  /// `API_BASE_URL` y este valor **no** se define.
+  ///
+  /// Existe para un caso concreto del desarrollo: el servidor local (Laravel
+  /// Herd) publica cada proyecto en un dominio `.test` que solo resuelve en el
+  /// equipo donde corre Herd, y Herd escucha únicamente en `127.0.0.1`. Para
+  /// probar en un teléfono físico se usa el túnel de `adb reverse` y la app se
+  /// conecta a `https://127.0.0.1:8443/api/v1`; como Herd elige el sitio por el
+  /// header `Host`, el túnel necesita declararlo:
+  ///
+  /// ```bash
+  /// flutter run --dart-define=API_BASE_URL=https://127.0.0.1:8443/api/v1 \
+  ///             --dart-define=API_HOST_HEADER=ezyventas2.test
+  /// ```
+  ///
+  /// Ver README §4 ("Correr en un teléfono Android").
+  static const String apiHostHeader = String.fromEnvironment(
+    'API_HOST_HEADER',
+    defaultValue: '',
+  );
+
+  /// Puerto del túnel USB (`adb reverse tcp:<puerto> tcp:443`) que usa el
+  /// teléfono para llegar al Herd del equipo. Solo documental: la URL real va
+  /// en `API_BASE_URL`.
+  static const int devTunnelPort = 8443;
+
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration receiveTimeout = Duration(seconds: 30);
 

@@ -43,8 +43,12 @@ class ApiClient {
         sendTimeout: AppConfig.connectTimeout,
         contentType: Headers.jsonContentType,
         responseType: ResponseType.json,
-        headers: const <String, dynamic>{
+        headers: <String, dynamic>{
           Headers.acceptHeader: Headers.jsonContentType,
+          // Tunel `adb reverse` hacia un vhost `.test` de Herd: el servidor
+          // elige el sitio por `Host`. Vacio fuera del entorno local.
+          if (AppConfig.apiHostHeader.isNotEmpty)
+            'Host': AppConfig.apiHostHeader,
         },
       ),
     );

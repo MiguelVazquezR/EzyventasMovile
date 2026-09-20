@@ -1,0 +1,48 @@
+{
+  // Configuraciones de depuracion (VS Code -> Run and Debug / F5).
+  //
+  // El telefono fisico no puede resolver `ezyventas2.test` (dominio local) ni
+  // alcanzar Herd, que escucha solo en 127.0.0.1, asi que la configuracion por
+  // defecto usa el tunel USB de `adb reverse` (ver tool/android_tunnel.ps1).
+  //
+  // `deviceId` es el numero de serie del telefono conectado. Si cambias de
+  // dispositivo, borra esta linea y VS Code te pedira elegirlo.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "EzyVentas · Android por USB (Herd local)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "EE95QSVKORE6WCL7",
+      "preLaunchTask": "tunel android (adb reverse)",
+      "toolArgs": [
+        "--dart-define=API_BASE_URL=https://127.0.0.1:8443/api/v1",
+        "--dart-define=API_HOST_HEADER=ezyventas2.test",
+        "--dart-define=DEVICE_NAME=EzyVentas Android"
+      ]
+    },
+    {
+      "name": "EzyVentas · Android por USB (perfil, mas fluido)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "EE95QSVKORE6WCL7",
+      "flutterMode": "profile",
+      "preLaunchTask": "tunel android (adb reverse)",
+      "toolArgs": [
+        "--dart-define=API_BASE_URL=https://127.0.0.1:8443/api/v1",
+        "--dart-define=API_HOST_HEADER=ezyventas2.test",
+        "--dart-define=DEVICE_NAME=EzyVentas Android"
+      ]
+    },
+    {
+      "name": "EzyVentas · Android (dominio real, sin tunel)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "EE95QSVKORE6WCL7",
+      "toolArgs": [
+        "--dart-define=API_BASE_URL=https://ezyventas2.test/api/v1",
+        "--dart-define=DEVICE_NAME=EzyVentas Android"
+      ]
+    }
+  ]
+}

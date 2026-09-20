@@ -1,0 +1,13 @@
+{
+  // El SDK de Flutter del PATH (`C:\Users\windows 11\Desktop\flutter`) esta en una
+  // ruta CON ESPACIOS: al compilar para Android, el paso de "native assets"
+  // (build hooks de `objective_c`) lanza una orden con la ruta sin comillas y
+  // falla con `"C:\Users\windows" no se reconoce como un comando...`, asi que el
+  // APK no se puede compilar. `C:\flutter` es el mismo Flutter 3.47.4 en una
+  // ruta sin espacios, por eso el proyecto (y VS Code) lo usan.
+  "dart.flutterSdkPath": "C:\\flutter",
+  "[dart]": {
+    "editor.formatOnSave": true,
+    "editor.rulers": [80]
+  }
+}

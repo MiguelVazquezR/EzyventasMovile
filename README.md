@@ -11,6 +11,15 @@ de datos ya esta aislada para anadirla sin reescribir la UI.
 
 Requisitos: Flutter 3.47+ (Dart 3.13) y Android SDK con `minSdk 23`.
 
+> **Importante (ruta del SDK).** El SDK de Flutter **no puede vivir en una ruta con espacios**:
+> al compilar para Android, el paso de *native assets* (build hooks de `objective_c`, que llega
+> como dependencia transitiva) lanza un comando con la ruta sin comillas y falla con
+> `"C:\Users\windows" no se reconoce como un comando interno o externo.`, dejando el APK sin
+> compilar. En este equipo hay dos SDK del mismo Flutter 3.47.4 y el proyecto usa el de
+> `C:\flutter` (sin espacios) mediante `.vscode/settings.json` (`dart.flutterSdkPath`). Si corres
+> desde una terminal, usa `C:\flutter\bin\flutter` (o pon `C:\flutter\bin` al principio del
+> `PATH`).
+
 ```bash
 flutter pub get
 flutter run --dart-define=API_BASE_URL=https://ezyventas2.test/api/v1
@@ -152,6 +161,19 @@ flutter test test/live/api_smoke_test.dart \
 > El login de la API tiene *rate limit*: si aparece `429 Demasiadas solicitudes. Espera un momento e
 > inténtalo de nuevo.` (el mismo `message` que muestra la app), espera ~1 minuto entre corridas. Para
 > correr solo el escenario de ventas: añade `--plain-name ventas` (un solo login).
+
+```bash
+# Etapa 8: prueba de dispositivo REAL (login, pestañas, catálogo y Cuenta) en un
+# teléfono Android conectado por USB con el túnel activo (ver §4.1). Instalar en
+# un Xiaomi/Redmi tiene su propio requisito: ver §4.2.
+flutter test integration_test/qa_device_test.dart -d <serial> \
+  --dart-define=API_BASE_URL=https://127.0.0.1:8443/api/v1 \
+  --dart-define=API_HOST_HEADER=ezyventas2.test \
+  --dart-define=LIVE_API_EMAIL=propietario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_EMPLOYEE_EMAIL=empleado@negocio.com \
+  --dart-define=LIVE_EMPLOYEE_PASSWORD=secreto
+```
 
 ---
 
@@ -508,6 +530,31 @@ Contra `https://ezyventas2.test/api/v1` con `jean@apontephone.com` (propietario 
 | `GET /subscription` (empleado `daniel`) | `403` → «Tu usuario no tiene permiso para esta acción.» (la app oculta la opción) |
 | `PUT /branch/switch/3` y vuelta a `2` | «Cambiado a la sucursal: Guacamayas.Comercial» con `available_branches` marcando la nueva como `is_current`, `user.branch_id=3` y su terminal (`Caja principal`, `id 3`); la vuelta deja `Melchor Ocampo (id 2)` como activa |
 
+### Corrida real del 20 sep 2026 — etapa 8 (evidencia en teléfono físico)
+
+`integration_test/qa_device_test.dart` corrió **en el teléfono** (Redmi 2201116TG · MIUI/HyperOS V816 ·
+Android 13 · `1080×2356`, dpr 2.75) contra la API real, entrando por el túnel USB de §4.1:
+
+```bash
+flutter test integration_test/qa_device_test.dart -d EE95QSVKORE6WCL7 \
+  --dart-define=API_BASE_URL=https://127.0.0.1:8443/api/v1 \
+  --dart-define=API_HOST_HEADER=ezyventas2.test \
+  --dart-define=LIVE_API_EMAIL=jean@apontephone.com \
+  --dart-define=LIVE_EMPLOYEE_EMAIL=daniel@apontephone.com
+# 00:14 +2: All tests passed!
+```
+
+| Escenario | Qué comprueba en el dispositivo real | Resultado |
+|---|---|---|
+| Propietario (`jean@apontephone.com`) | Login real contra la API, las cinco pestañas del cascarón, el catálogo real de la sucursal (`ProductCard`) y la pestaña Cuenta | Pasa: aparecen **Vender, Órdenes, Caja, Ventas, Cuenta**; Vender lista productos sin `RenderFlex overflowed`; en Cuenta ve `SUCURSAL ACTIVA` → «Melchor Ocampo», «Tu negocio tiene 2 sucursales», «Cambiar de sucursal» y «Mi suscripción»; «Cerrar sesión» (con su diálogo) vuelve al login |
+| Empleado (`daniel@apontephone.com`) | Mismas pestañas permitidas y lo que **no** le toca | Pasa: las cinco pestañas siguen ahí, pero **sin** «Mi suscripción» ni «Cambiar de sucursal»; su tarjeta de sucursal muestra «Tu usuario no puede cambiar de sucursal.» |
+| Peticiones reales observadas en la corrida | Que la app habla con la API por el túnel | `POST /auth/login`, `GET /catalog/categories?type=product`, `GET /catalog/products?page=1&per_page=20`, `GET /notifications` y (solo el propietario) `GET /subscription`, todas por `https://127.0.0.1:8443/api/v1` |
+
+Nota de la prueba (no es un fallo de la app): el ancla de «ya cargó la pestaña Cuenta» se busca como
+`SUCURSAL ACTIVA`, no como `Sucursal activa`, porque `SectionCard` pinta los títulos en micro-mayúsculas
+(`title!.toUpperCase()`). Comparar contra el texto en *sentence case* falla aunque la pantalla esté
+perfecta.
+
 ### Discrepancias y hallazgos (etapa 7)
 
 22. **`profile_photo_url` trae un avatar generado aunque el usuario no tenga foto.** La cuenta de prueba
@@ -703,31 +750,102 @@ el eje `wght` con `FontWeight`. El cambio a claro se guarda en el almacenamiento
 
 ## 4. Notas del entorno de desarrollo (Windows)
 
-Si la ruta del usuario o del SDK tiene **espacios** (`C:\Users\windows 11\...`), el constructor
-de *native assets* de Flutter falla al compilar el hook del paquete `objective_c` (dependencia de
-`path_provider_foundation`, solo Apple):
+Si la ruta del SDK de Flutter tiene **espacios**, el constructor de *native assets* de Flutter
+falla al compilar el hook del paquete `objective_c` (dependencia transitiva de
+`path_provider_foundation`, solo Apple). El error es literalmente la ruta cortada en el primer
+espacio:
 
 ```
-"C:\Users\windows" no se reconoce como un comando interno o externo
+"C:\Users\windows" no se reconoce como un comando interno o externo,
 Building native assets for package:objective_c failed.
+Compilation of hook returned with exit code: 1.
 ```
 
-Afecta a `flutter test` y a `flutter build`. Solucion local (sin tocar el proyecto):
+En este equipo el `PATH` apunta a `C:\Users\windows 11\Desktop\flutter\bin` (con espacios) y existe
+además `C:\flutter` con **el mismo Flutter 3.47.4** en una ruta sin espacios. Verificado en la
+etapa 8: con el SDK de `Desktop\flutter` el build del APK muere en los *native assets*; con
+`C:\flutter` el mismo commit compila limpio (`√ Built build\app\outputs\flutter-apk\app-debug.apk`).
+
+Arreglo aplicado (no depende de la caché de pub, que puede seguir teniendo espacios):
+
+| Pieza | Qué se hizo |
+|---|---|
+| VS Code (F5) | `.vscode/settings.json` → `"dart.flutterSdkPath": "C:\\flutter"` |
+| Terminal | usar `C:\flutter\bin\flutter`, o poner `C:\flutter\bin` antes en el `PATH` |
+
+`flutter doctor` sigue avisando que `flutter`/`dart` del `PATH` no viven en el checkout activo:
+es justo el aviso que hay que atender.
+
+### 4.1 Probar en un teléfono Android físico (túnel USB)
+
+El servidor local publica la API en `https://ezyventas2.test/api/v1`, un dominio que **solo
+resuelve en este equipo** (`hosts`) y cuyo Herd escucha **únicamente en `127.0.0.1`**. Desde el
+Wi-Fi el teléfono no lo alcanza (`ping: unknown host ezyventas2.test`), así que la app se conecta
+por un túnel inverso de `adb`:
 
 ```powershell
-# 1) cache de pub sin espacios
-$env:PUB_CACHE = 'C:\pubcache'
+# 1) túnel: el 127.0.0.1:8443 del TELÉFONO llega al 127.0.0.1:443 del equipo
+powershell -ExecutionPolicy Bypass -File tool\android_tunnel.ps1
 
-# 2) junctions a rutas sin espacios
-New-Item -ItemType Junction -Path 'C:\flutter' -Target 'C:\Users\windows 11\Desktop\flutter'
-New-Item -ItemType Junction -Path 'C:\ezv' -Target 'C:\Users\windows 11\Desktop\Apps moviles\ezyventas_app'
-
-# 3) ejecutar desde el junction
-cd C:\ezv
-cmd /c "set PUB_CACHE=C:\pubcache && C:\flutter\bin\flutter.bat test"
+# 2) correr la app con la URL del túnel y el Host del vhost de Herd
+#    (o simplemente F5: .vscode/launch.json ya lo hace y crea el túnel solo)
+flutter run -d <serial> `
+  --dart-define=API_BASE_URL=https://127.0.0.1:8443/api/v1 `
+  --dart-define=API_HOST_HEADER=ezyventas2.test
 ```
 
-En una ruta sin espacios, `flutter test` funciona sin nada de esto.
+- Herd elige el sitio por el header `Host`, así que el túnel necesita `API_HOST_HEADER`
+  (`AppConfig.apiHostHeader`); sin él la respuesta es el `404 Site not found` de Herd. Comprobado
+  con `curl`, con `dart:io` y con **dio** (el cliente de la app): con `Host: ezyventas2.test` la
+  API responde `401 {"message":"No autenticado."}` y sin él devuelve el HTML de Herd.
+- El certificado autofirmado no estorba: `ApiClient` lo acepta **solo en debug**
+  (`badCertificateCallback`, `ALLOW_CERTIFICATE`/`ALLOW_BAD_CERTIFICATE`).
+- `.vscode/launch.json` trae tres configuraciones: **Android por USB (Herd local)** —la de F5,
+  con `preLaunchTask` que crea el túnel—, la misma en modo *profile* (más fluida en el teléfono) y
+  una sin túnel para cuando el teléfono pueda resolver el dominio real.
+- Limitación del túnel: las imágenes que el servidor publica en su propio host
+  (`https://ezyventas2.test/storage/...`) no se pueden cargar en el teléfono porque
+  `Image.network` no envía el header `Host`; la app cae en su marcador (`errorBuilder`) sin
+  romperse. No afecta a producción, donde `API_BASE_URL` es un dominio público con certificado
+  válido.
+
+### 4.2 Instalar la app en un teléfono Xiaomi/Redmi (MIUI/HyperOS)
+
+`adb install` — y por tanto `flutter run` y `flutter test -d` — lo bloquea MIUI aunque «Depuración USB»
+esté activa. Hacen falta **las dos** condiciones:
+
+1. **Pantalla encendida y desbloqueada.** Con el teléfono en `mWakefulness=Dozing` MIUI no puede mostrar
+   su diálogo de confirmación y cancela la instalación en el acto.
+2. **Ajustes → Ajustes adicionales → Opciones de desarrollador → «Instalar vía USB» activado.** En
+   HyperOS suele exigir la cuenta Mi iniciada; si no se puede activar, usa el camino alternativo de abajo.
+
+Cuando falta cualquiera de las dos, el error es siempre el mismo:
+
+```text
+adb: failed to install build\app\outputs\flutter-apk\app-debug.apk:
+Failure [INSTALL_FAILED_USER_RESTRICTED: Install canceled by user]
+```
+
+Comprobaciones por `adb` (sin tocar el teléfono) que evitan perder tiempo:
+
+| Comando | Para qué sirve |
+|---|---|
+| `adb shell getprop ro.product.brand` · `adb shell getprop ro.product.model` | identificar el modelo (`Redmi 2201116TG`, MIUI/HyperOS `V816`) |
+| `adb shell dumpsys power \| findstr mWakefulness` | debe decir `Awake` antes de instalar (`Dozing` = pantalla apagada → cancelará) |
+| `adb shell settings get secure install_non_market_apps` | `1` significa «orígenes desconocidos»; **no** cubre la restricción de USB |
+| `adb shell id` · `adb shell getprop ro.debuggable` | `uid=2000(shell)` y `0`: no hay `adb root` ni `settings put` (falla con `WRITE_SECURE_SETTINGS`), así que la restricción **no** se puede saltar desde el equipo |
+
+Camino alternativo si «Instalar vía USB» no se deja activar: publicar el APK y abrirlo desde el propio
+teléfono. Esto **no** pasa por la restricción de USB, solo por «instalar apps de orígenes desconocidos»:
+
+```powershell
+adb push build\app\outputs\flutter-apk\app-debug.apk /sdcard/Download/ezyventas-debug.apk
+# y en el teléfono: Archivos → Downloads → ezyventas-debug.apk → Instalar
+```
+
+> `flutter test integration_test/... -d <serial>` deja instalado un APK cuyo `main` es **la prueba**: si
+> abres la app después, se vuelve a correr la prueba. Para dejar el teléfono listo para QA manual
+> reinstala el build normal (`flutter build apk --debug --dart-define=...` + `adb install -r -t`) o usa F5.
 
 ---
 
@@ -797,6 +915,9 @@ lib/
    archivos: la app solo sube imágenes (≤ 2 MB). El PDF se sube desde la web.
 9. **Solicitar factura desde el teléfono.** Bloqueado por el hueco 24 (el historial no trae el `id` del
    pago). El método del repositorio ya está listo y probado contra el `404` real.
-10. **Compilar el APK.** Este entorno no tiene el SDK de Android completo (`flutter doctor` marca
-    `cmdline-tools component is missing`), así que la entrega se validó con `flutter analyze` (limpio),
-    `flutter test` (219 pruebas) y las corridas reales contra `https://ezyventas2.test/api/v1`.
+10. **Validación en teléfono físico.** Etapa 8 cierra el hueco de «solo se probó en el equipo»:
+    `flutter analyze` limpio, `flutter test` (222 pruebas) y `integration_test/qa_device_test.dart`
+    corriendo **en un teléfono** (login real, pestañas, catálogo, Cuenta y cierre de sesión, con
+    propietario y empleado) contra la API por el túnel USB (§4.1), con el APK compilado e instalado en el
+    Redmi (§4.2). Sigue fuera de alcance lo que depende de hardware que no está en el entorno (la
+    impresora térmica, punto 1) y lo que exige un entorno desechable (contraseñas reales, punto 7).

@@ -44,6 +44,10 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Salida de Gradle en el proyecto Android (p. ej. reports/problems de AGP).
+# El `/build/` de arriba solo cubre la raiz del repo, no `android/build`.
+/android/build/
+
 # Widget Preview related
 .widget_preview/
 
