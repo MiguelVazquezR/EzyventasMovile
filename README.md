@@ -631,3 +631,6 @@ lib/
 5. **Fase 5 (offline).** No implementada, como pide esta entrega: no hay base local, cola de
    sincronización ni encoder ESC/POS de tickets automáticos. La capa de datos (repositorios/servicios)
    y el encoder local del corte quedan aislados para añadirla sin reescribir la UI.
+6. **Compilar el APK.** Este entorno no tiene el SDK de Android completo (`flutter doctor` marca
+   `cmdline-tools component is missing`), así que la entrega se validó con `flutter analyze` (limpio),
+   `flutter test` (194 pruebas) y las corridas reales contra `https://ezyventas2.test/api/v1`.
