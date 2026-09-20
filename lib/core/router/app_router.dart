@@ -102,10 +102,8 @@ final routerProvider = Provider<GoRouter>((ref) {
 const String splashPath = '/splash';
 const String loginPath = '/login';
 
-/// Ruta de la pestaña de órdenes de servicio (`AppTab.serviceOrders`).
-const String serviceOrdersPath = '/service-orders';
-
 /// Alta de una orden (pantalla completa, fuera del cascarón de pestañas).
+/// La pestaña en sí vive en `AppTab.serviceOrders.path` (`/service-orders`).
 const String serviceOrderNewPath = '/service-orders/new';
 
 /// Edición de una orden existente.
