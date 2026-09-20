@@ -6,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/evidence_image.dart';
+import '../../../../core/widgets/server_image.dart';
 import '../../data/models/service_order_detail.dart';
 
 /// Fotos capturadas que todavía no se suben (se muestran desde los bytes
@@ -145,8 +146,8 @@ class _Tile extends StatelessWidget {
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: bytes == null && (imageUrl ?? '').isNotEmpty
-                    ? Image.network(
-                        imageUrl!,
+                    ? ServerImage(
+                        imageUrl,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) => Icon(
                           Icons.broken_image_outlined,

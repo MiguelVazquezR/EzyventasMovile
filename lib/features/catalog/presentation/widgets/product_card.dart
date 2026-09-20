@@ -4,6 +4,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/server_image.dart';
 import '../../data/models/product.dart';
 
 /// Tarjeta de producto del catálogo: imagen, nombre, precio con promoción y
@@ -96,7 +97,7 @@ class _Thumbnail extends StatelessWidget {
           fit: StackFit.expand,
           children: <Widget>[
             if (image != null)
-              Image.network(
+              ServerImage(
                 image,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => _placeholder(),

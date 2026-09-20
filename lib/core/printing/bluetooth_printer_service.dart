@@ -60,6 +60,18 @@ class PrinterException implements Exception {
     : message = 'Se perdió la conexión con la impresora.',
       isConnectionLost = true;
 
+  /// Falta el permiso de Bluetooth del sistema (Android 12+).
+  ///
+  /// El plugin **solo** pide los permisos al escanear: si el usuario los niega
+  /// (o la app se instaló y nadie los concedió), el listado de emparejadas
+  /// falla con `SecurityException` del sistema. Se muestra este texto en lugar
+  /// del error crudo del plugin.
+  const PrinterException.missingPermission()
+    : message =
+          'La app necesita el permiso de Bluetooth (dispositivos cercanos) '
+          'para buscar la impresora. Actívalo en los ajustes del teléfono.',
+      isConnectionLost = false;
+
   final String message;
   final bool isConnectionLost;
 
@@ -133,60 +145,77 @@ class BluetoothPrinterService {
   Future<void> turnOnAdapter() => FlutterBluePlus.turnOn();
 
   /// Impresoras ya emparejadas con el teléfono.
+  ///
+  /// `bondedDevices` **no** pide permisos (el plugin solo los pide al escanear),
+  /// así que en Android 12+ sin `BLUETOOTH_CONNECT` concedido el sistema lanza
+  /// `SecurityException`: se traduce a [PrinterException.missingPermission] para
+  /// que la hoja de impresión lo pueda explicar.
   Future<List<PrinterDevice>> pairedDevices() async {
-    await _ensureSupported();
+    try {
+      await _ensureSupported();
 
-    final devices = await FlutterBluePlus.bondedDevices;
+      final devices = await FlutterBluePlus.bondedDevices;
 
-    return devices
-        .map(
-          (device) => PrinterDevice(
-            id: device.remoteId.str,
-            name: device.platformName,
-            isPaired: true,
-          ),
-        )
-        .toList(growable: false);
+      return devices
+          .map(
+            (device) => PrinterDevice(
+              id: device.remoteId.str,
+              name: device.platformName,
+              isPaired: true,
+            ),
+          )
+          .toList(growable: false);
+    } on FlutterBluePlusException catch (error) {
+      throw _mapPluginError(error);
+    }
   }
 
   /// Escaneo BLE (las emparejadas no se anuncian, por eso se listan aparte).
+  ///
+  /// Es la llamada que **pide** los permisos de Android 12+ (`startScan`): si el
+  /// usuario los niega, el sistema devuelve el error de permiso y aquí se
+  /// convierte en [PrinterException.missingPermission].
   Future<List<PrinterDevice>> scanForPrinters({
     Duration timeout = _scanTimeout,
   }) async {
-    await _ensureSupported();
+    try {
+      await _ensureSupported();
 
-    // Un escaneo anterior dejaría resultados mezclados.
-    if (FlutterBluePlus.isScanningNow) {
-      await FlutterBluePlus.stopScan();
-    }
-
-    final found = <String, PrinterDevice>{};
-
-    await FlutterBluePlus.startScan(timeout: timeout);
-
-    final subscription = FlutterBluePlus.scanResults.listen((results) {
-      for (final result in results) {
-        final name = result.device.platformName.isNotEmpty
-            ? result.device.platformName
-            : result.advertisementData.advName;
-
-        if (name.trim().isEmpty) {
-          continue;
-        }
-
-        found[result.device.remoteId.str] = PrinterDevice(
-          id: result.device.remoteId.str,
-          name: name,
-          rssi: result.rssi,
-        );
+      // Un escaneo anterior dejaría resultados mezclados.
+      if (FlutterBluePlus.isScanningNow) {
+        await FlutterBluePlus.stopScan();
       }
-    });
 
-    await Future<void>.delayed(timeout);
-    await subscription.cancel();
-    await FlutterBluePlus.stopScan();
+      final found = <String, PrinterDevice>{};
 
-    return found.values.toList(growable: false);
+      await FlutterBluePlus.startScan(timeout: timeout);
+
+      final subscription = FlutterBluePlus.scanResults.listen((results) {
+        for (final result in results) {
+          final name = result.device.platformName.isNotEmpty
+              ? result.device.platformName
+              : result.advertisementData.advName;
+
+          if (name.trim().isEmpty) {
+            continue;
+          }
+
+          found[result.device.remoteId.str] = PrinterDevice(
+            id: result.device.remoteId.str,
+            name: name,
+            rssi: result.rssi,
+          );
+        }
+      });
+
+      await Future<void>.delayed(timeout);
+      await subscription.cancel();
+      await FlutterBluePlus.stopScan();
+
+      return found.values.toList(growable: false);
+    } on FlutterBluePlusException catch (error) {
+      throw _mapPluginError(error);
+    }
   }
 
   /// Conecta con [device] y deja lista la característica de escritura.
@@ -204,7 +233,17 @@ class BluetoothPrinterService {
       );
     }
 
-    final services = await target.discoverServices();
+    final List<BluetoothService> services;
+
+    try {
+      services = await target.discoverServices();
+    } on FlutterBluePlusException catch (error) {
+      // Sin permiso de Bluetooth (o si el dispositivo no tiene GATT) el
+      // descubrimiento de servicios es lo primero que falla.
+      await _safeDisconnect(target);
+      throw _mapPluginError(error);
+    }
+
     final characteristic = _writableCharacteristic(services);
 
     if (characteristic == null) {
@@ -315,6 +354,24 @@ class BluetoothPrinterService {
 
   static bool _isKnownService(String uuid) =>
       knownServiceUuids.contains(uuid.toLowerCase());
+
+  /// Traduce un error del plugin al mensaje que ve el usuario.
+  ///
+  /// Los fallos de permiso (Android 12+) llevan el texto de la app; el resto
+  /// conserva la descripción de Android para poder diagnosticar en el teléfono.
+  static PrinterException _mapPluginError(FlutterBluePlusException error) {
+    final description = (error.description ?? error.toString()).toLowerCase();
+
+    if (description.contains('permission') ||
+        description.contains('securityexception')) {
+      return const PrinterException.missingPermission();
+    }
+
+    return PrinterException(
+      'No se pudo usar el Bluetooth del teléfono: '
+      '${error.description ?? error}',
+    );
+  }
 
   static PrinterAdapterStatus _mapAdapterState(BluetoothAdapterState state) =>
       switch (state) {

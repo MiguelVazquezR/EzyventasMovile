@@ -86,6 +86,59 @@ class AppConfig {
   /// en el navegador externo.
   static String get subscriptionManageUrl => '$webBaseUrl/subscription/manage';
 
+  /// URL de un medio del servidor lista para descargar desde este dispositivo.
+  ///
+  /// Los medios llegan con **URL absoluta** al host del servidor
+  /// (`https://ezyventas2.test/storage/6/iphone.png`). En el teléfono físico ese
+  /// dominio **no resuelve** (comprobado: `ping: unknown host ezyventas2.test`),
+  /// así que la imagen nunca cargaba y `Image.network` caía siempre en su
+  /// marcador. Cuando la app corre contra el túnel USB (`API_HOST_HEADER`), el
+  /// origen se reescribe al de [apiBaseUrl] (`https://127.0.0.1:8443`) y
+  /// [mediaHeaders] añade el `Host` con el que Herd elige el sitio.
+  ///
+  /// En producción (sin `API_HOST_HEADER`) devuelve la URL tal cual, y los hosts
+  /// externos (`ui-avatars.com`, `placehold.co`) **nunca** se reescriben.
+  ///
+  /// Devuelve `null` cuando no hay una URL utilizable.
+  static Uri? mediaUri(
+    String? url, {
+    String hostHeader = apiHostHeader,
+    String apiBaseUrlOverride = apiBaseUrl,
+  }) {
+    final raw = url?.trim() ?? '';
+
+    if (raw.isEmpty) {
+      return null;
+    }
+
+    final parsed = Uri.tryParse(raw);
+
+    if (parsed == null || !parsed.hasScheme || parsed.host.isEmpty) {
+      return null;
+    }
+
+    if (hostHeader.isEmpty || parsed.host != hostHeader) {
+      return parsed;
+    }
+
+    final base = Uri.tryParse(apiBaseUrlOverride);
+
+    if (base == null || base.host.isEmpty) {
+      return parsed;
+    }
+
+    return parsed.replace(
+      scheme: base.scheme,
+      host: base.host,
+      port: base.hasPort ? base.port : null,
+    );
+  }
+
+  /// Headers con los que descargar un medio por el túnel USB (vacío en release).
+  static Map<String, String> get mediaHeaders => apiHostHeader.isEmpty
+      ? const <String, String>{}
+      : <String, String>{'Host': apiHostHeader};
+
   /// Pie máximo (KB) de cada foto de diagnóstico aceptado por el servidor.
   static const int maxEvidenceImageKb = 2048;
   static const int maxEvidenceImages = 5;

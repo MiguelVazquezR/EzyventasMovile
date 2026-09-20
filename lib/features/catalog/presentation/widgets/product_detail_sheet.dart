@@ -8,6 +8,7 @@ import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
+import '../../../../core/widgets/server_image.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../pos/application/cart_controller.dart';
 import '../../../printing/data/models/print_document.dart';
@@ -365,7 +366,7 @@ class ProductImage extends StatelessWidget {
         aspectRatio: aspectRatio,
         child: image == null
             ? const ImagePlaceholder()
-            : Image.network(
+            : ServerImage(
                 image,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) =>

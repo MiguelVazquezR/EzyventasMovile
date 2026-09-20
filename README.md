@@ -41,11 +41,14 @@ flutter build apk --release --dart-define=API_BASE_URL=https://app.ezyventas.com
 
 ```bash
 flutter analyze     # debe quedar sin issues
-flutter test        # 219 tests: dinero, errores, sesion, permisos, catalogo, caja, cobro,
+flutter test        # 241 tests: dinero, errores, sesion, permisos, catalogo, caja, cobro,
                     # ventas, ordenes, impresion (CP850, ESC/POS del corte, plantillas,
                     # ESC/POS/HTML/WhatsApp, filtro de plantillas por contexto, la hoja de
-                    # impresion en pantalla) y cuenta (sucursal, notificaciones, soporte,
-                    # perfil y suscripcion)
+                    # impresion en pantalla y el controlador de la impresora: permisos de
+                    # Android 12+, lista de dispositivos y estados del envio) y cuenta
+                    # (sucursal, notificaciones, soporte, perfil y suscripcion), mas config
+                    # (reescritura de las URLs de medios por el tunel USB, `ServerImage`) y el
+                    # logotipo de marca (`BrandLogo`: asset segun el tema y respaldo sin asset)
 ```
 
 Pruebas **reales** contra el servidor (no corren en `flutter test` normal):
@@ -174,6 +177,27 @@ flutter test integration_test/qa_device_test.dart -d <serial> \
   --dart-define=LIVE_EMPLOYEE_EMAIL=empleado@negocio.com \
   --dart-define=LIVE_EMPLOYEE_PASSWORD=secreto
 ```
+
+**Impresora térmica real (etapa 8).** El último escenario del mismo archivo conecta la térmica del
+teléfono y le manda el ticket ESC/POS que arma el servidor. `LIVE_PRINTER_NAME` es el nombre **tal
+como lo anuncia la impresora** (`MP210`, `BY-480BT_05AC`, …); sin ese define el escenario solo
+enumera en el log lo que ve el teléfono (`IMPRESORA VISTA | … | emparejada=… | rssi=…`) y se
+**omite**, para poder identificar la impresora antes de imprimir.
+
+```bash
+flutter test integration_test/qa_device_test.dart -d <serial> \
+  --dart-define=API_BASE_URL=https://127.0.0.1:8443/api/v1 \
+  --dart-define=API_HOST_HEADER=ezyventas2.test \
+  --dart-define=LIVE_API_EMAIL=propietario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_PRINTER_NAME=MP210 \
+  --plain-name impresora
+```
+
+> La **primera** vez que la app busca impresoras Android pide el permiso de «dispositivos cercanos»
+> (lo dispara el escaneo): hay que **aceptarlo en la pantalla del teléfono**. MIUI no deja concederlo
+> desde el equipo (`adb shell pm grant` responde `SecurityException: … GRANT_RUNTIME_PERMISSIONS`),
+> así que el diálogo se acepta a mano una vez y queda concedido para las siguientes corridas.
 
 ---
 
@@ -555,6 +579,93 @@ Nota de la prueba (no es un fallo de la app): el ancla de «ya cargó la pestañ
 (`title!.toUpperCase()`). Comparar contra el texto en *sentence case* falla aunque la pantalla esté
 perfecta.
 
+### Corrida real del 20 sep 2026 — impresora térmica (etapa 8, teléfono físico)
+
+Mismo archivo, escenario `impresora`: abre el detalle de una venta real, conecta la **térmica
+Bluetooth** del teléfono y le manda el ticket ESC/POS que arma el servidor.
+
+```bash
+flutter test integration_test/qa_device_test.dart -d EE95QSVKORE6WCL7 \
+  --dart-define=API_BASE_URL=https://127.0.0.1:8443/api/v1 \
+  --dart-define=API_HOST_HEADER=ezyventas2.test \
+  --dart-define=LIVE_API_EMAIL=jean@apontephone.com \
+  --dart-define=LIVE_API_PASSWORD=•••••• \
+  --dart-define=LIVE_PRINTER_NAME=MP210 \
+  --plain-name impresora
+```
+
+| Escenario | Qué comprueba en el dispositivo real | Resultado |
+|---|---|---|
+| Búsqueda **sin** nombre de impresora | Que el teléfono ve lo que la app lista: emparejadas del sistema + escaneo BLE | Pasa (omitida con evidencia): **24 emparejadas** primero y después las del escaneo, entre ellas **`MP210`** (`DC:0D:51:3B:77:6E`, `rssi=-62`, `emparejada=false`, `guardada=false`) y una TV y una banda; el resto de las emparejadas son audífonos y bocinas |
+| Impresión real (`LIVE_PRINTER_NAME=MP210`) | Conexión GATT, característica de escritura y envío del ticket del servidor | `POST /print/bluetooth-payload` con `{template_id: 3, data_source_type: transaction, data_source_id: 24, open_drawer: false}` → la app avisa «Ticket enviado a la impresora.» y **el ticket sale impreso** |
+| Estado del adaptador en la hoja | Badge `CONECTADA`, «Impresora conectada: MP210» y el selector cerrándose solo al conectar | Pasa: la impresora queda **guardada** en el teléfono, así que la corrida siguiente reconecta con «Conectar impresora» sin volver a escanear |
+
+### Pruebas de impresión que quedan a mano
+
+MIUI no deja automatizar toques desde el equipo (hallazgo 34), así que estas se hacen en el teléfono:
+
+| Prueba | Cómo |
+|---|---|
+| **Corte de caja** (bytes que arma el teléfono con `CashCutRenderer` + ESC/POS local, contrato §6.3) | Caja → `Hacer corte` → completar el arqueo → `Finalizar turno`; el ticket del corte se ofrece al cerrar (imprimir o WhatsApp) |
+| **Pulso del cajón** | En la hoja del ticket, activar `Abrir el cajón al imprimir` (`open_drawer` del `POST /print/bluetooth-payload`): con el cajón conectado a la impresora, `Imprimir ticket` debe abrirlo |
+| **Corte del enlace a media impresión** | Apagar la impresora mientras sale un ticket: la app avisa «Se perdió la conexión con la impresora.» y deja reimprimir (no reintenta sola) |
+
+La **etiqueta TSPL** no se puede probar con la impresora del equipo (es térmica de recibos): ese
+recorrido sigue verificado con las pruebas del encoder y con el `POST /print/payload` real.
+
+### Discrepancias y hallazgos (etapa 8, dispositivo)
+
+32. **El plugin de Bluetooth solo pide los permisos al escanear, y la hoja pedía primero las
+    emparejadas (app, corregido).** `flutter_blue_plus` resuelve `BLUETOOTH_SCAN` /
+    `BLUETOOTH_CONNECT` dentro de `startScan` (`ensurePermissions` → `requestPermissions`), pero
+    `getBondedDevices` **no** los pide: en Android 12+ sin permiso concedido el sistema lanza
+    `SecurityException`, que la app no traducía (capturaba solo `PrinterException`) y la hoja de
+    impresión se quedaba con el indicador girando. Ahora `PrinterController.loadDevices` lista las
+    emparejadas dentro de su propio `try`, escanea (lo que dispara el diálogo del sistema) y
+    **reintenta** la lista —emparejadas primero, como antes— y `BluetoothPrinterService` traduce los
+    fallos del plugin (`PrinterException.missingPermission`, «No se pudo usar el Bluetooth del
+    teléfono: …»). Cubierto por `test/features/printing/application/printer_controller_test.dart`.
+33. **La impresora térmica del equipo es BLE; la emparejada por clásico no sirve.** El listado del
+    sistema mostraba una térmica emparejada por `[BR/EDR]` (`BY-480BT_05AC`), que **no** se anunciaba
+    en el escaneo BLE; la app imprime por GATT, así que la válida es la que sí se anuncia (`MP210`).
+    Por eso el escenario acepta el nombre por `--dart-define` y, sin él, **enumera** los dispositivos
+    (`IMPRESORA VISTA | …`) en lugar de imprimir a ciegas.
+34. **MIUI no deja conceder permisos ni inyectar toques desde el equipo.** `adb shell pm grant
+    com.ezyventas.app android.permission.BLUETOOTH_SCAN` responde
+    `SecurityException: … GRANT_RUNTIME_PERMISSIONS` (igual que la inyección de `adb input` con
+    `INJECT_EVENTS`), así que el diálogo de «dispositivos cercanos» se acepta **una vez** en la
+    pantalla del teléfono y queda concedido para las corridas siguientes. En la corrida se aceptó a
+    mano y el escaneo devolvió resultados en la misma pasada.
+35. **La imagen de la plantilla del ticket no viaja en el ESC/POS (backend).** La plantilla
+    `ticket_venta` del negocio tiene logo (`https://ezyventas.com/storage/6376/Aponte-phone-logo.png`)
+    y el respaldo HTML **sí** lo incluye (`<img src="…/Aponte-phone-logo.png">`), pero
+    `POST /print/bluetooth-payload` devuelve un payload **solo de texto**: 427 bytes con la
+    plantilla 3 (58 mm) y 611 con la 7 (80 mm), con **cero** apariciones de los comandos de imagen
+    de ESC/POS (`GS v 0`, `ESC *`, `GS ( L` y `GS 8 L`) y sin ningún campo de imagen en el JSON
+    (`commands_base64`, `paperWidth`). Ningún cliente ESC/POS puede imprimir lo que no recibe: el
+    servidor debe **rasterizar** el logo dentro del payload (como hace con las etiquetas, que llegan
+    como operación `DescargarImagenDeInternetEImprimir` y el teléfono no puede resolver). Queda como
+    límite de esta entrega (pendiente 1) y es lo que explica que el ticket impreso salga sin logo
+    aunque la plantilla lo tenga.
+36. **Las imágenes del servidor no cargaban en el teléfono (app, corregido).** Los medios llegan con
+    URL absoluta al host local (`https://ezyventas2.test/storage/6/iphone.png`) y ese dominio no
+    resuelve en el teléfono (`ping: unknown host ezyventas2.test`), así que `Image.network` caía
+    siempre en su marcador. `ServerImage` + `AppConfig.mediaUri` / `mediaHeaders` reescriben el
+    origen al del túnel y mandan el `Host` de Herd solo cuando `API_HOST_HEADER` está definido.
+    Verificado en el dispositivo con la reja del catálogo.
+
+37. **La app no tenía identidad visual propia (app, corregido).** El login y el splash anunciaban la
+    marca con un círculo ámbar y `Icons.shopping_cart_outlined`, y el ícono del lanzador seguía siendo
+    el de Flutter. Ahora `BrandLogo` (`lib/core/widgets/brand_logo.dart`) pinta el logotipo real —
+    `assets/images/white_logo.png` en el tema oscuro y `black_logo.png` en el claro, con
+    `errorBuilder` que cae al wordmark de texto— en el login y en el splash, y
+    `tool/app_icons.ps1` genera el ícono de Android desde el arte de `assets/images/ezyventas_icon.jfif`:
+    los cinco `mipmap-*/ic_launcher.png` con la esquina redondeada del arte recortada a 145/1024 (las
+    esquinas quedan transparentes) y el **ícono adaptativo** de API 26+ con fondo `#14191D` y el arte
+    al 80 % en `ic_launcher_foreground.png`, dentro de la zona segura de cualquier máscara (§4.3).
+    Verificado en el Redmi (20 sep 2026): captura del login con el logotipo y del cajón de apps con el
+    ícono nuevo.
+
 ### Discrepancias y hallazgos (etapa 7)
 
 22. **`profile_photo_url` trae un avatar generado aunque el usuario no tenga foto.** La cuenta de prueba
@@ -613,7 +724,9 @@ perfecta.
 inputs, bordes de 1 px sin sombras, radios 24/16/pill, micro-etiquetas de 10 px en mayusculas).
 La tipografia es **Figtree** (fuente variable empaquetada en `assets/fonts`), asi Flutter aplica
 el eje `wght` con `FontWeight`. El cambio a claro se guarda en el almacenamiento seguro
-(`theme_mode`).
+(`theme_mode`). La marca la pinta `BrandLogo` con los logotipos de `assets/images/` (blanco sobre
+el tema oscuro, negro sobre el claro) y el ícono del lanzador se genera con `tool/app_icons.ps1`
+(ver §4.3).
 
 ### Impresora termica (etapa 6)
 `lib/core/printing/`:
@@ -628,6 +741,13 @@ el eje `wght` con `FontWeight`. El cambio a claro se guarda en el almacenamiento
   (la misma que usa `PrintEncoderService` en el servidor). Solo se usa para el **corte de caja**, el
   único documento que la API no puede codificar (contrato §6.3); queda aislado para reutilizarlo en
   la fase offline.
+- **Permisos de Android 12+ (ver hallazgo 32).** El plugin **solo** pide `BLUETOOTH_SCAN` /
+  `BLUETOOTH_CONNECT` al **escanear** (`startScan`); el listado de emparejadas
+  (`getBondedDevices`) **no** los pide y sin ellos el sistema lanza `SecurityException`. Por eso
+  `PrinterController.loadDevices` lista las emparejadas dentro de su propio `try`, escanea (lo que
+  dispara el diálogo del sistema) y reintenta la lista; además traduce cualquier fallo del plugin
+  (`PrinterException.missingPermission`, «No se pudo usar el Bluetooth del teléfono: …») en lugar de
+  dejar la hoja de impresión con el indicador girando.
 
 > **Licencia de `flutter_blue_plus` (decisión de negocio).** La serie 2.x del paquete exige declarar
 > una licencia y, para empresas con fines de lucro, **comprar una licencia comercial**; su API además
@@ -803,11 +923,15 @@ flutter run -d <serial> `
 - `.vscode/launch.json` trae tres configuraciones: **Android por USB (Herd local)** —la de F5,
   con `preLaunchTask` que crea el túnel—, la misma en modo *profile* (más fluida en el teléfono) y
   una sin túnel para cuando el teléfono pueda resolver el dominio real.
-- Limitación del túnel: las imágenes que el servidor publica en su propio host
-  (`https://ezyventas2.test/storage/...`) no se pueden cargar en el teléfono porque
-  `Image.network` no envía el header `Host`; la app cae en su marcador (`errorBuilder`) sin
-  romperse. No afecta a producción, donde `API_BASE_URL` es un dominio público con certificado
-  válido.
+- **Imágenes del servidor por el túnel.** Los medios llegan con URL absoluta al host del servidor
+  (`https://ezyventas2.test/storage/6/iphone.png`) y ese dominio **no resuelve en el teléfono**
+  (comprobado en el dispositivo: `ping: unknown host ezyventas2.test`), así que la imagen caía
+  siempre en el marcador de la pantalla. `ServerImage` (`lib/core/widgets/server_image.dart`)
+  resuelve la URL con `AppConfig.mediaUri` —reescribe el origen al de `API_BASE_URL`
+  (`https://127.0.0.1:8443`) y `AppConfig.mediaHeaders` manda el `Host` con el que Herd elige el
+  sitio— y se usa en el catálogo, el detalle de producto, las evidencias de órdenes y la foto de
+  perfil. Sin `API_HOST_HEADER` (producción) la URL se descarga tal cual y **no** se añade ningún
+  header; los hosts externos (`ui-avatars.com`, `placehold.co`) nunca se reescriben.
 
 ### 4.2 Instalar la app en un teléfono Xiaomi/Redmi (MIUI/HyperOS)
 
@@ -846,6 +970,42 @@ adb push build\app\outputs\flutter-apk\app-debug.apk /sdcard/Download/ezyventas-
 > `flutter test integration_test/... -d <serial>` deja instalado un APK cuyo `main` es **la prueba**: si
 > abres la app después, se vuelve a correr la prueba. Para dejar el teléfono listo para QA manual
 > reinstala el build normal (`flutter build apk --debug --dart-define=...` + `adb install -r -t`) o usa F5.
+
+### 4.3 Identidad visual: logotipo e ícono de la app
+
+Los archivos de marca viven en `assets/images/`:
+
+| Archivo | Uso |
+|---|---|
+| `white_logo.png` (734x335, fondo transparente) | Logotipo para **fondos oscuros** (el tema por defecto) |
+| `black_logo.png` (726x351) | Logotipo para fondos claros |
+| `ezyventas_icon.jfif` (1024x1024) | Arte del **ícono de la app** (lo consume `tool/app_icons.ps1`) |
+| `isologo.png` (228x207) | Isologo suelto, para piezas que necesiten solo la «E» |
+
+`BrandLogo` (`lib/core/widgets/brand_logo.dart`) elige el PNG según el `Brightness` del tema y cae al
+wordmark de texto si el asset no llega al bundle; lo usan el login y el splash. En `pubspec.yaml`
+los logotipos se declaran **uno a uno** para no empaquetar el arte del ícono ni el isologo, que solo
+hacen falta al generar.
+
+El ícono del lanzador se regenera desde el arte con **System.Drawing** (sin Photoshop ni ninguna
+herramienta externa):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool\app_icons.ps1
+```
+
+- Escribe los cinco PNG *legacy* (`mipmap-{mdpi…xxxhdpi}\ic_launcher.png`, 48 -> 192 px) recortados
+  con la esquina redondeada del arte (radio 145 sobre 1024, un poco **por dentro** del redondeo
+  original para que no quede borde blanco): las esquinas salen transparentes y el launcher pinta lo
+  suyo.
+- Escribe el **ícono adaptativo** de Android 8+ (`mipmap-anydpi-v26/ic_launcher.xml`): fondo
+  `#14191D` (`values/ic_launcher_background.xml`) y el arte al 80 % centrado en
+  `mipmap-*\ic_launcher_foreground.png` (108 -> 432 px). Esa escala deja la «E» y el nombre dentro
+  de la zona segura (66 %) de cualquier máscara, así que ni el círculo de Android puro ni el
+  *squircle* de MIUI recortan nada importante.
+- Los dos XML se escriben en ASCII (sin BOM) y el script es idempotente: si cambia el arte, vuelve a
+  correrlo y recompila (`flutter build apk --debug` + `adb install -r -t`). También acepta
+  `-CornerRadius`, `-BackgroundColor` y `-ForegroundScale`.
 
 ---
 
@@ -888,11 +1048,16 @@ lib/
 
 ## 6. Pendientes y limites de esta entrega
 
-1. **Impresora física.** El entorno de desarrollo no tiene impresora térmica Bluetooth: el recorrido
-   de bytes está verificado contra la API real (`531` bytes ESC/POS de una venta, `535` de una orden
-   y el TSPL completo de una etiqueta) y con pruebas unitarias del encoder, pero **falta la prueba en
-   un teléfono con impresora** (emparejar la térmica de 80 mm, imprimir el ticket, el corte y el pulso
-   del cajón, y cortar el enlace a media impresión para ver el aviso).
+1. **Impresora física.** El recorrido de bytes está verificado contra la API real (`531` bytes ESC/POS
+   de una venta, `535` de una orden y el TSPL completo de una etiqueta), con pruebas unitarias del
+   encoder y, desde la corrida del 20 sep 2026, con una **térmica Bluetooth real** en el teléfono
+   (`MP210`): conexión GATT, `POST /print/bluetooth-payload` (plantilla 3 de la venta 24) y el aviso
+   «Ticket enviado a la impresora.» (ver «Corrida real del 20 sep 2026 — impresora térmica»). Falta
+   probar en hardware el **corte de caja** (bytes que arma el teléfono), el **pulso del cajón** y el
+   caso de **cortar el enlace a media impresión**: esa parte necesita apagar la impresora a mano
+   porque MIUI no deja automatizar toques desde el equipo (hallazgo 34). El **logo de la plantilla**
+   tampoco se imprime: el payload ESC/POS del servidor no trae ninguna imagen (hallazgo 35), así que
+   depende del backend rasterizarlo.
 2. **Etiquetas con imágenes.** `POST /print/payload` puede devolver
    `DescargarImagenDeInternetEImprimir`; el teléfono no rasteriza imágenes para TSPL, así que la app
    avisa y solo envía el texto/códigos de la plantilla.
@@ -916,8 +1081,10 @@ lib/
 9. **Solicitar factura desde el teléfono.** Bloqueado por el hueco 24 (el historial no trae el `id` del
    pago). El método del repositorio ya está listo y probado contra el `404` real.
 10. **Validación en teléfono físico.** Etapa 8 cierra el hueco de «solo se probó en el equipo»:
-    `flutter analyze` limpio, `flutter test` (222 pruebas) y `integration_test/qa_device_test.dart`
+    `flutter analyze` limpio, `flutter test` (241 pruebas) y `integration_test/qa_device_test.dart`
     corriendo **en un teléfono** (login real, pestañas, catálogo, Cuenta y cierre de sesión, con
-    propietario y empleado) contra la API por el túnel USB (§4.1), con el APK compilado e instalado en el
-    Redmi (§4.2). Sigue fuera de alcance lo que depende de hardware que no está en el entorno (la
-    impresora térmica, punto 1) y lo que exige un entorno desechable (contraseñas reales, punto 7).
+    propietario y empleado; el recorrido de POS, caja, ventas, órdenes e impresión y, desde esta
+    corrida, la **impresora térmica real** con el ticket ESC/POS que arma el servidor) contra la API
+    por el túnel USB (§4.1), con el APK compilado e instalado en el Redmi (§4.2). Sigue fuera de
+    alcance lo que exige un entorno desechable (contraseñas reales, punto 7) y lo que necesita
+    apagar la impresora a mano (el corte de caja, el pulso del cajón y el corte de enlace, punto 1).

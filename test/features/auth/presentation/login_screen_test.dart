@@ -2,6 +2,7 @@ import 'package:ezyventas_app/core/api/api_client.dart';
 import 'package:ezyventas_app/core/api/api_exception.dart';
 import 'package:ezyventas_app/core/auth/session_store.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
+import 'package:ezyventas_app/core/widgets/brand_logo.dart';
 import 'package:ezyventas_app/features/auth/application/auth_controller.dart';
 import 'package:ezyventas_app/features/auth/data/auth_repository.dart';
 import 'package:ezyventas_app/features/auth/data/models/auth_session.dart';
@@ -146,6 +147,21 @@ void main() {
       container.read(permissionsProvider).can('pos.access'),
       isFalse,
       reason: 'los permisos los decide el servidor, no la pantalla',
+    );
+  });
+
+  testWidgets('la cabecera muestra el logotipo de la marca', (tester) async {
+    await tester.pumpWidget(_wrap(_FakeAuthRepository()));
+    await tester.pumpAndSettle();
+
+    final image = tester.widget<Image>(
+      find.descendant(of: find.byType(BrandLogo), matching: find.byType(Image)),
+    );
+
+    expect(
+      (image.image as AssetImage).assetName,
+      BrandLogo.onDarkAsset,
+      reason: 'el login usa el tema oscuro: toca el logotipo blanco',
     );
   });
 }

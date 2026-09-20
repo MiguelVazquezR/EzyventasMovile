@@ -6,6 +6,7 @@ import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/status_palette.dart';
+import '../../../core/widgets/brand_logo.dart';
 import '../../../core/widgets/ezy_button.dart';
 import '../../../core/widgets/ezy_text_field.dart';
 import '../../../core/widgets/notice_banner.dart';
@@ -204,30 +205,8 @@ class _BrandHeader extends StatelessWidget {
 
     return Column(
       children: <Widget>[
-        Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            color: EzyColors.primary.withValues(alpha: 0.12),
-            shape: BoxShape.circle,
-            border: Border.all(color: EzyColors.primary.withValues(alpha: 0.3)),
-          ),
-          child: const Icon(
-            Icons.shopping_cart_outlined,
-            color: EzyColors.primary,
-            size: 32,
-          ),
-        ),
-        const SizedBox(height: 18),
-        Text(
-          'EzyVentas',
-          textAlign: TextAlign.center,
-          style: EzyTextStyles.screenTitle.copyWith(
-            fontSize: 28,
-            color: surfaces.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 6),
+        const BrandLogo(height: 80),
+        const SizedBox(height: 14),
         Text(
           'Punto de venta y órdenes de servicio',
           textAlign: TextAlign.center,

@@ -180,37 +180,72 @@ class PrinterController extends Notifier<PrinterState> {
   Future<void> refresh() => _bootstrap();
 
   /// Recarga la lista: emparejadas primero y, si se pide, escaneo BLE.
+  ///
+  /// En Android 12+ el permiso de "dispositivos cercanos" lo pide Android al
+  /// **escanear**, no al leer las emparejadas: por eso, si esa primera lectura
+  /// falla, se escanea (lo que dispara el diálogo del sistema) y se reintenta
+  /// la lista de emparejadas. Así el usuario ve las dos fuentes sin quedarse
+  /// con la hoja cargando (ver hallazgo 23 del README).
   Future<void> loadDevices({bool scan = true}) async {
     state = state.copyWith(isBusy: true, isScanning: scan, clearError: true);
 
+    final savedId = state.savedPrinter?.id;
+    final found = <String, PrinterDevice>{};
+
+    void add(PrinterDevice device) => found.putIfAbsent(
+      device.id,
+      () => device.copyWith(isSaved: device.id == savedId),
+    );
+
+    String? errorMessage;
+
     try {
-      final savedId = state.savedPrinter?.id;
-      final devices = <String, PrinterDevice>{
-        for (final device in await _service.pairedDevices())
-          device.id: device.copyWith(isSaved: device.id == savedId),
-      };
-
-      if (scan) {
-        for (final device in await _service.scanForPrinters()) {
-          devices.putIfAbsent(
-            device.id,
-            () => device.copyWith(isSaved: device.id == savedId),
-          );
-        }
+      for (final device in await _service.pairedDevices()) {
+        add(device);
       }
-
-      state = state.copyWith(
-        devices: devices.values.toList(growable: false),
-        isBusy: false,
-        isScanning: false,
-      );
     } on PrinterException catch (error) {
-      state = state.copyWith(
-        errorMessage: error.message,
-        isBusy: false,
-        isScanning: false,
-      );
+      errorMessage = error.message;
+    } on Object catch (error) {
+      errorMessage = 'No se pudieron listar las impresoras emparejadas: $error';
     }
+
+    if (scan) {
+      try {
+        for (final device in await _service.scanForPrinters()) {
+          add(device);
+        }
+
+        // El escaneo (que es lo que pide los permisos) funcionó: la lista ya
+        // es utilizable.
+        errorMessage = null;
+
+        // Se reintenta la lista de emparejadas para que el usuario vea también
+        // las suyas; si sigue sin permiso, se muestran las del escaneo.
+        try {
+          for (final device in await _service.pairedDevices()) {
+            add(device);
+          }
+        } on Object {
+          // Nada que avisar: la pantalla ya lista lo que se anuncia cerca.
+        }
+      } on PrinterException catch (error) {
+        errorMessage = error.message;
+      } on Object catch (error) {
+        errorMessage = 'No se pudieron buscar impresoras: $error';
+      }
+    }
+
+    state = state.copyWith(
+      // Emparejadas (las del teléfono) primero, como antes de reintentar la
+      // lista tras el escaneo; después las que se anuncian cerca.
+      devices: <PrinterDevice>[
+        ...found.values.where((device) => device.isPaired),
+        ...found.values.where((device) => !device.isPaired),
+      ],
+      errorMessage: errorMessage,
+      isBusy: false,
+      isScanning: false,
+    );
   }
 
   /// Conecta (y recuerda) una impresora elegida por el usuario.
