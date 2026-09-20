@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:ezyventas_app/core/api/api_client.dart';
 import 'package:ezyventas_app/core/api/api_endpoints.dart';
 import 'package:ezyventas_app/core/api/api_exception.dart';
+import 'package:ezyventas_app/core/api/paginated.dart';
 import 'package:ezyventas_app/core/auth/permissions_service.dart';
 import 'package:ezyventas_app/core/auth/session_store.dart';
 import 'package:ezyventas_app/core/utils/money.dart';
@@ -29,7 +30,12 @@ import 'package:ezyventas_app/features/service_orders/data/models/service_order_
 import 'package:ezyventas_app/features/service_orders/data/models/service_order_form.dart';
 import 'package:ezyventas_app/features/service_orders/data/models/service_order_item_draft.dart';
 import 'package:ezyventas_app/features/service_orders/data/models/service_order_status.dart';
+import 'package:ezyventas_app/features/service_orders/data/models/service_order_summary.dart';
 import 'package:ezyventas_app/features/service_orders/data/service_orders_repository.dart';
+import 'package:ezyventas_app/features/printing/data/models/print_document.dart';
+import 'package:ezyventas_app/features/printing/data/models/print_template.dart';
+import 'package:ezyventas_app/features/printing/data/printing_repository.dart';
+import 'package:ezyventas_app/features/printing/data/whatsapp_message_builder.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -110,7 +116,24 @@ const bool liveServiceOrdersStock = bool.fromEnvironment(
   'LIVE_SERVICE_ORDERS_STOCK',
 );
 
-/// JPEG 1×1 válido: se sube como evidencia inicial y de cierre para ejercitar
+/// Habilita la prueba real de la etapa 6 (impresión térmica y WhatsApp).
+///
+/// Solo **lee**: pide plantillas, un ticket ESC/POS, una etiqueta TSPL, el
+/// respaldo HTML y el ticket de WhatsApp de ventas y órdenes reales.
+/// `LIVE_PRINTING=true`.
+const bool livePrinting = bool.fromEnvironment('LIVE_PRINTING');
+
+/// Venta sobre la que se piden los documentos (0 = la más reciente).
+const int livePrintingTransactionId = int.fromEnvironment(
+  'LIVE_PRINTING_TRANSACTION_ID',
+);
+
+/// Orden de servicio para probar la impresión de la orden (0 = la más reciente).
+const int livePrintingServiceOrderId = int.fromEnvironment(
+  'LIVE_PRINTING_SERVICE_ORDER_ID',
+);
+
+
 /// el `multipart/form-data` real (el servidor exige que el archivo sea imagen).
 final Uint8List evidenceJpegBytes = base64Decode(
   '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHR'
@@ -256,6 +279,7 @@ void main() {
   liveCashAndSaleTest();
   liveSalesTest();
   liveServiceOrdersTest();
+  livePrintingTest();
 }
 
 /// Verifica el catálogo y los clientes **reales** de la sucursal del token.
@@ -1087,6 +1111,12 @@ Future<void> _liveServiceOrderRoundTrip({
   debugPrint('[live] ensure-transaction: $transactionId');
   expect(transactionId, updated.detail.transaction!.id);
 
+  // Impresión de la orden (etapa 6): el ticket de la orden se codifica con la
+  // plantilla del negocio y su venta vinculada alimenta el ticket de WhatsApp.
+  if (livePrinting) {
+    await _liveOrderPrintingRoundTrip(api: api, orderId: orderId);
+  }
+
   // Borrado con `204` sin cuerpo y `404` después.
   await orders.deleteServiceOrder(orderId);
 
@@ -1100,6 +1130,95 @@ Future<void> _liveServiceOrderRoundTrip({
   if (!openedHere) {
     await auth.logout();
   }
+}
+
+/// Impresión y WhatsApp de una **orden de servicio real** (etapa 6).
+///
+/// Comprueba dos cosas del contrato §10:
+/// 1. El ticket de la orden se codifica bien con `service_order` (ESC/POS y HTML).
+/// 2. `POST /print/whatsapp-ticket` **no** arma el ticket de una orden
+///    (`service_order` responde `200` con `ticket: null`): la app envía el de su
+///    **venta vinculada**, que aquí también se verifica.
+Future<void> _liveOrderPrintingRoundTrip({
+  required ApiClient api,
+  required int orderId,
+}) async {
+  final printing = PrintingRepository(api: api);
+  final templates = await printing.fetchAllTemplates();
+
+  final ticketTemplate = templates
+      .where((template) => template.type == PrintTemplateType.saleTicket.wire)
+      .toList(growable: false);
+
+  if (ticketTemplate.isEmpty) {
+    debugPrint('[live] la suscripción no tiene plantillas: sin impresión');
+
+    return;
+  }
+
+  final orderPayload = await printing.bluetoothPayload(
+    templateId: ticketTemplate.first.id,
+    source: PrintDataSourceType.serviceOrder,
+    sourceId: orderId,
+  );
+
+  debugPrint(
+    '[live] ESC/POS orden=$orderId plantilla=${ticketTemplate.first.id} '
+    'bytes=${orderPayload.byteCount} inicio=${orderPayload.commands.take(4).toList()}',
+  );
+
+  expect(orderPayload.isEmpty, isFalse);
+  expect(orderPayload.commands.first, 0x1B);
+
+  final html = await printing.ticketHtml(
+    templateId: ticketTemplate.first.id,
+    source: PrintDataSourceType.serviceOrder,
+    sourceId: orderId,
+  );
+
+  debugPrint('[live] respaldo HTML de la orden: ${html.html.length} caracteres');
+  expect(html.isEmpty, isFalse);
+
+  // Hallazgo de la etapa 6: el ticket de WhatsApp solo existe para ventas.
+  final directTicket = await printing.whatsappTicket(
+    source: PrintDataSourceType.serviceOrder,
+    sourceId: orderId,
+  );
+
+  debugPrint(
+    '[live] WhatsApp service_order=$orderId '
+    'ticket=${directTicket.ticket == null ? 'null' : directTicket.ticket!['kind']} '
+    'telefono=${directTicket.customerPhone ?? 'sin telefono'}',
+  );
+
+  expect(directTicket.isEmpty, isTrue);
+
+  // La app resuelve el WhatsApp con la venta vinculada de la orden.
+  final detail = await ServiceOrdersRepository(api: api).fetchServiceOrder(orderId);
+  final linkedTransactionId = detail.transaction?.id;
+
+  if (linkedTransactionId == null) {
+    debugPrint('[live] la orden no tiene venta vinculada: sin WhatsApp');
+
+    return;
+  }
+
+  final linkedTicket = await printing.whatsappTicket(
+    source: PrintDataSourceType.transaction,
+    sourceId: linkedTransactionId,
+  );
+
+  expect(linkedTicket.isEmpty, isFalse);
+
+  final message = WhatsAppMessageBuilder.build(linkedTicket.ticket!);
+
+  debugPrint(
+    '[live] WhatsApp venta vinculada=$linkedTransactionId '
+    'kind=${linkedTicket.ticket!['kind']} lineas=${message.split('\n').length}',
+  );
+  debugPrint('[live] primer renglon: ${message.split('\n').first}');
+
+  expect(message, contains('*'));
 }
 
 /// Escenario completo de dinero con un **apartado** real (etapa 4).
@@ -1513,3 +1632,246 @@ Future<void> _liveAbonoRoundTrip({
 
   await auth.logout();
 }
+
+/// Ventas de la sucursal o `null` si el usuario no tiene `transactions.access`.
+Future<Paginated<TransactionSummary>?> _liveTransactionsOrNull(
+  SalesRepository sales,
+) async {
+  try {
+    return await sales.fetchTransactions(perPage: 1);
+  } on ApiException catch (error) {
+    debugPrint(
+      '[live] /transactions no disponible para este usuario: '
+      '${error.statusCode} ${error.message}',
+    );
+
+    return null;
+  }
+}
+
+/// Órdenes de la sucursal o `null` sin `services.orders.access`.
+Future<Paginated<ServiceOrderSummary>?> _liveServiceOrdersOrNull(
+  ServiceOrdersRepository orders,
+) async {
+  try {
+    return await orders.fetchServiceOrders(perPage: 1);
+  } on ApiException catch (error) {
+    debugPrint(
+      '[live] /service-orders no disponible para este usuario: '
+      '${error.statusCode} ${error.message}',
+    );
+
+    return null;
+  }
+}
+
+/// Verifica la **impresión real** de la etapa 6: plantillas del negocio,
+/// ESC/POS de una venta, etiqueta TSPL, respaldo HTML y el ticket de WhatsApp.
+///
+/// No imprime en ninguna impresora (eso depende del teléfono): comprueba que el
+/// servidor entrega exactamente los documentos que la app envía por Bluetooth y
+/// que el texto de WhatsApp se arma con el mismo formato que la web.
+void livePrintingTest() {
+  test(
+    'impresión real: plantillas, ESC/POS, TSPL, HTML y WhatsApp',
+    () async {
+      final store = _MemorySessionStore();
+      final api = ApiClient(baseUrl: liveBaseUrl, readToken: store.readToken);
+      final auth = AuthRepository(api: api, sessionStore: store);
+      final printing = PrintingRepository(api: api);
+
+      await auth.login(email: liveEmail, password: livePassword);
+
+      // 1) Plantillas de la suscripción (la app las cachea por tipo/contexto).
+      final templates = await printing.fetchAllTemplates(forceRefresh: true);
+
+      debugPrint('[live] plantillas=${templates.length}');
+      for (final template in templates) {
+        debugPrint(
+          '[live]   #${template.id} ${template.name} tipo=${template.type} '
+          'contexto=${template.contextType} papel=${template.paperWidth} '
+          'default=${template.isDefault}',
+        );
+        expect(template.id, greaterThan(0));
+        expect(template.name, isNotEmpty);
+      }
+
+      final ticketTemplates = templates
+          .where((template) => template.type == PrintTemplateType.saleTicket.wire)
+          .toList(growable: false);
+      final labelTemplates = templates
+          .where((template) => template.isLabel)
+          .toList(growable: false);
+
+      debugPrint(
+        '[live] tickets=${ticketTemplates.length} '
+        'etiquetas=${labelTemplates.length}',
+      );
+
+      // La selección de la app (contextos + ids) debe dejar plantillas útiles.
+      final previewDocument = PrintDocument.sale(transactionId: 1);
+      final previewSelection = previewDocument.selectTemplates(templates);
+
+      debugPrint(
+        '[live] la app selecciona para una venta: '
+        '${previewSelection.map((t) => '#${t.id}').join(', ')}',
+      );
+      expect(previewSelection, isNotEmpty);
+
+      // 2) Venta real de la sucursal.
+      final sales = SalesRepository(api: api);
+      final page = await _liveTransactionsOrNull(sales);
+
+      final transactionId = livePrintingTransactionId > 0
+          ? livePrintingTransactionId
+          : (page == null || page.isEmpty ? 0 : page.items.first.id);
+
+      if (transactionId > 0 && ticketTemplates.isNotEmpty) {
+        final template = ticketTemplates.first;
+
+        final payload = await printing.bluetoothPayload(
+          templateId: template.id,
+          source: PrintDataSourceType.transaction,
+          sourceId: transactionId,
+        );
+
+        debugPrint(
+          '[live] ESC/POS venta=$transactionId plantilla=${template.id} '
+          'bytes=${payload.byteCount} papel=${payload.paperWidth} '
+          'inicio=${payload.commands.take(4).toList()}',
+        );
+
+        expect(payload.isEmpty, isFalse);
+        expect(payload.commands.first, 0x1B); // ESC @
+        expect(payload.byteCount, greaterThan(50));
+
+        final html = await printing.ticketHtml(
+          templateId: template.id,
+          source: PrintDataSourceType.transaction,
+          sourceId: transactionId,
+        );
+
+        debugPrint(
+          '[live] respaldo HTML "${html.templateName}" '
+          '${html.html.length} caracteres',
+        );
+
+        expect(html.isEmpty, isFalse);
+        expect(html.html, contains('<'));
+        expect(html.paperWidth, template.paperWidth);
+
+        final ticket = await printing.whatsappTicket(
+          source: PrintDataSourceType.transaction,
+          sourceId: transactionId,
+        );
+
+        expect(ticket.isEmpty, isFalse);
+
+        final message = WhatsAppMessageBuilder.build(ticket.ticket!);
+
+        debugPrint(
+          '[live] WhatsApp kind=${ticket.ticket!['kind']} '
+          'telefono=${ticket.customerPhone ?? "sin telefono"} '
+          'lineas=${message.split('\n').length}',
+        );
+        debugPrint('[live] primer renglon: ${message.split('\n').first}');
+
+        expect(message, contains('*'));
+        expect(
+          WhatsAppMessageBuilder.link(
+            phone: ticket.customerPhone,
+            message: message,
+          ),
+          contains('wa.me'),
+        );
+      } else {
+        debugPrint(
+          '[live] sin venta o sin plantilla ticket_venta: '
+          'no se pudo pedir el ESC/POS de una venta',
+        );
+      }
+
+      // 3) Orden de servicio: su ticket sí se codifica…
+      final orders = ServiceOrdersRepository(api: api);
+      final ordersPage = await _liveServiceOrdersOrNull(orders);
+      final serviceOrderId = livePrintingServiceOrderId > 0
+          ? livePrintingServiceOrderId
+          : (ordersPage == null || ordersPage.isEmpty
+                ? 0
+                : ordersPage.items.first.id);
+
+      if (serviceOrderId > 0 && ticketTemplates.isNotEmpty) {
+        final orderPayload = await printing.bluetoothPayload(
+          templateId: ticketTemplates.first.id,
+          source: PrintDataSourceType.serviceOrder,
+          sourceId: serviceOrderId,
+        );
+
+        debugPrint(
+          '[live] ESC/POS orden=$serviceOrderId bytes=${orderPayload.byteCount} '
+          'inicio=${orderPayload.commands.take(4).toList()}',
+        );
+
+        expect(orderPayload.isEmpty, isFalse);
+
+        // …pero el ticket de WhatsApp solo se arma para ventas o pedidos
+        // (`WhatsAppTicketService`): el servidor responde `200` con `ticket: null`.
+        final orderTicket = await printing.whatsappTicket(
+          source: PrintDataSourceType.serviceOrder,
+          sourceId: serviceOrderId,
+        );
+
+        debugPrint(
+          '[live] WhatsApp orden=$serviceOrderId '
+          'ticket=${orderTicket.isEmpty ? 'null (sin venta vinculada)' : orderTicket.ticket!['kind']}',
+        );
+
+        expect(orderTicket.isEmpty, isTrue);
+      } else {
+        debugPrint('[live] sin órdenes de servicio para probar la impresión');
+      }
+
+      // 4) Etiqueta (TSPL) de un producto real.
+      final labelTemplate = labelTemplates.isEmpty
+          ? null
+          : labelTemplates.first;
+
+      if (labelTemplate != null) {
+        final products = await CatalogRepository(
+          api: api,
+        ).fetchProducts(perPage: 1);
+        final productId = products.isEmpty ? 0 : products.items.first.id;
+
+        if (productId > 0) {
+          final label = await printing.labelPayload(
+            templateId: labelTemplate.id,
+            source: PrintDataSourceType.product,
+            sourceId: productId,
+          );
+
+          debugPrint(
+            '[live] TSPL plantilla=${labelTemplate.id} producto=$productId '
+            'operaciones=${label.operations.length} '
+            'noSoportadas=${label.hasUnsupportedOperations}',
+          );
+          debugPrint('[live] TSPL:\n${label.tsplText}');
+
+          expect(label.tsplText, isNotNull);
+          expect(label.tsplText, contains('PRINT'));
+        }
+      } else {
+        debugPrint(
+          '[live] el negocio no tiene plantillas de etiqueta: '
+          'no se probó `POST /print/payload` (TSPL)',
+        );
+      }
+
+      await auth.logout();
+    },
+    skip: (liveEmail.isNotEmpty && livePassword.isNotEmpty && livePrinting)
+        ? false
+        : 'Requiere LIVE_API_EMAIL/LIVE_API_PASSWORD y LIVE_PRINTING=true',
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+}
+

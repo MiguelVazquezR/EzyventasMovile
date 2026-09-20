@@ -24,8 +24,10 @@ dependencies:
   # Formato es-MX
   intl: ^0.20.3
 
-  # Impresion termica, evidencias, WhatsApp y conectividad
-  flutter_blue_plus: ^2.3.12
+  # Impresion termica, evidencias, WhatsApp y conectividad.
+  # flutter_blue_plus se fija en la rama 1.x: la 2.x exige una licencia
+  # comercial de pago para apps de empresas (ver README, decisiones tecnicas).
+  flutter_blue_plus: ^1.35.0
   image_picker: ^1.2.3
   flutter_image_compress: ^2.5.1
   url_launcher: ^6.3.2

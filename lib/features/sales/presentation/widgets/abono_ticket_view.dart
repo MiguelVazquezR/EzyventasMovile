@@ -4,20 +4,40 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/widgets/ezy_button.dart';
-import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../../core/widgets/status_badge.dart';
+import '../../../printing/data/models/print_document.dart';
+import '../../../printing/presentation/widgets/print_actions_panel.dart';
 import '../../data/models/sales_mutation_results.dart';
 
 /// Ticket de abono tal como lo devolvió el servidor (`print.payload`).
 ///
-/// Los montos llegan formateados: se muestran tal cual. El envío por WhatsApp y
-/// la impresión se habilitan en la etapa de impresión.
+/// Los montos llegan formateados: se muestran tal cual. Desde aquí se imprime
+/// el ticket de la venta o se envía el abono por WhatsApp.
 class AbonoTicketView extends StatelessWidget {
   const AbonoTicketView({super.key, required this.receipt, required this.onDone});
 
   final AbonoReceipt receipt;
   final VoidCallback onDone;
+
+  /// El abono a una venta se imprime desde la venta; el abono general, desde la
+  /// ficha del cliente (mismo criterio que la web en `PrintModal`).
+  static PrintDocument _printDocument(AbonoReceipt receipt) {
+    final transactionId = receipt.transactionId;
+
+    if (transactionId != null && transactionId > 0) {
+      return PrintDocument.sale(
+        transactionId: transactionId,
+        title: 'Ticket de la venta abonada',
+        subtitle: receipt.ticket.folio,
+      );
+    }
+
+    return PrintDocument.customerAccount(
+      customerId: receipt.customerId ?? 0,
+      name: receipt.ticket.customer,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -106,12 +126,14 @@ class AbonoTicketView extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
-        const NoticeBanner(
-          message:
-              'El envío por WhatsApp y la impresión del ticket se habilitan en '
-              'la siguiente entrega de la app.',
-          tone: EzySeverity.info,
+        const SizedBox(height: 16),
+        SectionCard(
+          title: 'Ticket',
+          child: PrintActionsPanel(
+            document: _printDocument(receipt),
+            whatsAppTicket: receipt.ticket.toJson(),
+            whatsAppPhone: receipt.customerPhone,
+          ),
         ),
         const SizedBox(height: 16),
         EzyButton(label: 'Listo', onPressed: onDone),

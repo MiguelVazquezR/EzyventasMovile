@@ -86,6 +86,27 @@ class AbonoTicket {
   String? get totalLabel => saleTotal ?? total;
 
   bool get isOrderPayment => kind == 'order_payment';
+
+  /// Vuelve al JSON del servidor para construir el mensaje de WhatsApp con
+  /// exactamente los campos que envió (los montos ya vienen formateados).
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'kind': kind,
+    'scope': scope,
+    'businessName': businessName,
+    'date': date,
+    'customer': customer,
+    'folio': folio,
+    'saleTotal': saleTotal,
+    'total': total,
+    'previousDue': previousDue,
+    'abonado': abonado,
+    'remainingDue': remainingDue,
+    'liquidated': liquidated,
+    'estado': estado,
+    'expirationDate': expirationDate,
+    'paymentMethod': paymentMethod,
+    'finalMessage': finalMessage,
+  }..removeWhere((key, value) => value == null);
 }
 
 /// Ticket de WhatsApp que devuelve `POST /transactions/{id}/payments`.

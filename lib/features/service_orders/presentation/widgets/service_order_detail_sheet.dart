@@ -17,6 +17,7 @@ import 'service_order_amounts_card.dart';
 import 'service_order_customer_cards.dart';
 import 'service_order_diagnosis_sheet.dart';
 import 'service_order_items_card.dart';
+import 'service_order_print_bar.dart';
 import 'service_order_status_stepper.dart';
 
 /// Detalle completo de una orden: estatus, cliente, conceptos, evidencias,
@@ -101,6 +102,11 @@ class _ServiceOrderDetailSheetState
             ServiceOrderStatusStepper(status: detail.status),
             const SizedBox(height: 16),
             ServiceOrderActionBar(detail: detail),
+            const SizedBox(height: 12),
+            SectionCard(
+              title: 'Impresión',
+              child: ServiceOrderPrintBar(detail: detail),
+            ),
             const SizedBox(height: 16),
             ServiceOrderCustomerCard(
               detail: detail,

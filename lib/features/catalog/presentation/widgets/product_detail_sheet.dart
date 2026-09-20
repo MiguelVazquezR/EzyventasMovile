@@ -10,6 +10,8 @@ import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../pos/application/cart_controller.dart';
+import '../../../printing/data/models/print_document.dart';
+import '../../../printing/presentation/widgets/print_actions_panel.dart';
 import '../../application/catalog_providers.dart';
 import '../../data/models/product.dart';
 
@@ -135,6 +137,8 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
               variant: selected,
               onAdded: () => Navigator.of(context).maybePop(),
             ),
+          const SizedBox(height: 12),
+          _ProductLabelSection(product: product),
         ],
       ),
     );
@@ -152,6 +156,33 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
     }
 
     return product.variantCombinations.first;
+  }
+}
+
+/// Impresión de la etiqueta del producto (TSPL).
+///
+/// Se usa `POST /print/payload`: el servidor devuelve la operación con el
+/// comando TSPL completo y la app la envía a la impresora de etiquetas.
+class _ProductLabelSection extends StatelessWidget {
+  const _ProductLabelSection({required this.product});
+
+  final Product product;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      title: 'Etiqueta',
+      child: PrintActionsPanel(
+        document: PrintDocument.productLabel(
+          productId: product.id,
+          name: product.name,
+        ),
+        buttonLabel: 'Imprimir etiqueta',
+        showPrinterStatus: false,
+        // El servidor no arma tickets de WhatsApp para un producto.
+        showWhatsApp: false,
+      ),
+    );
   }
 }
 

@@ -6,15 +6,16 @@ import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_button.dart';
-import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../../core/widgets/status_badge.dart';
+import '../../../printing/data/models/print_document.dart';
+import '../../../printing/presentation/widgets/print_actions_panel.dart';
 import '../../data/models/checkout_result.dart';
 
 /// Resultado del cobro: folio real, totales, saldo pendiente y cambio.
 ///
 /// Se muestra dentro del carrito (los pagos y el apartado también terminan
-/// aquí) y su única acción es preparar la siguiente venta.
+/// aquí) y ofrece imprimir el ticket o enviarlo por WhatsApp.
 class SaleResultView extends StatelessWidget {
   const SaleResultView({super.key, required this.result, required this.onDone});
 
@@ -89,12 +90,18 @@ class SaleResultView extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 12),
-        const NoticeBanner(
-          message:
-              'La impresión del ticket y el envío por WhatsApp se habilitan en '
-              'la siguiente entrega de la app.',
-          tone: EzySeverity.info,
+        const SizedBox(height: 16),
+        SectionCard(
+          title: 'Ticket',
+          child: PrintActionsPanel(
+            document: PrintDocument.posCheckout(
+              transactionId: result.printHint.dataSourceId > 0
+                  ? result.printHint.dataSourceId
+                  : transaction.id,
+              templateIds: result.printHint.templateIds,
+              subtitle: transaction.folio,
+            ),
+          ),
         ),
         const SizedBox(height: 16),
         EzyButton(

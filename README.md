@@ -32,7 +32,10 @@ flutter build apk --release --dart-define=API_BASE_URL=https://app.ezyventas.com
 
 ```bash
 flutter analyze     # debe quedar sin issues
-flutter test        # 138 tests: dinero, errores, sesión, permisos, catálogo, caja, cobro, ventas y órdenes
+flutter test        # 194 tests: dinero, errores, sesión, permisos, catálogo, caja, cobro,
+                    # ventas, órdenes e impresión (CP850, ESC/POS del corte, plantillas,
+                    # ESC/POS/HTML/WhatsApp, filtro de plantillas por contexto y la hoja
+                    # de impresión en pantalla)
 ```
 
 Pruebas **reales** contra el servidor (no corren en `flutter test` normal):
@@ -92,6 +95,23 @@ flutter test test/live/api_smoke_test.dart \
   --dart-define=LIVE_API_PASSWORD=secreto \
   --dart-define=LIVE_SERVICE_ORDERS=true \
   --dart-define=LIVE_SERVICE_ORDERS_STOCK=true \
+  --plain-name "de servicio reales"
+
+# Etapa 6: plantillas, ticket ESC/POS, etiqueta TSPL, respaldo HTML y el texto
+# de WhatsApp de una venta real (solo lectura; no crea ni modifica datos)
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_PRINTING=true \
+  --plain-name "impresi"
+
+# Etapa 6 sobre una orden real: la etapa 5 crea la orden, la imprime (ESC/POS,
+# HTML y WhatsApp) y la borra al final
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_SERVICE_ORDERS=true \
+  --dart-define=LIVE_PRINTING=true \
   --plain-name "de servicio reales"
 ```
 
@@ -273,6 +293,39 @@ de una orden (`01-contrato-api-v1.md` §9).
   usan `services.orders.see_details`, `create`, `edit`, `change_status`, `delete` y
   `transactions.add_payment`, y la utilidad del panel financiero `services.orders.see_financial_info`.
 
+### Impresión, WhatsApp y corte (etapa 6)
+
+`features/printing/` concentra la selección de plantilla, la impresión, el respaldo y WhatsApp
+(`01-contrato-api-v1.md` §10). La app **nunca** dibuja ni interpreta una plantilla: pide al servidor
+el documento ya codificado.
+
+- **Plantillas** (`GET /print/templates`): se piden por **tipo** (`ticket_venta`, `etiqueta`) y se
+  cachean en memoria; el conjunto de **contextos** válidos lo aplica el documento (ver hallazgo 17).
+  La elegida se recuerda por tipo en el dispositivo, y cuando el cobro ya manda `print.template_ids`
+  la app respeta esos ids (`PrintDocument.posCheckout`).
+- **Hoja de impresión** (una sola, reutilizada en todos los flujos): estado de la impresora +
+  conectar/cambiar/olvidar, selector de plantilla, interruptor de **abrir cajón**, `Imprimir ticket`,
+  `Imprimir etiqueta` (TSPL, cuando el negocio tiene plantillas de etiqueta), `Ver respaldo HTML` y
+  `Enviar por WhatsApp`.
+- **Ticket** (`POST /print/bluetooth-payload`): `commands_base64` → `Uint8List` → bloques de 20 bytes.
+  Si la impresora se desconecta a media impresión se avisa y se permite reimprimir; el ticket **no**
+  se marca como impreso (no hay reimpresión automática).
+- **Etiquetas** (`POST /print/payload`): se envía el comando TSPL completo de la operación
+  `EscribirTexto`; si la plantilla trae imágenes que el teléfono no puede rasterizar, se avisa.
+- **Respaldo** (`POST /print/ticket-html`): se muestra el HTML del mismo documento para copiarlo.
+- **WhatsApp** (`POST /print/whatsapp-ticket`): el ticket lo arma el servidor y la app lo convierte al
+  **mismo texto que la web** (`WhatsAppMessageBuilder`, réplica de `useWhatsAppTicket.js` para
+  `sale`, `abono`, `order` y `order_payment`), abre una vista previa y lanza
+  `https://wa.me/{customer_phone}?text=…` (con el prefijo 52 en teléfonos de 10 dígitos); sin teléfono
+  abre `https://wa.me/?text=…` para elegir el contacto.
+- **Dónde se ofrece**: al cobrar (carrito), al abonar una venta o un pedido (con el ticket que devolvió
+  la operación), al **cerrar caja**, y desde el detalle de venta/pedido y de orden de servicio. El
+  detalle de producto ofrece `Imprimir etiqueta`.
+- **Corte de caja**: el ticket se arma en el teléfono (`CashCutRenderer` + `EscPosBuilder`, CP850,
+  corte parcial y apertura de cajón) con el `summary` que ya calculó el servidor: encabezado, periodo
+  del turno, efectivo, cobros por método, movimientos, bancos, total esperado, contado y diferencia
+  (ver hallazgo 20). También se puede enviar por WhatsApp como texto.
+
 ### Corrida real del 19 sep 2026 (evidencia)
 Contra `https://ezyventas2.test/api/v1`, con las dos cuentas.
 
@@ -335,6 +388,23 @@ Contra `https://ezyventas2.test/api/v1`, con `jean@apontephone.com` (ApontePhone
 | Borrado | `204` sin cuerpo y despues `GET` → `404` |
 | Corte de la sesión de prueba | `cerrada`, esperado `$0.00`, diferencia `$0.00` (la orden y su venta ya no existen) |
 
+### Corrida real del 20 sep 2026 — etapa 6 (evidencia)
+
+Contra `https://ezyventas2.test/api/v1` con `jean@apontephone.com` (propietario) y `daniel@apontephone.com`
+(empleado limitado). Solo lectura: los endpoints de impresión no modifican datos.
+
+| Prueba | Resultado |
+|---|---|
+| `GET /print/templates` | 7 plantillas de la suscripción: `#3`, `#7` `ticket_venta`/`general`; `#1`, `#5` `ticket_venta`/`service_order`; `#4` `etiqueta`/`product`; `#2`, `#6` `etiqueta`/`service_order` |
+| Selección de la app | Para una venta: `#3, #7` (conjunto `transaction`+`general`); para una orden: `#1, #5` (contexto `service_order`) |
+| `POST /print/bluetooth-payload` (venta 21, plantilla 3) | `531` bytes, inicio `[27, 64, 27, 97]` (`ESC @`, `ESC a` centrado) — mismos comandos que envía el teléfono |
+| `POST /print/bluetooth-payload` (orden 3, plantilla 3) | `535` bytes, inicio `[27, 64, 27, 97]` |
+| `POST /print/ticket-html` | Venta: `1853` caracteres; orden: `1849` caracteres |
+| `POST /print/whatsapp-ticket` (venta 21) | `ticket.kind=sale`, `customer_phone=null` → mensaje de `17` líneas que empieza con `» *TICKET DE VENTA* «` |
+| `POST /print/whatsapp-ticket` (`service_order` 3) | `200` con `ticket: null` (hallazgo 16); la app usa la venta vinculada (`23`) → `kind=sale` |
+| `POST /print/payload` (producto 6, plantilla 4) | `1` operación `EscribirTexto` con el TSPL completo (`SIZE 47 mm,28 mm … PRINT 1,1`), `noSoportadas=false` |
+| Empleado limitado (`daniel@apontephone.com`) | También lista plantillas y obtiene ESC/POS, HTML, TSPL y WhatsApp: el endpoint exige `pos.access` **o** `transactions.access` **o** `services.orders.access` |
+
 ### Errores
 `ApiException` conserva `message`, `errors` (por campo) y `code`. La UI muestra **siempre** el
 `message` del servidor; `code` solo decide el flujo (`cash_register_in_use`, `session_required`,
@@ -348,12 +418,27 @@ La tipografia es **Figtree** (fuente variable empaquetada en `assets/fonts`), as
 el eje `wght` con `FontWeight`. El cambio a claro se guarda en el almacenamiento seguro
 (`theme_mode`).
 
-### Impresora termica
-Se selecciona por Bluetooth con `flutter_blue_plus` y se recuerda el dispositivo; los bytes
-ESC/POS llegan ya en Base64 desde `/print/bluetooth-payload` y se envian en bloques de 20 bytes
-con 25 ms de pausa. **Aun no implementado**: la etapa de impresion (tickets, etiquetas, WhatsApp y
-el ticket del corte) llega en la etapa 6; por eso el cobro y el corte solo muestran el folio y los
-totales.
+### Impresora termica (etapa 6)
+`lib/core/printing/`:
+- `bluetooth_printer_service.dart`: conexión GATT con `flutter_blue_plus`, búsqueda de la
+  característica escribible (primero los servicios conocidos `0000af30…`, `49535343…`,
+  `00001101…`, y `writeWithoutResponse` antes de `write`), envío en **bloques de 20 bytes con 25 ms
+  de pausa** y aviso `Se perdió la conexión con la impresora.` si el enlace cae a media impresión.
+- `printer_preferences.dart`: guarda el identificador de la impresora y la plantilla elegida por
+  tipo. Se usa `flutter_secure_storage` porque el stack aprobado **no** incluye `shared_preferences`
+  y el almacén seguro ya estaba en la app (sesión y tema).
+- `esc_pos_builder.dart` + `cp850.dart`: encoder ESC/POS **local** con la página de códigos **CP850**
+  (la misma que usa `PrintEncoderService` en el servidor). Solo se usa para el **corte de caja**, el
+  único documento que la API no puede codificar (contrato §6.3); queda aislado para reutilizarlo en
+  la fase offline.
+
+> **Licencia de `flutter_blue_plus` (decisión de negocio).** La serie 2.x del paquete exige declarar
+> una licencia y, para empresas con fines de lucro, **comprar una licencia comercial**; su API además
+> obliga `device.connect(license: ...)`. Como EzyVentas es un producto comercial, el `pubspec.yaml`
+> fija la rama **1.35.x** (BSD-3, sin costo) —la API que se usa aquí es idéntica—. Si el negocio
+> compra la licencia 2.x, basta con subir la dependencia y añadir el argumento `license` en
+> `BluetoothPrinterService.connect`.
+
 
 ### Discrepancias y hallazgos (etapas 3 y 4)
 1. `POST /cash-register-sessions`: `01-contrato-api-v1.md` §6.1 documenta `user_id` como
@@ -425,6 +510,45 @@ totales.
     `YYYY-MM-DD` (medianoche local) para que la fecha mostrada sea la elegida por el usuario y no se
     corra un dia por la zona horaria.
 
+### Discrepancias y hallazgos (etapa 6)
+
+16. **`POST /print/whatsapp-ticket` no arma el ticket de una orden de servicio.** `PrintController::whatsappTicket`
+    resuelve el origen con `PrintDataSourceResolver` y, si **no** es una `Transaction`, responde `200`
+    con `ticket: null` (`customer_phone: null`). Evidencia real (`LIVE_SERVICE_ORDERS=true` + `LIVE_PRINTING=true`):
+    `[live] WhatsApp service_order=3 ticket=null telefono=sin telefono`. La app **sí** imprime la orden
+    (`service_order` funciona en `/print/bluetooth-payload` y `/print/ticket-html`) y, para WhatsApp,
+    ofrece el ticket de la **venta vinculada** de la orden cuando existe (`POST /print/whatsapp-ticket`
+    con `transaction`/`order` + el id de esa venta); si la orden no tiene venta, el botón se oculta y
+    se explica que se genera con “Cobrar ahora”. Además, el `kind` del ticket lo decide el servidor
+    según la transacción (`isOrder()`), no el `data_source_type`: la venta vinculada devuelve `kind=sale`.
+17. **`GET /print/templates` filtra por un solo `context`, pero la web usa conjuntos.** Los controladores
+    web piden las plantillas por `type` y **varios** contextos: `PointOfSaleController` → `pos` + `general`,
+    `TransactionController` → `transaction` + `general`, `ServiceOrderController` → `service_order`,
+    `ProductController` → `product` + `general`, `CustomerController` → `customer` + `general`. El endpoint
+    móvil solo acepta un `context` por llamada, así que la app pide todas las plantillas del **tipo**
+    (`GET /print/templates?type=…`) y aplica el conjunto de contextos en
+    `PrintDocument.selectTemplates` (y `selectLabelTemplates`). Evidencia real con la suscripción de
+    prueba (7 plantillas): los tickets son `general` (#3, #7) y `service_order` (#1, #5); la app
+    selecciona `#3, #7` para una venta y `#1, #5` para una orden. Si se pidiera `context=pos` (como
+    sugería el ejemplo del contrato) la lista llegaría **vacía** y el POS no podría imprimir.
+18. **`/print/payload` (etiquetas) devuelve operaciones del plugin de escritorio**, no bytes. En la
+    práctica la plantilla `etiqueta` produce **una sola** operación `EscribirTexto` cuyo argumento es el
+    comando **TSPL completo** (`SIZE`, `GAP`, `CLS`, `TEXT`, `BARCODE`, `QRCODE`, `PRINT 1,1`). La app
+    envía ese texto tal cual (UTF-8) a la impresora de etiquetas; las operaciones que no puede resolver
+    (p. ej. `DescargarImagenDeInternetEImprimir`) se reportan en `LabelPayload.hasUnsupportedOperations`
+    y se avisan, en lugar de imprimir una etiqueta incompleta en silencio.
+19. En la etiqueta real de la suscripción de prueba el `BARCODE` viaja con el valor **vacío**
+    (`BARCODE 23.97,89.43,"128",30,1,0,2,2,""`): es la plantilla configurada, no un campo que la app
+    invente. Se reimprime tal cual lo que devuelve el servidor (revisar la plantilla en la web si se
+    quiere un código con contenido).
+20. **El corte de caja no tiene endpoint de impresión** (`cash_register_session` no es un
+    `data_source_type` válido, contrato §6.3): el ticket se arma en el teléfono con el encoder ESC/POS
+    local y el texto de WhatsApp se compone con el mismo formato de los demás tickets. Si más adelante
+    se quiere plantilla del negocio para el corte, hay que añadir ese tipo en el backend.
+21. El respaldo HTML (`/print/ticket-html`) se muestra para copiarlo porque el stack aprobado no incluye
+    un paquete de compartir/PDF (`share_plus`, `printing`): generar el PDF o abrir la hoja de compartir
+    del sistema queda como pendiente si el negocio lo necesita.
+
 ---
 
 ## 4. Notas del entorno de desarrollo (Windows)
@@ -466,6 +590,7 @@ lib/
   - api/         dio, interceptores, ApiException (message/errors/code/details), endpoints, providers
   - auth/        SessionStore, PermissionsService, AppTab
   - config/      AppConfig (API_BASE_URL, timeouts, locale)
+  - printing/    BluetoothPrinterService, EscPosBuilder + Cp850, PrinterPreferences (etapa 6)
   - router/      go_router + StatefulShellRoute
   - theme/       Tesla UI: colores, tipografia, tema, severidades
   - utils/       Money, AppFormatters, JsonReader, SearchDebouncer, StatusCatalog, Uuid
@@ -482,5 +607,27 @@ lib/
   - service_orders/  pestana Ordenes: listado con filtros, stepper de estatus,
                  diagnostico con evidencias, alta y edicion (multipart), anticipos
                  y borrado (etapa 5)
+  - printing/    plantillas, impresion ESC/POS y TSPL, respaldo HTML, WhatsApp y
+                 el corte de caja en el dispositivo (etapa 6)
   - shell/       cascaron de 5 pestanas
 ```
+
+---
+
+## 6. Pendientes y limites de esta entrega
+
+1. **Impresora física.** El entorno de desarrollo no tiene impresora térmica Bluetooth: el recorrido
+   de bytes está verificado contra la API real (`531` bytes ESC/POS de una venta, `535` de una orden
+   y el TSPL completo de una etiqueta) y con pruebas unitarias del encoder, pero **falta la prueba en
+   un teléfono con impresora** (emparejar la térmica de 80 mm, imprimir el ticket, el corte y el pulso
+   del cajón, y cortar el enlace a media impresión para ver el aviso).
+2. **Etiquetas con imágenes.** `POST /print/payload` puede devolver
+   `DescargarImagenDeInternetEImprimir`; el teléfono no rasteriza imágenes para TSPL, así que la app
+   avisa y solo envía el texto/códigos de la plantilla.
+3. **Respaldo HTML.** Se muestra y se copia; generar el PDF o abrir la hoja de compartir del sistema
+   requiere un paquete fuera del stack aprobado (`share_plus`/`printing`).
+4. **Reimprimir un corte anterior.** El ticket del corte se ofrece al cerrar el turno (cuando la app
+   tiene el `summary` en memoria). No hay endpoint de impresión de un corte histórico.
+5. **Fase 5 (offline).** No implementada, como pide esta entrega: no hay base local, cola de
+   sincronización ni encoder ESC/POS de tickets automáticos. La capa de datos (repositorios/servicios)
+   y el encoder local del corte quedan aislados para añadirla sin reescribir la UI.

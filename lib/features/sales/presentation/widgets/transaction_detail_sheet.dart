@@ -14,6 +14,7 @@ import '../../data/models/transaction_detail.dart';
 import 'sales_labels.dart';
 import 'transaction_actions.dart';
 import 'transaction_payments_card.dart';
+import 'transaction_print_bar.dart';
 
 /// Detalle completo de una venta: ítems, pagos, totales y acciones.
 Future<void> showTransactionDetailSheet(
@@ -93,6 +94,11 @@ class _TransactionDetailSheetState
             ],
             const SizedBox(height: 16),
             TransactionActionBar(detail: detail),
+            const SizedBox(height: 12),
+            SectionCard(
+              title: 'Ticket',
+              child: TransactionPrintBar(detail: detail),
+            ),
             const SizedBox(height: 16),
             _ClientCard(detail: detail),
             const SizedBox(height: 12),

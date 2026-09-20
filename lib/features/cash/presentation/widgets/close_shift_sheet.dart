@@ -13,6 +13,9 @@ import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../../core/widgets/status_badge.dart';
+import '../../../printing/application/printing_providers.dart';
+import '../../../printing/application/printer_controller.dart';
+import '../../../printing/presentation/cash_cut_actions.dart';
 import '../../application/cash_register_controller.dart';
 import '../../data/models/cash_movement.dart';
 import '../../data/models/cash_session_summary.dart';
@@ -534,16 +537,19 @@ class _CashCountForm extends StatelessWidget {
   }
 }
 
-/// Resultado del corte: esperado, contado y diferencia.
-class _CloseResult extends StatelessWidget {
+/// Resultado del corte: esperado, contado y diferencia + impresión y WhatsApp.
+class _CloseResult extends ConsumerWidget {
   const _CloseResult({required this.result, required this.onDismiss});
 
   final CloseCashSessionResult result;
   final VoidCallback onDismiss;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final session = result.session;
+    final printer = ref.watch(printerControllerProvider);
+    final job = ref.watch(printJobProvider);
+    final surfaces = context.surfaces;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -585,12 +591,54 @@ class _CloseResult extends StatelessWidget {
             icon: Icons.check_circle_outline,
           ),
         ],
+        if (job.errorMessage != null) ...<Widget>[
+          const SizedBox(height: 12),
+          NoticeBanner(
+            message: job.errorMessage!,
+            actionLabel: 'Ocultar',
+            onAction: ref.read(printJobProvider.notifier).consumeError,
+          ),
+        ],
         const SizedBox(height: 12),
-        const NoticeBanner(
-          message:
-              'El ticket del corte se podrá imprimir o enviar por WhatsApp '
-              'cuando se habilite la impresión.',
-          tone: EzySeverity.info,
+        SectionCard(
+          title: 'Impresión del corte',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(
+                printer.statusLabel,
+                style: EzyTextStyles.body.copyWith(
+                  color: surfaces.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'El corte se arma en el teléfono porque la API no genera este '
+                'documento.',
+                style: EzyTextStyles.caption.copyWith(
+                  color: surfaces.textMuted,
+                ),
+              ),
+              const SizedBox(height: 16),
+              EzyButton(
+                label: 'Imprimir corte',
+                icon: Icons.print_outlined,
+                isLoading: job.isSubmitting,
+                onPressed: printer.isAdapterOn && !job.isBusy
+                    ? () => printCashCut(context, ref, result: result)
+                    : null,
+              ),
+              const SizedBox(height: 8),
+              EzyButton(
+                label: 'Enviar corte por WhatsApp',
+                icon: Icons.chat_outlined,
+                variant: EzyButtonVariant.outline,
+                onPressed: job.isBusy
+                    ? null
+                    : () => sendCashCutByWhatsApp(context, ref, result: result),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 16),
         EzyButton(label: 'Listo', onPressed: onDismiss),
@@ -598,3 +646,4 @@ class _CloseResult extends StatelessWidget {
     );
   }
 }
+
