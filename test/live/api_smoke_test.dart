@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:ezyventas_app/core/api/api_client.dart';
@@ -22,6 +23,13 @@ import 'package:ezyventas_app/features/sales/data/models/refund_method.dart';
 import 'package:ezyventas_app/features/sales/data/models/transaction_filters.dart';
 import 'package:ezyventas_app/features/sales/data/models/transaction_summary.dart';
 import 'package:ezyventas_app/features/sales/data/sales_repository.dart';
+import 'package:ezyventas_app/core/utils/evidence_image.dart';
+import 'package:ezyventas_app/features/service_orders/data/models/service_order_detail.dart';
+import 'package:ezyventas_app/features/service_orders/data/models/service_order_filters.dart';
+import 'package:ezyventas_app/features/service_orders/data/models/service_order_form.dart';
+import 'package:ezyventas_app/features/service_orders/data/models/service_order_item_draft.dart';
+import 'package:ezyventas_app/features/service_orders/data/models/service_order_status.dart';
+import 'package:ezyventas_app/features/service_orders/data/service_orders_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -89,6 +97,28 @@ const bool liveSalesWrite = bool.fromEnvironment('LIVE_SALES_WRITE');
 /// borra el pago, abona otra vez y lo cancela con reembolso en efectivo. Al
 /// terminar devuelve el stock y revierte la deuda del cliente.
 const bool liveSalesLayaway = bool.fromEnvironment('LIVE_SALES_LAYAWAY');
+
+/// Habilita la prueba real de la etapa 5 (órdenes de servicio). Escribe datos
+/// reales (orden, estatus, diagnóstico con foto, anticipo, edición y borrado),
+/// por eso está apagada por defecto: `LIVE_SERVICE_ORDERS=true`.
+const bool liveServiceOrders = bool.fromEnvironment('LIVE_SERVICE_ORDERS');
+
+/// Además del flujo sin stock, agrega una **refacción** (`App\Models\Product`)
+/// como concepto: el servidor descuenta stock y el borrado de la orden **no**
+/// lo devuelve (mismo comportamiento que la web).
+const bool liveServiceOrdersStock = bool.fromEnvironment(
+  'LIVE_SERVICE_ORDERS_STOCK',
+);
+
+/// JPEG 1×1 válido: se sube como evidencia inicial y de cierre para ejercitar
+/// el `multipart/form-data` real (el servidor exige que el archivo sea imagen).
+final Uint8List evidenceJpegBytes = base64Decode(
+  '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHR'
+  'ofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QA'
+  'FAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp'
+  '//2Q==',
+);
+
 
 void main() {
   final hasCredentials = liveEmail.isNotEmpty && livePassword.isNotEmpty;
@@ -225,6 +255,7 @@ void main() {
   liveCatalogTest();
   liveCashAndSaleTest();
   liveSalesTest();
+  liveServiceOrdersTest();
 }
 
 /// Verifica el catálogo y los clientes **reales** de la sucursal del token.
@@ -631,6 +662,443 @@ Future<ApiException> _capture(Future<Object?> Function() action) async {
     fail('Se esperaba un ApiException');
   } on ApiException catch (error) {
     return error;
+  }
+}
+
+/// Prueba de humo de la etapa 5 contra la API real: órdenes de servicio.
+///
+/// Con `LIVE_SERVICE_ORDERS=true` crea una orden **real** (sin cliente, para no
+/// dejar deuda en la base de datos), le cambia el estatus, guarda diagnóstico
+/// con una foto, registra un anticipo, la edita, prueba `ensure-transaction` y
+/// la elimina al final (el servidor borra su venta vinculada, por eso el corte
+/// de la sesión de prueba no la incluye).
+void liveServiceOrdersTest() {
+  test(
+    'órdenes de servicio reales (listado, alta con foto, estatus, diagnóstico, anticipo, edición y borrado)',
+    () async {
+      final store = _MemorySessionStore();
+      final api = ApiClient(baseUrl: liveBaseUrl, readToken: store.readToken);
+      final auth = AuthRepository(api: api, sessionStore: store);
+      final session = await auth.login(
+        email: liveEmail,
+        password: livePassword,
+      );
+
+      final permissions = PermissionsService.fromLists(
+        permissions: session.context.user.permissions,
+        moduleKeys: session.context.moduleKeys,
+      );
+
+      if (!permissions.can('services.orders.access')) {
+        debugPrint('[live] sin services.orders.access: se omite la prueba');
+        await auth.logout();
+        return;
+      }
+
+      final orders = ServiceOrdersRepository(api: api);
+
+      // 1) Listado con filtros y orden del contrato.
+      final page = await orders.fetchServiceOrders(perPage: 5);
+      debugPrint(
+        '[live] órdenes total=${page.total} '
+        'pagina=${page.currentPage}/${page.lastPage}',
+      );
+      for (final item in page.items) {
+        debugPrint(
+          '[live]   ${item.folio} ${item.statusLabel} '
+          '${item.customerLabel} · ${Money.format(item.finalTotal)} '
+          'saldo=${Money.format(item.amountDue)} '
+          'venta=${item.hasTransaction}',
+        );
+      }
+
+      final byStatus = await orders.fetchServiceOrders(
+        filters: const ServiceOrderFilters(status: 'terminado'),
+        perPage: 3,
+      );
+      expect(
+        byStatus.items.every((item) => item.status == 'terminado'),
+        isTrue,
+      );
+
+      final search = await orders.fetchServiceOrders(
+        filters: const ServiceOrderFilters(search: 'OS-'),
+        perPage: 3,
+      );
+      debugPrint('[live] búsqueda "OS-" total=${search.total}');
+
+      final promised = await orders.fetchServiceOrders(
+        filters: const ServiceOrderFilters(sort: ServiceOrderSort.promised),
+        perPage: 3,
+      );
+      debugPrint('[live] orden por promesa total=${promised.total}');
+
+      // 2) Orden de otra sucursal o inexistente: 404 con el message del servidor.
+      final missing = await _capture(() => orders.fetchServiceOrder(999999999));
+      debugPrint('[live] orden inexistente: ${missing.statusCode} ${missing.message}');
+      expect(missing.statusCode, 404);
+
+      if (!liveServiceOrders) {
+        debugPrint('[live] sin LIVE_SERVICE_ORDERS: solo lectura');
+        await auth.logout();
+        return;
+      }
+
+      await _liveServiceOrderRoundTrip(
+        orders: orders,
+        api: api,
+        auth: auth,
+        permissions: permissions,
+      );
+    },
+    skip: (liveEmail.isNotEmpty && livePassword.isNotEmpty)
+        ? false
+        : 'Requiere LIVE_API_EMAIL/LIVE_API_PASSWORD',
+    timeout: const Timeout(Duration(minutes: 4)),
+  );
+}
+
+/// Flujo completo de escritura de una orden de servicio (etapa 5).
+///
+/// No usa cliente (`customer_id: null`) para no dejar deuda en la base de datos
+/// y usa un servicio del catálogo como concepto: solo las refacciones
+/// (`App\Models\Product`/`ProductAttribute`) descuentan stock y el borrado de la
+/// orden no lo devuelve. Con `LIVE_SERVICE_ORDERS_STOCK=true` se agrega además
+/// una refacción (consume una pieza real).
+Future<void> _liveServiceOrderRoundTrip({
+  required ServiceOrdersRepository orders,
+  required ApiClient api,
+  required AuthRepository auth,
+  required PermissionsService permissions,
+}) async {
+  const needed = <String>[
+    'services.orders.create',
+    'services.orders.edit',
+    'services.orders.change_status',
+    'services.orders.delete',
+    'transactions.add_payment',
+    'pos.access',
+  ];
+  final missing = needed
+      .where((permission) => !permissions.can(permission))
+      .toList(growable: false);
+
+  if (missing.isNotEmpty) {
+    debugPrint('[live] sin permisos para la orden: ${missing.join(', ')}');
+    await auth.logout();
+    return;
+  }
+
+  // La orden exige una sesión de caja abierta de la sucursal.
+  final cash = CashRegisterRepository(api: api);
+  final current = await cash.fetchCurrent();
+  var openedHere = false;
+  var activeSession = current.activeSession;
+
+  if (activeSession == null) {
+    if (!current.canStartShift) {
+      debugPrint('[live] no hay terminal libre: no se crea la orden');
+      await auth.logout();
+      return;
+    }
+
+    activeSession = await cash.openSession(
+      cashRegisterId: current.availableCashRegisters.first.id,
+      openingCashBalance: 0,
+    );
+    openedHere = true;
+
+    debugPrint(
+      '[live] turno abierto para la orden id=${activeSession.id} '
+      'terminal=${activeSession.cashRegisterName}',
+    );
+
+    // La sesión de prueba se corta **siempre** (aunque el escenario falle), con
+    // el efectivo esperado del resumen para no dejar descuadre en la caja.
+    final sessionId = activeSession.id;
+
+    addTearDown(() async {
+      final summary = await cash.fetchSummary(sessionId);
+      final closed = await cash.closeSession(
+        sessionId: sessionId,
+        closingCashBalance: summary.expectedTotal,
+        notes: 'Corte de la prueba de humo de órdenes de servicio',
+      );
+
+      debugPrint(
+        '[live] corte de la sesión de prueba: estado=${closed.session.status} '
+        'esperado=${Money.format(closed.session.calculatedCashTotal)} '
+        'diferencia=${Money.format(closed.session.cashDifference)}',
+      );
+
+      expect(closed.session.status, 'cerrada');
+      await auth.logout();
+    });
+  }
+
+  // Concepto del catálogo: un servicio (no mueve stock).
+  final catalog = CatalogRepository(api: api);
+  final services = await catalog.fetchServices(perPage: 5);
+  final service = services.items.firstOrNull;
+
+  final items = <ServiceOrderItemDraft>[
+    if (service != null)
+      ServiceOrderItemDraft(
+        description: service.name,
+        quantity: 1,
+        unitPrice: service.lowestPrice > 0 ? service.lowestPrice : 300,
+        itemableType: service.hasVariants
+            ? ServiceOrderItemType.serviceVariant
+            : ServiceOrderItemType.service,
+        itemableId: service.hasVariants
+            ? service.variants.first.id
+            : service.id,
+      )
+    else
+      const ServiceOrderItemDraft(
+        description: 'Mano de obra (prueba de humo)',
+        quantity: 1,
+        unitPrice: 300,
+      ),
+  ];
+
+  if (liveServiceOrdersStock) {
+    final products = await catalog.fetchProducts(perPage: 20);
+    final product = products.items.where((item) => item.stock > 0).firstOrNull;
+
+    if (product != null) {
+      items.add(
+        ServiceOrderItemDraft(
+          description: 'Refacción de prueba: ${product.name}',
+          quantity: 1,
+          unitPrice: product.price,
+          itemableType: ServiceOrderItemType.product,
+          itemableId: product.id,
+        ),
+      );
+
+      debugPrint(
+        '[live] refacción agregada: ${product.name} '
+        'stock previo=${Money.formatQuantity(product.stock)}',
+      );
+    }
+  }
+
+  final evidence = <EvidenceImage>[
+    EvidenceImage.fromBytes(
+      fileName: 'recepcion-prueba.jpg',
+      bytes: evidenceJpegBytes,
+    ),
+  ];
+
+  final created = await orders.createServiceOrder(
+    sessionId: activeSession.id,
+    form: ServiceOrderFormData(
+      customerName: 'Público general (prueba app)',
+      itemDescription: 'Equipo de prueba de la app móvil',
+      reportedProblems: 'Fallas reportadas en la prueba de humo de la etapa 5',
+      promisedAt: DateTime.now().add(const Duration(days: 3)),
+      assignTechnician: true,
+      technicianName: 'Técnico de prueba',
+      commissionType: TechnicianCommissionType.percentage,
+      commissionValue: 20,
+      items: items,
+      evidence: evidence,
+    ),
+  );
+
+  final orderId = created.detail.id;
+
+  debugPrint(
+    '[live] orden creada ${created.message} folio=${created.detail.folio} '
+    'estatus=${created.detail.status} '
+    'total=${Money.format(created.detail.finalTotal)} '
+    'venta=${created.detail.transaction?.folio} '
+    'evidencias=${created.detail.initialEvidence.length} '
+    'comisión=${Money.format(created.detail.technicianCommission)}',
+  );
+
+  expect(created.detail.folio, startsWith('OS-'));
+  expect(created.detail.status, 'pendiente');
+  expect(created.detail.hasTransaction, isTrue);
+  expect(created.detail.transaction!.folio, startsWith('OS-V-'));
+  expect(created.detail.initialEvidence, isNotEmpty);
+  expect(created.detail.promisedAt, isNotNull);
+
+  // Detalle releído: mismos totales y misma venta vinculada.
+  final detail = await orders.fetchServiceOrder(orderId);
+
+  debugPrint(
+    '[live] detalle ${detail.folio} items=${detail.items.length} '
+    'saldo=${Money.format(detail.pendingAmount)} '
+    'actividades=${detail.activities.length} '
+    'campos=${detail.customFieldDefinitions.length}',
+  );
+
+  expect(detail.items.length, items.length);
+  expect(detail.pendingAmount, greaterThan(0));
+  expect(detail.activities, isNotEmpty);
+
+  // Cambio de estatus hacia adelante.
+  final advanced = await orders.updateStatus(
+    serviceOrderId: orderId,
+    status: ServiceOrderStatus.inProgress.value,
+  );
+
+  debugPrint('[live] estatus: ${advanced.message}');
+  expect(advanced.summary.status, 'en_progreso');
+
+  // Repetir el mismo estatus: `422` con el motivo en `errors.status[0]`.
+  final repeated = await _capture(
+    () => orders.updateStatus(
+      serviceOrderId: orderId,
+      status: ServiceOrderStatus.inProgress.value,
+    ),
+  );
+
+  debugPrint(
+    '[live] estatus repetido: ${repeated.statusCode} '
+    '${repeated.errorFor('status')}',
+  );
+  expect(repeated.statusCode, 422);
+  expect(repeated.errorFor('status'), isNotEmpty);
+
+  // Estatus inexistente: el mensaje viene en `errors.status[0]`.
+  final invalid = await _capture(
+    () => orders.updateStatus(serviceOrderId: orderId, status: 'en_el_taller'),
+  );
+
+  debugPrint(
+    '[live] estatus inválido: ${invalid.statusCode} '
+    '${invalid.errorFor('status')}',
+  );
+  expect(invalid.statusCode, 422);
+  expect(invalid.errorFor('status'), 'El estatus seleccionado no es válido.');
+
+  // Diagnóstico con evidencia de cierre (multipart).
+  final diagnosed = await orders.saveDiagnosis(
+    serviceOrderId: orderId,
+    diagnosis: 'Diagnóstico capturado desde la app (prueba de humo).',
+    images: <EvidenceImage>[
+      EvidenceImage.fromBytes(
+        fileName: 'cierre-prueba.jpg',
+        bytes: evidenceJpegBytes,
+      ),
+    ],
+  );
+
+  debugPrint(
+    '[live] diagnóstico: ${diagnosed.message} '
+    'texto="${diagnosed.detail.technicianDiagnosis}" '
+    'cierre=${diagnosed.detail.closingEvidence.length}',
+  );
+
+  expect(
+    diagnosed.detail.technicianDiagnosis,
+    'Diagnóstico capturado desde la app (prueba de humo).',
+  );
+  expect(diagnosed.detail.closingEvidence, isNotEmpty);
+
+  // Sin enviar el diagnóstico, el servidor conserva el texto anterior.
+  final preserved = await orders.saveDiagnosis(serviceOrderId: orderId);
+
+  debugPrint(
+    '[live] diagnóstico conservado: "${preserved.detail.technicianDiagnosis}" '
+    'cierre=${preserved.detail.closingEvidence.length}',
+  );
+
+  expect(
+    preserved.detail.technicianDiagnosis,
+    'Diagnóstico capturado desde la app (prueba de humo).',
+  );
+
+  // Anticipo de $10 en efectivo.
+  final payment = await orders.addPayment(
+    serviceOrderId: orderId,
+    sessionId: activeSession.id,
+    payments: <PaymentDraft>[
+      const PaymentDraft(method: PosPaymentMethod.cash, amount: 10),
+    ],
+  );
+
+  debugPrint(
+    '[live] anticipo: total=${Money.format(payment.detail.finalTotal)} '
+    'pagado=${Money.format(payment.detail.totalPaid)} '
+    'saldo=${Money.format(payment.detail.pendingAmount)} '
+    'venta=${payment.detail.transaction?.folio} '
+    'ticket=${payment.receipt?.ticket.abonado} '
+    'telefono=${payment.receipt?.customerPhone ?? "sin teléfono"}',
+  );
+
+  expect(payment.detail.totalPaid, 10);
+  expect(payment.receipt, isNotNull);
+  expect(payment.receipt!.ticket.liquidated, isFalse);
+
+  // Edición: cambia la descripción del equipo, el técnico y borra la evidencia
+  // inicial (`deleted_media_ids`).
+  final editForm = formDataFromDetail(payment.detail);
+
+  final updated = await orders.updateServiceOrder(
+    serviceOrderId: orderId,
+    form: ServiceOrderFormData(
+      customerId: editForm.customerId,
+      customerName: editForm.customerName,
+      customerEmail: editForm.customerEmail,
+      customerPhone: editForm.customerPhone,
+      addressStreet: editForm.addressStreet,
+      addressCity: editForm.addressCity,
+      itemDescription: 'Equipo de prueba (editado desde la app)',
+      reportedProblems: editForm.reportedProblems,
+      promisedAt: editForm.promisedAt,
+      assignTechnician: true,
+      technicianName: 'Técnico de prueba (editado)',
+      commissionType: TechnicianCommissionType.fixed,
+      commissionValue: 50,
+      items: editForm.items,
+      discountType: ServiceOrderDiscountType.fixed,
+      discountValue: editForm.discountValue,
+      customFields: editForm.customFields,
+      deletedMediaIds: <int>[
+        if (payment.detail.initialEvidence.isNotEmpty)
+          payment.detail.initialEvidence.first.id,
+      ],
+    ),
+  );
+
+  debugPrint(
+    '[live] orden editada: ${updated.message} '
+    'equipo="${updated.detail.itemDescription}" '
+    'técnico=${updated.detail.technicianName} '
+    'comisión=${Money.format(updated.detail.technicianCommission)} '
+    'evidencias iniciales=${updated.detail.initialEvidence.length}',
+  );
+
+  expect(
+    updated.detail.itemDescription,
+    'Equipo de prueba (editado desde la app)',
+  );
+  expect(updated.detail.technicianName, 'Técnico de prueba (editado)');
+  expect(updated.detail.technicianCommission, 50);
+  expect(updated.detail.initialEvidence, isEmpty);
+
+  // `ensure-transaction` con venta existente: devuelve la misma (sin duplicar).
+  final transactionId = await orders.ensureTransaction(orderId);
+
+  debugPrint('[live] ensure-transaction: $transactionId');
+  expect(transactionId, updated.detail.transaction!.id);
+
+  // Borrado con `204` sin cuerpo y `404` después.
+  await orders.deleteServiceOrder(orderId);
+
+  final gone = await _capture(() => orders.fetchServiceOrder(orderId));
+
+  debugPrint('[live] orden eliminada: ${gone.statusCode} ${gone.message}');
+  expect(gone.statusCode, 404);
+
+  // El corte de la sesión de prueba lo hace el `addTearDown` registrado arriba
+  // (se ejecuta aunque el escenario falle); aquí solo se cierra la sesión.
+  if (!openedHere) {
+    await auth.logout();
   }
 }
 

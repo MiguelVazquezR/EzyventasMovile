@@ -10,6 +10,7 @@ import '../../features/auth/presentation/splash_screen.dart';
 import '../../features/cash/presentation/cash_register_screen.dart';
 import '../../features/pos/presentation/point_of_sale_screen.dart';
 import '../../features/sales/presentation/sales_screen.dart';
+import '../../features/service_orders/presentation/service_order_form_screen.dart';
 import '../../features/service_orders/presentation/service_orders_screen.dart';
 import '../../features/shell/presentation/app_shell.dart';
 import '../auth/permissions_service.dart';
@@ -63,6 +64,18 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: loginPath,
         builder: (context, state) => const LoginScreen(),
       ),
+      GoRoute(
+        path: serviceOrderNewPath,
+        builder: (context, state) => const ServiceOrderFormScreen(),
+      ),
+      GoRoute(
+        path: serviceOrderEditRoute,
+        builder: (context, state) => ServiceOrderFormScreen(
+          serviceOrderId: int.tryParse(
+            state.pathParameters['serviceOrderId'] ?? '',
+          ),
+        ),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             AppShell(navigationShell: navigationShell),
@@ -88,6 +101,19 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 const String splashPath = '/splash';
 const String loginPath = '/login';
+
+/// Ruta de la pestaña de órdenes de servicio (`AppTab.serviceOrders`).
+const String serviceOrdersPath = '/service-orders';
+
+/// Alta de una orden (pantalla completa, fuera del cascarón de pestañas).
+const String serviceOrderNewPath = '/service-orders/new';
+
+/// Edición de una orden existente.
+const String serviceOrderEditRoute = '/service-orders/:serviceOrderId/edit';
+
+/// Ruta de edición de una orden concreta.
+String serviceOrderEditPath(int serviceOrderId) =>
+    '/service-orders/$serviceOrderId/edit';
 
 StatefulShellBranch _branch(AppTab tab, Widget screen) {
   return StatefulShellBranch(

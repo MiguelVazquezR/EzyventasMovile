@@ -32,7 +32,7 @@ flutter build apk --release --dart-define=API_BASE_URL=https://app.ezyventas.com
 
 ```bash
 flutter analyze     # debe quedar sin issues
-flutter test        # 104 tests: dinero, errores, sesión, permisos, catálogo, caja, cobro y ventas
+flutter test        # 134 tests: dinero, errores, sesión, permisos, catálogo, caja, cobro, ventas y órdenes
 ```
 
 Pruebas **reales** contra el servidor (no corren en `flutter test` normal):
@@ -69,6 +69,30 @@ flutter test test/live/api_smoke_test.dart \
   --dart-define=LIVE_API_PASSWORD=secreto \
   --dart-define=LIVE_SALES=true \
   --dart-define=LIVE_SALES_LAYAWAY=true
+
+# Etapa 5: órdenes de servicio (solo lectura del listado y los filtros)
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --plain-name "de servicio reales"
+
+# Etapa 5 completa: crea una orden con foto, cambia estatus, guarda el
+# diagnóstico con evidencia, cobra un anticipo de $10, la edita, prueba
+# ensure-transaction y la BORRA al final (deja la base de datos limpia)
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_SERVICE_ORDERS=true \
+  --plain-name "de servicio reales"
+
+# Etapa 5 con refacción: además agrega un producto como concepto (descuenta
+# stock real y el borrado de la orden NO lo devuelve, igual que la web)
+flutter test test/live/api_smoke_test.dart \
+  --dart-define=LIVE_API_EMAIL=usuario@negocio.com \
+  --dart-define=LIVE_API_PASSWORD=secreto \
+  --dart-define=LIVE_SERVICE_ORDERS=true \
+  --dart-define=LIVE_SERVICE_ORDERS_STOCK=true \
+  --plain-name "de servicio reales"
 ```
 
 > El login de la API tiene *rate limit*: si aparece `429 Demasiadas solicitudes. Espera un momento e
@@ -81,13 +105,18 @@ flutter test test/live/api_smoke_test.dart \
 
 | Rol | Cuenta usada | Uso |
 |---|---|---|
-| Propietario de negocio (usuario **sin roles**) | `jean@apontephone.com` (pendiente de contrasena) | Flujo completo: todas las pestanas |
-| Empleado con permisos limitados | `ofelia@stilos.com` (Stilos boutique · Tizapan) | Valida `403`, pestanas ocultas y el flujo de caja/ventas sin ser propietaria |
+| Propietario de negocio (usuario **sin roles**) | `jean@apontephone.com` | Flujo completo: todas las pestañas |
+| Empleado con permisos limitados | `ofelia@stilos.com` (Stilos boutique · Tizapan) | Valida `403`, pestañas ocultas y el flujo de caja/ventas sin ser propietaria |
+| Empleado del mismo negocio | `daniel@apontephone.com` (ApontePhone · Melchor Ocampo) | Sin `system.branches.switch`, sin `settings.*`, sin `dashboard.*` ni `financial_reports.access`; **sí** tiene todos los `services.orders.*` |
 
 `ofelia@stilos.com` tiene `pos.*`, `cash_registers.*` y `transactions.*` (incluye `add_payment`,
 `edit_payment`, `cancel`, `refund`), pero **no** `services.orders.access` ni
-`system.branches.switch`: sus pestanas son **Vender, Caja, Ventas y Cuenta** (sin Ordenes y sin
+`system.branches.switch`: sus pestañas son **Vender, Caja, Ventas y Cuenta** (sin Órdenes y sin
 selector de sucursal), y `GET /service-orders` responde `403`.
+
+`daniel@apontephone.com` **no** sirve para validar el `403` de las órdenes (tiene
+`services.orders.access`): sirve para verificar que un usuario sin `system.branches.switch` no ve el
+selector de sucursal y que sus pestañas excluyen lo que no le toca (`settings.*`, reportes).
 
 Las contrasenas **no** se guardan en el repositorio: se capturan en la pantalla de login o se pasan
 por `--dart-define`. **Nunca** se usa `ezyventas@gmail.com` (superadmin id 1) para validar
@@ -201,6 +230,49 @@ inventa la app:
 - Las acciones se muestran segun el permiso y el estatus: con la venta `cancelado`/`reembolsado`
   no hay abonos, ni cancelacion, ni edicion de pagos (misma regla que la web).
 
+### Órdenes de servicio (etapa 5)
+`features/service_orders/` cubre la lista de trabajo del taller, el detalle y todas las escrituras
+de una orden (`01-contrato-api-v1.md` §9).
+
+- **Listado** (`GET /service-orders`): buscador (folio, cliente o equipo), chips con los 6 estatus,
+  orden (`received_at`, `promised_at`, `folio`, `final_total`) y paginacion infinita de 20 en 20.
+  Cada tarjeta muestra folio, estatus, cliente, equipo, tecnico, la promesa de entrega (en rojo si ya
+  vencio) y el saldo pendiente.
+- **Detalle** (`GET /service-orders/{id}`): hoja con el **stepper** de 5 pasos (círculos de 46 px,
+  halo en el paso actual, check en los cumplidos y banda roja si esta cancelada), cliente y equipo,
+  fallas reportadas, diagnostico, conceptos (mano de obra vs. refaccion), panel financiero
+  (`subtotal`, descuento, total, pagado, saldo) y, solo con `services.orders.see_financial_info`,
+  refacciones, comision del tecnico y utilidad neta (§8.5). Ademas: anticipos de la venta vinculada
+  (`OS-V-###`), evidencias de recepcion y de cierre, campos personalizados e historial (ultimos 20).
+- **Cambio de estatus** (`PATCH .../status`): el stepper ofrece avanzar (permiso
+  `services.orders.change_status`) y regresar (permiso `services.orders.edit` + confirmacion
+  explicita) o cancelar. Un `422` se muestra con el texto real de **`errors.status[0]`** (estatus
+  repetido o invalido), que es lo que pide el contrato. Al pasar a `entregado` con saldo pendiente la
+  app abre el cobro (§8.2).
+- **Diagnóstico** (`POST .../diagnosis`, multipart): texto (max. 1000) + hasta 5 fotos por peticion.
+  Las fotos se comprimen antes de subir (libre de `image_picker` + `flutter_image_compress` en
+  `core/utils/evidence_image.dart`: 1600 px y calidad descendente hasta bajar de 2 MB). Enviar el
+  campo vacio **borra** el diagnostico previo; no enviarlo lo **conserva** (la hoja avisa de ambas
+  cosas y no manda el campo si el usuario no lo toca).
+- **Alta y edición** (`POST` / `PUT`, multipart): pantalla completa (`/service-orders/new` y
+  `/service-orders/{id}/edit`) con cliente (buscar, capturar a mano o `create_customer` +
+  `credit_limit`), equipo, fallas, promesa de entrega (`YYYY-MM-DD`), conceptos (servicios o
+  variantes del catalogo, refacciones o concepto libre), descuento fijo o porcentual, tecnico con
+  comision (`percentage`/`fixed`), hasta 5 fotos y, al editar, borrado de evidencias existentes
+  (`deleted_media_ids`) y los campos personalizados que devuelve el detalle.
+  El cuerpo viaja como **multipart** cuando hay fotos y como **JSON** cuando no las hay, para no
+  convertir a texto los numeros ni los booleanos (`multipart/form-data` exige `1`/`0` en los
+  booleanos porque Laravel no acepta la cadena `"true"`).
+- **Anticipos** (`POST .../payments`): mismo flujo que el abono de una venta (pago mixto y saldo a
+  favor) contra la orden; el servidor resuelve o crea la venta vinculada. Con `transactions.add_payment`
+  y turno abierto. Si la orden no tiene venta (`transaction: null`), \"Cobrar ahora\" llama primero a
+  `POST .../ensure-transaction`.
+- **Borrado** (`DELETE`, `204`): confirmacion explicita (\"Esta accion no se puede deshacer: se
+  eliminara la orden y su venta vinculada.\"); al terminar se cierra la hoja y se refresca la lista.
+- Permisos: la pestaña exige `services.orders.access` + `module_services`; las acciones de la hoja
+  usan `services.orders.see_details`, `create`, `edit`, `change_status`, `delete` y
+  `transactions.add_payment`, y la utilidad del panel financiero `services.orders.see_financial_info`.
+
 ### Corrida real del 19 sep 2026 (evidencia)
 Contra `https://ezyventas2.test/api/v1`, con las dos cuentas.
 
@@ -240,6 +312,28 @@ Datos que dejaron esas corridas en la base de pruebas (residuo **de las pruebas*
   cliente `Juanito P`; el stock de `Pantalon` quedo intacto.
 - `Juanito P` quedo con **+$2.00 de saldo a favor** por el hallazgo 8 (una corrida deja `$1`). Se
   ajusta desde la web (*Clientes → ficha → ajustar saldo*); no hay ruta de ajuste en `/api/v1`.
+
+### Corrida real del 20 sep 2026 — etapa 5 (evidencia)
+
+Contra `https://ezyventas2.test/api/v1`, con `jean@apontephone.com` (ApontePhone · `Melchor Ocampo`),
+`LIVE_SERVICE_ORDERS=true` (la salida real de la prueba, resumida):
+
+| Paso | Resultado |
+|---|---|
+| Listado sin ordenes | `total=0`; filtros `status=terminado`, `search=OS-` y `sortField=promised_at` sin error |
+| Orden inexistente | `404` → "Recurso no encontrado." |
+| Turno de caja | Abierto por la prueba (terminal `Caja principal`, fondo `$0.00`) |
+| **Alta con foto** | `OS-001` · estatus `pendiente` · total `$300.00` · venta vinculada `OS-V-001` · `evidencias=1` · comision `$60.00` (20 % de `$300`) |
+| Detalle | `items=1`, `saldo=$300.00`, `actividades=1`, `campos=0` (la sucursal no tiene campos personalizados) |
+| Estatus | \"Estatus de la orden actualizado correctamente.\" → `en_progreso` |
+| Estatus repetido | `422` → **`errors.status[0]` = "El estatus ya es el seleccionado."** |
+| Estatus invalido | `422` → **`errors.status[0]` = "El estatus seleccionado no es válido."** |
+| Diagnóstico + foto | `cierre=1` y el texto guardado; una segunda llamada **sin** el campo conservo el diagnostico |
+| Anticipo `$10` | `pagado=$10.00`, `saldo=$290.00`, ticket `abonado=$10.00 MXN` (sin telefono: la orden no tiene cliente) |
+| Edición | Equipo, tecnico y comision fija `$50.00` actualizados; la evidencia inicial se borro (`evidencias iniciales=0`) |
+| `ensure-transaction` | Devuelve la **misma** venta (`22`), sin duplicar |
+| Borrado | `204` sin cuerpo y despues `GET` → `404` |
+| Corte de la sesión de prueba | `cerrada`, esperado `$0.00`, diferencia `$0.00` (la orden y su venta ya no existen) |
 
 ### Errores
 `ApiException` conserva `message`, `errors` (por campo) y `code`. La UI muestra **siempre** el
@@ -310,6 +404,26 @@ totales.
     prueba: el cliente tenia $1 a favor y el servidor lo uso). El contrato §7.3 lo describe como una
     accion explicita del cajero; la app ya envia `use_balance` y el ticket de abono muestra lo que el
     servidor aplico de verdad.
+11. `POST /service-orders` exige `create_customer` **siempre** (`required|boolean`), tambien cuando se
+    elige un cliente existente; el contrato §9 lo marca como \"required boolean\" pero el ejemplo de
+    `curl` **no** lo envia, y el `422` responde \"El campo create customer es obligatorio.\". La app lo
+    manda en **todas** las altas (`true`/`false`; en multipart `1`/`0` porque Laravel no acepta la
+    cadena `"true"` en un campo de formulario). Detectado por la prueba real contra la API.
+12. El `message` del cambio de estatus es \"Estatus de la orden actualizado correctamente.\", no el
+    \"Estatus actualizado a “Terminado”.\" que ilustra el contrato §9. La app muestra el `message` del
+    servidor tal cual (nunca compone el texto) y, para el `422`, prioriza `errors.status[0]`.
+13. `DeleteServiceOrderAction` borra la orden **y su venta vinculada**, pero **no** revierte el stock
+    de las refacciones ni la deuda que genero en el cliente (`addDebt` en el alta). La app avisa que
+    la accion no se puede deshacer; el desfase de stock/saldo es del backend (misma logica que la
+    web). Por eso la prueba de humo usa un **servicio** como concepto y una orden **sin cliente**, y
+    solo consume stock real con `LIVE_SERVICE_ORDERS_STOCK=true`.
+14. `custom_field_definitions` solo viaja dentro del detalle de una orden
+    (`GET /service-orders/{id}`): no hay endpoint que liste las definiciones antes de crear una. La
+    app puede capturar y editar campos personalizados en la **edicion** (donde ya conoce las
+    definiciones), pero en el **alta** no tiene como dibujarlos; no se inventan campos.
+15. `promised_at` es una fecha con hora en el backend (`America/Mexico_City`): la app la envia como
+    `YYYY-MM-DD` (medianoche local) para que la fecha mostrada sea la elegida por el usuario y no se
+    corra un dia por la zona horaria.
 
 ---
 
@@ -365,6 +479,8 @@ lib/
   - pos/         pestana Vender: carrito, cobro, apartado y pedido (etapa 3)
   - sales/       pestana Ventas: historial con filtros, detalle, abono, anulacion y
                  edicion de pagos (etapa 4)
-  - service_orders/
+  - service_orders/  pestana Ordenes: listado con filtros, stepper de estatus,
+                 diagnostico con evidencias, alta y edicion (multipart), anticipos
+                 y borrado (etapa 5)
   - shell/       cascaron de 5 pestanas
 ```
