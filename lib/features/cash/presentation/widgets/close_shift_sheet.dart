@@ -6,7 +6,9 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/money_field.dart';
 import '../../../../core/widgets/notice_banner.dart';
@@ -32,10 +34,8 @@ Future<void> showCloseShiftSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (sheetContext) => _CloseShiftSheet(
-      sessionId: sessionId,
-      usersCount: usersCount,
-    ),
+    builder: (sheetContext) =>
+        _CloseShiftSheet(sessionId: sessionId, usersCount: usersCount),
   );
 }
 
@@ -68,7 +68,6 @@ class _CloseShiftSheetState extends ConsumerState<_CloseShiftSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
     final state = ref.watch(cashRegisterControllerProvider);
 
     return DraggableScrollableSheet(
@@ -79,19 +78,15 @@ class _CloseShiftSheetState extends ConsumerState<_CloseShiftSheet> {
         controller: scrollController,
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
-          const SizedBox(height: 8),
-          Text(
-            _title,
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: _title,
+            subtitle: _subtitle,
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _subtitle,
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
           if (state.lastClose != null)
@@ -105,7 +100,7 @@ class _CloseShiftSheetState extends ConsumerState<_CloseShiftSheet> {
               },
             )
           else
-            ..._body(state, surfaces),
+            ..._body(state),
         ],
       ),
     );
@@ -123,7 +118,7 @@ class _CloseShiftSheetState extends ConsumerState<_CloseShiftSheet> {
     _CloseStep.count => 'Cuenta el efectivo físico de la caja.',
   };
 
-  List<Widget> _body(CashRegisterState state, EzySurfaces surfaces) {
+  List<Widget> _body(CashRegisterState state) {
     final summary = ref.watch(cashSummaryProvider(widget.sessionId));
 
     return <Widget>[
@@ -133,8 +128,9 @@ class _CloseShiftSheetState extends ConsumerState<_CloseShiftSheet> {
           child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
         ),
         error: (error, stackTrace) => ErrorNotice(
-          message:
-              error is ApiException ? error.message : 'No se pudo leer el turno.',
+          message: error is ApiException
+              ? error.message
+              : 'No se pudo leer el turno.',
           onRetry: () => ref.invalidate(cashSummaryProvider(widget.sessionId)),
         ),
         data: (data) => Column(
@@ -274,10 +270,7 @@ class _ShiftReview extends StatelessWidget {
                 value: AppFormatters.dateTime(summary.session.openedAt),
               ),
               if (summary.session.opener != null)
-                SectionRow(
-                  label: 'Abrió',
-                  value: summary.session.opener!.name,
-                ),
+                SectionRow(label: 'Abrió', value: summary.session.opener!.name),
               SectionRow(
                 label: 'Usuarios en la sesión',
                 value: '${summary.session.users.length}',
@@ -365,6 +358,7 @@ class _ShiftReview extends StatelessWidget {
     );
   }
 }
+
 /// Movimientos manuales de efectivo del turno (solo lectura en la app).
 class _MovementsCard extends StatelessWidget {
   const _MovementsCard({required this.movements});
@@ -460,7 +454,6 @@ class _BankAccountsCard extends StatelessWidget {
     );
   }
 }
-
 
 /// Arqueo: efectivo contado, diferencia en vivo y notas.
 class _CashCountForm extends StatelessWidget {
@@ -659,4 +652,3 @@ class _CloseResult extends ConsumerWidget {
     );
   }
 }
-

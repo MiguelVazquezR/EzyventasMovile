@@ -3,6 +3,7 @@ import 'package:ezyventas_app/core/auth/session_store.dart';
 import 'package:ezyventas_app/core/storage/local_cache.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
 import 'package:ezyventas_app/core/widgets/ezy_button.dart';
+import 'package:ezyventas_app/core/widgets/ezy_list_tile.dart';
 import 'package:ezyventas_app/features/account/application/account_providers.dart';
 import 'package:ezyventas_app/features/account/data/account_repository.dart';
 import 'package:ezyventas_app/features/account/data/models/branch_switch_result.dart';
@@ -43,9 +44,8 @@ class _FakeAccountRepository extends AccountRepository {
       SubscriptionOverview.fromJson(subscriptionFixture());
 
   @override
-  Future<UserProfile> fetchProfile() async => UserProfile.fromJson(
-    profileFixture()['user']! as Map<String, dynamic>,
-  );
+  Future<UserProfile> fetchProfile() async =>
+      UserProfile.fromJson(profileFixture()['user']! as Map<String, dynamic>);
 
   @override
   Future<BranchSwitchResult> switchBranch(int branchId) async =>
@@ -142,9 +142,8 @@ GoRouter _router() => GoRouter(
     ])
       GoRoute(
         path: path,
-        builder: (context, state) => Scaffold(
-          body: Center(child: Text('destino $path')),
-        ),
+        builder: (context, state) =>
+            Scaffold(body: Center(child: Text('destino $path'))),
       ),
   ],
 );
@@ -166,10 +165,7 @@ Widget _wrap({
         ),
       ),
     ],
-    child: MaterialApp.router(
-      theme: EzyTheme.dark(),
-      routerConfig: _router(),
-    ),
+    child: MaterialApp.router(theme: EzyTheme.dark(), routerConfig: _router()),
   );
 }
 
@@ -226,7 +222,10 @@ void main() {
       findsNothing,
       reason: 'sin system.branches.switch no se ofrece el cambio',
     );
-    expect(find.text('Tu usuario no puede cambiar de sucursal.'), findsOneWidget);
+    expect(
+      find.text('Tu usuario no puede cambiar de sucursal.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('cerrar sesión pide confirmación con el texto aprobado', (
@@ -266,6 +265,33 @@ void main() {
     expect(find.text('Mi cuenta'), findsOneWidget);
   });
 
+  testWidgets('el menú usa las filas del sistema con el badge del servidor', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        isOwner: true,
+        permissions: <String>['pos.access'],
+        counters: NotificationCounters.fromJson(notificationsFixture()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Cuatro opciones en una sola lista del sistema (antes cada fila era una
+    // tarjeta propia con su propio `InkWell`).
+    expect(find.byType(EzyListTile), findsNWidgets(4));
+
+    final notifications = tester.widget<EzyListTile>(
+      find.widgetWithText(EzyListTile, 'Notificaciones'),
+    );
+
+    expect(
+      notifications.badgeCount,
+      11,
+      reason: 'el total lo calcula el servidor (GET /notifications)',
+    );
+  });
+
   testWidgets('el aviso de suscripción por vencer viene del servidor', (
     tester,
   ) async {
@@ -276,7 +302,9 @@ void main() {
 
     // El fixture está "Activa" y sin warning: no hay banner ámbar.
     expect(
-      find.text('Tu suscripción vence en 4 día(s). Renuévala para no perder acceso.'),
+      find.text(
+        'Tu suscripción vence en 4 día(s). Renuévala para no perder acceso.',
+      ),
       findsNothing,
     );
   });

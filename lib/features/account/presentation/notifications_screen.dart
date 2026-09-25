@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/permissions_service.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/status_palette.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/ezy_list_tile.dart';
 import '../../../core/widgets/notice_banner.dart';
+import '../../../core/widgets/section_card.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../sales/application/sales_controller.dart';
 import '../../sales/presentation/widgets/sales_labels.dart';
@@ -29,6 +29,7 @@ class NotificationsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(notificationsControllerProvider);
     final controller = ref.read(notificationsControllerProvider.notifier);
+    final categories = state.counters.visibleCategories;
 
     return AccountScaffold(
       title: AccountLabels.notificationsTitle,
@@ -37,7 +38,10 @@ class NotificationsScreen extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: <Widget>[
           if (state.errorMessage != null) ...<Widget>[
-            ErrorNotice(message: state.errorMessage!, onRetry: controller.refresh),
+            ErrorNotice(
+              message: state.errorMessage!,
+              onRetry: controller.refresh,
+            ),
             const SizedBox(height: 12),
           ],
           if (state.hasCachedValue) ...<Widget>[
@@ -58,15 +62,20 @@ class NotificationsScreen extends ConsumerWidget {
               title: AccountLabels.notificationsEmpty,
             )
           else
-            for (final category in state.counters.visibleCategories)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _CategoryCard(
-                  category: category,
-                  count: state.countFor(category),
-                  onTap: () => _openCategory(context, ref, category),
-                ),
+            SectionCard(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(
+                children: <Widget>[
+                  for (int i = 0; i < categories.length; i++)
+                    _CategoryRow(
+                      category: categories[i],
+                      count: state.countFor(categories[i]),
+                      showDivider: i < categories.length - 1,
+                      onTap: () => _openCategory(context, ref, categories[i]),
+                    ),
+                ],
               ),
+            ),
         ],
       ),
     );
@@ -104,100 +113,48 @@ class NotificationsScreen extends ConsumerWidget {
   }
 }
 
-
-/// Tarjeta de una categoría de avisos.
-class _CategoryCard extends StatelessWidget {
-  const _CategoryCard({
+/// Fila de una categoría de avisos, con el conteo del servidor como badge.
+class _CategoryRow extends StatelessWidget {
+  const _CategoryRow({
     required this.category,
     required this.count,
+    required this.showDivider,
     required this.onTap,
   });
 
   final NotificationCategory category;
   final int count;
+  final bool showDivider;
 
   /// `null` cuando no hay pantalla equivalente en la app: la fila se explica.
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
     final hasItems = count > 0;
-    final severity = hasItems ? EzySeverity.info : EzySeverity.neutral;
-    final color = hasItems
-        ? StatusPalette.text(context, severity)
-        : surfaces.textSecondary;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: surfaces.panel,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: surfaces.border),
-      ),
-      child: InkWell(
-        onTap: hasItems ? onTap : null,
-        borderRadius: BorderRadius.circular(24),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: StatusPalette.soft(severity),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: StatusPalette.border(severity)),
-                ),
-                child: Text(
-                  '$count',
-                  style: EzyTextStyles.moneyList.copyWith(color: color),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      category.label,
-                      style: EzyTextStyles.bodyStrong.copyWith(
-                        color: surfaces.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _description,
-                      style: EzyTextStyles.caption.copyWith(
-                        color: surfaces.textSecondary,
-                      ),
-                    ),
-                    if (onTap == null && hasItems) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Text(
-                        _futureAction ?? '',
-                        style: EzyTextStyles.caption.copyWith(
-                          color: surfaces.textMuted,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (onTap != null && hasItems)
-                Icon(
-                  Icons.chevron_right,
-                  size: 20,
-                  color: surfaces.textMuted,
-                ),
-            ],
-          ),
-        ),
-      ),
+    return EzyListTile(
+      icon: _icon,
+      title: category.label,
+      subtitle: _subtitle,
+      badgeCount: count,
+      showDivider: showDivider,
+      onTap: hasItems ? onTap : null,
     );
   }
+
+  IconData get _icon => switch (category) {
+    NotificationCategory.expiringDebts => Icons.schedule_outlined,
+    NotificationCategory.upcomingDeliveries => Icons.local_shipping_outlined,
+    NotificationCategory.unreadUpdates => Icons.campaign_outlined,
+    NotificationCategory.pendingOrders => Icons.shopping_bag_outlined,
+  };
+
+  /// Descripción del contador y, si no hay pantalla equivalente, la explicación.
+  String get _subtitle => <String>[
+    _description,
+    if (onTap == null && count > 0) _futureAction ?? '',
+  ].where((line) => line.isNotEmpty).join(' ');
 
   String get _description => onTap == null && count > 0
       ? (_futureAction ?? category.description)

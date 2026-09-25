@@ -61,7 +61,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
@@ -264,18 +263,17 @@ class _WebsiteLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextButton.icon(
+    return EzyButton(
+      label: AppConfig.websiteUrl.replaceFirst('https://', ''),
+      icon: Icons.open_in_new,
+      variant: EzyButtonVariant.text,
+      textColor: surfaces.textSecondary,
+      expand: false,
       onPressed: () => ExternalLinks.open(
         context,
         AppConfig.webLoginUrl,
         failureMessage: 'No se pudo abrir el navegador en este teléfono.',
       ),
-      icon: const Icon(Icons.open_in_new, size: 16),
-      label: Text(
-        AppConfig.websiteUrl.replaceFirst('https://', ''),
-        style: EzyTextStyles.button.copyWith(color: surfaces.textSecondary),
-      ),
-      style: TextButton.styleFrom(foregroundColor: surfaces.textSecondary),
     );
   }
 }

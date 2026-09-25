@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import '../theme/status_palette.dart';
 
 /// Chip pill del design system: radio 999 y borde de 1 px (§3, §12, §14).
 ///
-/// Se usa para estatus de ventas, filtros y accesos rápidos. El estado
+/// Se usa para estatus de ventas, filtros, accesos rápidos y las etiquetas de
+/// un dato (sucursal, propietario, correo sin verificar). El estado
 /// seleccionado es el único que lleva el naranja de marca, y el naranja solo
-/// aparece ahí (§23.11).
+/// aparece ahí (§23.11); con [tone] manda el color del estatus.
 class EzyChip extends StatelessWidget {
   const EzyChip({
     super.key,
@@ -17,6 +19,8 @@ class EzyChip extends StatelessWidget {
     this.icon,
     this.count,
     this.compact = false,
+    this.tone,
+    this.inner = false,
   });
 
   final String label;
@@ -30,10 +34,22 @@ class EzyChip extends StatelessWidget {
   /// 32 px en lugar de 36 px: para barras de filtros densas.
   final bool compact;
 
+  /// `true` para chips dentro de una tarjeta (fondo `panelInner`, el mismo truco
+  /// que [SectionCard.inner]): así el chip no se pierde sobre el panel.
+  final bool inner;
+
+  /// Tono de estatus del chip: pinta el texto, el fondo y el borde con el color
+  /// del estado (`warn` para "Correo sin verificar"). Tiene prioridad sobre
+  /// [selected]: un dato con estatus no es una opción elegible.
+  final EzySeverity? tone;
+
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
-    final foreground = selected ? EzyColors.primary : surfaces.textSecondary;
+    final status = tone;
+    final foreground = status != null
+        ? StatusPalette.text(context, status)
+        : (selected ? EzyColors.primary : surfaces.textSecondary);
 
     return GestureDetector(
       onTap: onTap,
@@ -42,12 +58,16 @@ class EzyChip extends StatelessWidget {
         height: compact ? 32 : 36,
         padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14),
         decoration: BoxDecoration(
-          color: selected
+          color: status != null
+              ? StatusPalette.soft(status)
+              : selected
               ? EzyColors.primary.withValues(alpha: 0.14)
-              : surfaces.panel,
+              : (inner ? surfaces.panelInner : surfaces.panel),
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: selected
+            color: status != null
+                ? StatusPalette.border(status)
+                : selected
                 ? EzyColors.primary.withValues(alpha: 0.45)
                 : surfaces.border,
           ),

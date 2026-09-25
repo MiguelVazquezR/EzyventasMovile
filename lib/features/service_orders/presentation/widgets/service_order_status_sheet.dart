@@ -6,6 +6,7 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_dialog.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
@@ -70,7 +71,7 @@ class _ServiceOrderStatusSheetState
     if (current == null || next.flowIndex < current.flowIndex) {
       final confirmed = await _confirmRevert(next);
 
-      if (confirmed != true || !mounted) {
+      if (!confirmed || !mounted) {
         return;
       }
     }
@@ -78,26 +79,14 @@ class _ServiceOrderStatusSheetState
     await _apply(next);
   }
 
-  Future<bool?> _confirmRevert(ServiceOrderStatus next) {
-    return showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Regresar estatus'),
-        content: Text(
+  Future<bool> _confirmRevert(ServiceOrderStatus next) {
+    return showEzyConfirmDialog(
+      context,
+      title: 'Regresar estatus',
+      message:
           '${ServiceOrderLabels.revertWarning}\n\n'
           'Nuevo estatus: ${ServiceOrderLabels.status(next.value)}.',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Regresar estatus'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Regresar estatus',
     );
   }
 
@@ -181,31 +170,18 @@ class _ServiceOrderStatusSheetState
 
   /// Cancelar libera stock y ajusta la venta vinculada: se confirma antes.
   Future<void> _confirmCancel() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Cancelar orden'),
-        content: const Text(
+    final confirmed = await showEzyConfirmDialog(
+      context,
+      title: 'Cancelar orden',
+      message:
           '¿Seguro que quieres cancelar esta orden? El inventario de las '
           'refacciones se devolverá al stock y la venta vinculada se ajustará.',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Regresar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(
-              'Cancelar orden',
-              style: EzyTextStyles.button.copyWith(color: EzyColors.danger),
-            ),
-          ),
-        ],
-      ),
+      confirmLabel: 'Cancelar orden',
+      cancelLabel: 'Regresar',
+      isDestructive: true,
     );
 
-    if (confirmed != true || !mounted) {
+    if (!confirmed || !mounted) {
       return;
     }
 

@@ -3,6 +3,7 @@ import 'package:ezyventas_app/core/api/api_exception.dart';
 import 'package:ezyventas_app/core/auth/session_store.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
 import 'package:ezyventas_app/core/widgets/brand_logo.dart';
+import 'package:ezyventas_app/core/widgets/ezy_button.dart';
 import 'package:ezyventas_app/features/auth/application/auth_controller.dart';
 import 'package:ezyventas_app/features/auth/data/auth_repository.dart';
 import 'package:ezyventas_app/features/auth/data/models/auth_session.dart';
@@ -179,10 +180,7 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: MaterialApp(
-          theme: EzyTheme.dark(),
-          home: const LoginScreen(),
-        ),
+        child: MaterialApp(theme: EzyTheme.dark(), home: const LoginScreen()),
       ),
     );
     await tester.pumpAndSettle();
@@ -217,5 +215,45 @@ void main() {
       BrandLogo.onDarkAsset,
       reason: 'el login usa el tema oscuro: toca el logotipo blanco',
     );
+  });
+
+  testWidgets('el enlace a la web usa el botón de texto del sistema', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap(_FakeAuthRepository()));
+    await tester.pumpAndSettle();
+
+    final link = tester.widget<EzyButton>(
+      find.widgetWithText(EzyButton, 'ezyventas.com'),
+    );
+
+    expect(link.variant, EzyButtonVariant.text);
+    expect(
+      link.textColor,
+      isNotNull,
+      reason: 'el enlace va en el tono apagado, no en el naranja de marca',
+    );
+  });
+
+  testWidgets('la contraseña se puede mostrar y volver a ocultar', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap(_FakeAuthRepository()));
+    await tester.pumpAndSettle();
+
+    TextField passwordField() =>
+        tester.widget<TextField>(find.byType(TextField).last);
+
+    expect(passwordField().obscureText, isTrue);
+
+    await tester.tap(find.byTooltip('Mostrar contraseña'));
+    await tester.pumpAndSettle();
+
+    expect(passwordField().obscureText, isFalse);
+
+    await tester.tap(find.byTooltip('Ocultar contraseña'));
+    await tester.pumpAndSettle();
+
+    expect(passwordField().obscureText, isTrue);
   });
 }

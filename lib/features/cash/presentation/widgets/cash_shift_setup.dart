@@ -33,7 +33,9 @@ class StartShiftCard extends ConsumerStatefulWidget {
 }
 
 class _StartShiftCardState extends ConsumerState<StartShiftCard> {
-  final TextEditingController _cashController = TextEditingController(text: '0');
+  final TextEditingController _cashController = TextEditingController(
+    text: '0',
+  );
   final Map<int, TextEditingController> _bankControllers =
       <int, TextEditingController>{};
 
@@ -44,11 +46,40 @@ class _StartShiftCardState extends ConsumerState<StartShiftCard> {
   void initState() {
     super.initState();
     _registerId = widget.registers.isEmpty ? null : widget.registers.first.id;
+    _syncBankControllers();
+  }
+
+  /// Los terminales y las cuentas bancarias los refresca el controlador: si las
+  /// listas cambian hay que seguir a los datos. Antes el desplegable se quedaba
+  /// con un id que ya no existía (el `DropdownButtonFormField` truena cuando su
+  /// valor no está en los `items`) y las cuentas nuevas se enviaban sin saldo
+  /// declarado porque no tenían controlador.
+  @override
+  void didUpdateWidget(StartShiftCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (!widget.registers.any((register) => register.id == _registerId)) {
+      _registerId = widget.registers.isEmpty ? null : widget.registers.first.id;
+    }
+
+    _syncBankControllers();
+  }
+
+  /// Crea el campo de cada cuenta bancaria y descarta las que desaparecieron.
+  void _syncBankControllers() {
+    final ids = <int>{for (final account in widget.bankAccounts) account.id};
 
     for (final account in widget.bankAccounts) {
-      _bankControllers[account.id] = TextEditingController(
-        text: MoneyField.format(account.balance),
+      _bankControllers.putIfAbsent(
+        account.id,
+        () => TextEditingController(text: MoneyField.format(account.balance)),
       );
+    }
+
+    for (final id in _bankControllers.keys.toList(growable: false)) {
+      if (!ids.contains(id)) {
+        _bankControllers.remove(id)!.dispose();
+      }
     }
   }
 
@@ -261,57 +292,55 @@ class _JoinableShiftTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: surfaces.panelInner,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: surfaces.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            session.cashRegister?.name ?? 'Terminal',
-            style: EzyTextStyles.bodyStrong.copyWith(
-              color: surfaces.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            <String>[
-              'Abierto ${AppFormatters.dateTime(session.openedAt)}',
-              if (session.opener != null) 'por ${session.opener!.name}',
-            ].join(' · '),
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: EzyButton(
-                  label: 'Unirme',
-                  icon: Icons.login_outlined,
-                  variant: EzyButtonVariant.outline,
-                  isLoading: isSubmitting,
-                  onPressed: onJoin,
-                ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: SectionCard(
+        inner: true,
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              session.cashRegister?.name ?? 'Terminal',
+              style: EzyTextStyles.bodyStrong.copyWith(
+                color: surfaces.textPrimary,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: EzyButton(
-                  label: 'Retomar',
-                  icon: Icons.restart_alt_outlined,
-                  variant: EzyButtonVariant.text,
-                  onPressed: isSubmitting ? null : onRejoin,
-                ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              <String>[
+                'Abierto ${AppFormatters.dateTime(session.openedAt)}',
+                if (session.opener != null) 'por ${session.opener!.name}',
+              ].join(' · '),
+              style: EzyTextStyles.secondary.copyWith(
+                color: surfaces.textSecondary,
               ),
-            ],
-          ),
-        ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: EzyButton(
+                    label: 'Unirme',
+                    icon: Icons.login_outlined,
+                    variant: EzyButtonVariant.outline,
+                    isLoading: isSubmitting,
+                    onPressed: onJoin,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: EzyButton(
+                    label: 'Retomar',
+                    icon: Icons.restart_alt_outlined,
+                    variant: EzyButtonVariant.text,
+                    onPressed: isSubmitting ? null : onRejoin,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -21,6 +21,8 @@ class EzyListTile extends StatelessWidget {
     this.isDestructive = false,
     this.showDivider = true,
     this.enabled = true,
+    this.badgeCount,
+    this.badgeColor = EzyColors.danger,
   });
 
   final String title;
@@ -43,6 +45,11 @@ class EzyListTile extends StatelessWidget {
   final bool isDestructive;
   final bool showDivider;
   final bool enabled;
+
+  /// Avisos pendientes del servidor: se pintan como pastilla a la derecha
+  /// (`9+` a partir de diez). Reemplaza al badge hecho a mano de la campana.
+  final int? badgeCount;
+  final Color badgeColor;
 
   @override
   Widget build(BuildContext context) {
@@ -110,6 +117,26 @@ class EzyListTile extends StatelessWidget {
                     value!,
                     style: EzyTextStyles.moneyList.copyWith(
                       color: valueColor ?? surfaces.textPrimary,
+                    ),
+                  ),
+                ],
+                if (badgeCount != null && badgeCount! > 0) ...<Widget>[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: badgeColor,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      badgeCount! > 9 ? '9+' : '${badgeCount!}',
+                      style: EzyTextStyles.badge.copyWith(
+                        color: EzyColors.white,
+                        letterSpacing: 0,
+                      ),
                     ),
                   ),
                 ],

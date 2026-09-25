@@ -6,6 +6,7 @@ import '../../../core/utils/app_formatters.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/widgets/app_screen_header.dart';
 import '../../../core/widgets/ezy_button.dart';
+import '../../../core/widgets/ezy_dialog.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/status_badge.dart';
@@ -211,28 +212,16 @@ class CashRegisterScreen extends ConsumerWidget {
     CashRegisterController controller,
     ActiveCashSession session,
   ) async {
-    final confirmed = await showDialog<bool>(
-      context: ref.context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Salir del turno'),
-        content: const Text(
+    final confirmed = await showEzyConfirmDialog(
+      ref.context,
+      title: 'Salir del turno',
+      message:
           'Dejarás de cobrar en este dispositivo. La caja sigue abierta para '
           'los demás usuarios.',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Salir del turno'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Salir del turno',
     );
 
-    if (confirmed ?? false) {
+    if (confirmed) {
       await controller.leaveShift(session.id);
     }
   }
@@ -260,4 +249,3 @@ class _BankSnapshotCard extends StatelessWidget {
     );
   }
 }
-

@@ -1,8 +1,9 @@
 import 'package:ezyventas_app/core/api/api_exception.dart';
 import 'package:ezyventas_app/core/widgets/ezy_bottom_sheet.dart';
+import 'package:ezyventas_app/core/widgets/ezy_button.dart';
+import 'package:ezyventas_app/core/widgets/ezy_dialog.dart';
 import 'package:ezyventas_app/features/service_orders/application/service_orders_controller.dart';
 import 'package:ezyventas_app/features/service_orders/presentation/widgets/service_order_status_sheet.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -148,7 +149,12 @@ void main() {
     // Todavía no se llamó al servidor.
     expect(orders.statusCalls, 0);
 
-    await tester.tap(find.widgetWithText(TextButton, 'Regresar estatus'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(EzyDialog),
+        matching: find.widgetWithText(EzyButton, 'Regresar estatus'),
+      ),
+    );
     await settleSheet(tester);
     await tester.pump();
 
@@ -170,7 +176,12 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.widgetWithText(TextButton, 'Cancelar orden'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(EzyDialog),
+        matching: find.widgetWithText(EzyButton, 'Cancelar orden'),
+      ),
+    );
     await settleSheet(tester);
     await tester.pump();
 

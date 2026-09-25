@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../account_labels.dart';
 
 /// Pantalla completa de la sección Cuenta: título `h1` con botón "Regresar".
@@ -40,13 +41,10 @@ class AccountScaffold extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
               child: Row(
                 children: <Widget>[
-                  IconButton(
+                  EzyIconButton(
+                    icon: Icons.arrow_back,
                     tooltip: AccountLabels.back,
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(
-                      Icons.arrow_back,
-                      color: surfaces.textSecondary,
-                    ),
+                    onTap: () => Navigator.of(context).pop(),
                   ),
                   Expanded(
                     child: Text(

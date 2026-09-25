@@ -7,6 +7,7 @@ import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_amount.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_dialog.dart';
 import '../../../../core/widgets/ezy_quantity_stepper.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/money_field.dart';
@@ -177,62 +178,16 @@ class _CartLineEditorDialogState extends ConsumerState<_CartLineEditorDialog> {
     final controller = ref.read(cartControllerProvider.notifier);
     final canEditPrices = ref.watch(permissionsProvider).can('pos.edit_prices');
 
-    return AlertDialog(
-      title: Text(widget.line.productName),
-      content: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            EzyTextField(
-              label: 'Cantidad',
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              textAlign: TextAlign.right,
-              controller: _quantityController,
-              helperText: widget.line.isBulk
-                  ? 'Producto a granel: admite decimales.'
-                  : 'Stock disponible: '
-                        '${Money.formatQuantity(widget.line.stockLimit)}',
-              onChanged: (value) =>
-                  setState(() => _quantity = Money.parseInput(value)),
-            ),
-            const SizedBox(height: 16),
-            MoneyField(
-              label: 'Descuento por unidad',
-              enabled: canEditPrices,
-              controller: _discountController,
-              helperText: canEditPrices
-                  ? 'Precio de lista ${Money.format(widget.line.listPrice)}'
-                  : 'Necesitas el permiso para editar precios.',
-              onChanged: (value) => setState(() => _discount = value),
-            ),
-            EzyAmount(
-              value: Money.round2(
-                (widget.line.listPrice - _discount) * _quantity,
-              ),
-              label: 'Total de la línea',
-              size: EzyAmountSize.large,
-            ),
-            if (widget.line.isManualPrice)
-              EzyButton(
-                label: 'Volver al precio del catálogo',
-                variant: EzyButtonVariant.text,
-                onPressed: () {
-                  controller.clearManualPrice(widget.line);
-                  Navigator.of(context).pop();
-                },
-              ),
-          ],
-        ),
-      ),
+    return EzyDialog(
+      title: widget.line.productName,
       actions: <Widget>[
-        TextButton(
+        EzyButton(
+          label: 'Cancelar',
+          variant: EzyButtonVariant.outline,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
         ),
-        TextButton(
+        EzyButton(
+          label: 'Guardar',
           onPressed: () {
             controller.setQuantity(widget.line, _quantity);
             if (canEditPrices) {
@@ -240,9 +195,52 @@ class _CartLineEditorDialogState extends ConsumerState<_CartLineEditorDialog> {
             }
             Navigator.of(context).pop();
           },
-          child: const Text('Guardar'),
         ),
       ],
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          EzyTextField(
+            label: 'Cantidad',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textAlign: TextAlign.right,
+            controller: _quantityController,
+            helperText: widget.line.isBulk
+                ? 'Producto a granel: admite decimales.'
+                : 'Stock disponible: '
+                      '${Money.formatQuantity(widget.line.stockLimit)}',
+            onChanged: (value) =>
+                setState(() => _quantity = Money.parseInput(value)),
+          ),
+          const SizedBox(height: 16),
+          MoneyField(
+            label: 'Descuento por unidad',
+            enabled: canEditPrices,
+            controller: _discountController,
+            helperText: canEditPrices
+                ? 'Precio de lista ${Money.format(widget.line.listPrice)}'
+                : 'Necesitas el permiso para editar precios.',
+            onChanged: (value) => setState(() => _discount = value),
+          ),
+          EzyAmount(
+            value: Money.round2(
+              (widget.line.listPrice - _discount) * _quantity,
+            ),
+            label: 'Total de la línea',
+            size: EzyAmountSize.large,
+          ),
+          if (widget.line.isManualPrice)
+            EzyButton(
+              label: 'Volver al precio del catálogo',
+              variant: EzyButtonVariant.text,
+              onPressed: () {
+                controller.clearManualPrice(widget.line);
+                Navigator.of(context).pop();
+              },
+            ),
+        ],
+      ),
     );
   }
 }

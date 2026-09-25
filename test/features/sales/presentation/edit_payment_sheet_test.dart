@@ -1,6 +1,7 @@
 import 'package:ezyventas_app/core/api/api_exception.dart';
 import 'package:ezyventas_app/core/widgets/ezy_bottom_sheet.dart';
 import 'package:ezyventas_app/core/widgets/ezy_button.dart';
+import 'package:ezyventas_app/core/widgets/ezy_dialog.dart';
 import 'package:ezyventas_app/core/widgets/money_field.dart';
 import 'package:ezyventas_app/features/sales/presentation/widgets/transaction_detail_sheet.dart';
 import 'package:flutter/material.dart';
@@ -128,7 +129,7 @@ void main() {
     await tester.tap(find.widgetWithText(EzyButton, 'Eliminar pago'));
     await settleSheet(tester);
 
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byType(EzyDialog), findsOneWidget);
     expect(
       find.text(
         '¿Estás seguro de que quieres eliminar este pago '
@@ -139,8 +140,8 @@ void main() {
 
     await tester.tap(
       find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.widgetWithText(TextButton, 'Eliminar pago'),
+        of: find.byType(EzyDialog),
+        matching: find.widgetWithText(EzyButton, 'Eliminar pago'),
       ),
     );
     await settleSheet(tester);
@@ -161,13 +162,13 @@ void main() {
 
     await tester.tap(
       find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.widgetWithText(TextButton, 'Cancelar'),
+        of: find.byType(EzyDialog),
+        matching: find.widgetWithText(EzyButton, 'Cancelar'),
       ),
     );
     await settleSheet(tester);
 
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(EzyDialog), findsNothing);
     expect(repository.deleteCalls, 0);
     expect(find.text('Editar pago'), findsOneWidget);
   });

@@ -23,6 +23,7 @@ class EzyButton extends StatelessWidget {
     this.variant = EzyButtonVariant.primary,
     this.expand = true,
     this.height,
+    this.textColor,
   });
 
   final String label;
@@ -35,9 +36,19 @@ class EzyButton extends StatelessWidget {
   /// Alto propio (por defecto el mínimo del design system, 48 px).
   final double? height;
 
+  /// Color del texto de la variante [EzyButtonVariant.text]; por defecto el
+  /// naranja de marca. La variante `text` de un enlace secundario (la web del
+  /// login) usa el tono apagado de la superficie.
+  final Color? textColor;
+
   @override
   Widget build(BuildContext context) {
     final isEnabled = onPressed != null && !isLoading;
+    // La variante `text` pinta su etiqueta en naranja (o en el tono que pida
+    // [textColor]); el resto hereda el color del botón.
+    final labelColor = variant == EzyButtonVariant.text
+        ? (textColor ?? EzyColors.primary)
+        : null;
     final foreground = _foreground;
 
     final child = Row(
@@ -48,19 +59,16 @@ class EzyButton extends StatelessWidget {
           SizedBox(
             width: 16,
             height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: foreground,
-            ),
+            child: CircularProgressIndicator(strokeWidth: 2, color: foreground),
           )
         else if (icon != null)
-          Icon(icon, size: 18),
+          Icon(icon, size: 18, color: labelColor),
         if (isLoading || icon != null) const SizedBox(width: 10),
         Flexible(
           child: Text(
             label,
             overflow: TextOverflow.ellipsis,
-            style: EzyTextStyles.button,
+            style: EzyTextStyles.button.copyWith(color: labelColor),
           ),
         ),
       ],
@@ -92,10 +100,7 @@ class EzyButton extends StatelessWidget {
       ),
       EzyButtonVariant.text => TextButton(
         onPressed: isEnabled ? onPressed : null,
-        child: Text(
-          label,
-          style: EzyTextStyles.button.copyWith(color: EzyColors.primary),
-        ),
+        child: child,
       ),
     };
 
@@ -103,11 +108,7 @@ class EzyButton extends StatelessWidget {
       return button;
     }
 
-    return SizedBox(
-      width: double.infinity,
-      height: height,
-      child: button,
-    );
+    return SizedBox(width: double.infinity, height: height, child: button);
   }
 
   /// Color del texto y del spinner de las variantes rellenas.
@@ -127,4 +128,3 @@ class EzyButton extends StatelessWidget {
         textStyle: EzyTextStyles.button,
       );
 }
-

@@ -4,10 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/auth/permissions_service.dart';
 import '../../../../core/router/app_router.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_dialog.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../application/service_orders_controller.dart';
@@ -58,11 +57,8 @@ class ServiceOrderActionBar extends ConsumerWidget {
             isLoading: isSubmitting,
             onPressed: session == null
                 ? null
-                : () => confirmServiceOrderPayment(
-                    context,
-                    ref,
-                    detail: detail,
-                  ),
+                : () =>
+                      confirmServiceOrderPayment(context, ref, detail: detail),
           ),
           if (session == null) ...<Widget>[
             const SizedBox(height: 8),
@@ -159,31 +155,19 @@ class ServiceOrderActionBar extends ConsumerWidget {
 
   /// El servidor elimina también la venta vinculada: se pide confirmación
   /// explícita ("Esta acción no se puede deshacer.").
-  static Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Eliminar orden'),
-        content: Text(
-          'Vas a eliminar la orden. ${ServiceOrderLabels.deleteWarning}',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(
-              'Eliminar',
-              style: EzyTextStyles.button.copyWith(color: EzyColors.danger),
-            ),
-          ),
-        ],
-      ),
+  static Future<void> _confirmDelete(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final confirmed = await showEzyConfirmDialog(
+      context,
+      title: 'Eliminar orden',
+      message: 'Vas a eliminar la orden. ${ServiceOrderLabels.deleteWarning}',
+      confirmLabel: 'Eliminar',
+      isDestructive: true,
     );
 
-    if (confirmed != true || !context.mounted) {
+    if (!confirmed || !context.mounted) {
       return;
     }
 
@@ -208,9 +192,8 @@ class ServiceOrderActionBar extends ConsumerWidget {
     final error = ref.read(serviceOrderDetailControllerProvider).errorMessage;
 
     if (error != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
     }
   }
 }

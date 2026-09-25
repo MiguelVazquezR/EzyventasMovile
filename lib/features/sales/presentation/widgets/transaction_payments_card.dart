@@ -6,6 +6,7 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_dialog.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
@@ -157,27 +158,16 @@ class TransactionPaymentRow extends ConsumerWidget {
 
   /// Confirmación explícita antes de borrar (§12).
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Eliminar pago'),
-        content: const Text(
+    final confirmed = await showEzyConfirmDialog(
+      context,
+      title: 'Eliminar pago',
+      message:
           '¿Estás seguro de que quieres eliminar este pago permanentemente?',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Eliminar pago'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Eliminar pago',
+      isDestructive: true,
     );
 
-    if (confirmed ?? false) {
+    if (confirmed) {
       await ref
           .read(transactionDetailControllerProvider.notifier)
           .deletePayment(payment.id);

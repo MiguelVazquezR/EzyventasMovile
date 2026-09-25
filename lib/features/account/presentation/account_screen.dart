@@ -9,6 +9,9 @@ import '../../../core/theme/status_palette.dart';
 import '../../../core/theme/theme_mode_controller.dart';
 import '../../../core/widgets/app_screen_header.dart';
 import '../../../core/widgets/ezy_button.dart';
+import '../../../core/widgets/ezy_chip.dart';
+import '../../../core/widgets/ezy_dialog.dart';
+import '../../../core/widgets/ezy_list_tile.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../core/widgets/user_avatar.dart';
@@ -17,7 +20,6 @@ import '../../auth/data/models/auth_user.dart';
 import '../application/account_providers.dart';
 import '../application/subscription_controller.dart';
 import 'account_labels.dart';
-import 'widgets/account_tile.dart';
 
 /// Pestaña "Cuenta": equivalente móvil del menú de usuario del topbar web (§9b).
 ///
@@ -83,10 +85,7 @@ class AccountScreen extends ConsumerWidget {
                     onChangeBranch: () => context.push(branchSwitchPath),
                   ),
                   const SizedBox(height: 20),
-                  _Menu(
-                    isOwner: isOwner,
-                    notificationTotal: notificationTotal,
-                  ),
+                  _Menu(isOwner: isOwner, notificationTotal: notificationTotal),
                   const SizedBox(height: 20),
                   _ModulesCard(modules: accessContext.modules),
                   const SizedBox(height: 12),
@@ -113,29 +112,15 @@ class AccountScreen extends ConsumerWidget {
       ref.watch(subscriptionProvider).value?.statusData.warning;
 
   Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text(AccountLabels.logoutTitle),
-        content: const Text(AccountLabels.logoutMessage),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text(AccountLabels.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: EzyColors.danger,
-              foregroundColor: EzyColors.white,
-            ),
-            child: const Text(AccountLabels.logout),
-          ),
-        ],
-      ),
+    final confirmed = await showEzyConfirmDialog(
+      context,
+      title: AccountLabels.logoutTitle,
+      message: AccountLabels.logoutMessage,
+      confirmLabel: AccountLabels.logout,
+      isDestructive: true,
     );
 
-    if (confirmed ?? false) {
+    if (confirmed) {
       // La caché local (contadores de notificaciones) se limpia antes de salir.
       await ref.read(notificationsControllerProvider.notifier).clear();
       await ref.read(authControllerProvider.notifier).logout();
@@ -143,8 +128,11 @@ class AccountScreen extends ConsumerWidget {
   }
 }
 
-
 /// Opciones del menú de cuenta (§14.2).
+///
+/// Las filas son las del design system (`EzyListTile` sobre un panel) con los
+/// divisores de 1 px que marca el sistema: antes esta pantalla tenía su propio
+/// `AccountTile`/`AccountMenuCard`.
 class _Menu extends StatelessWidget {
   const _Menu({required this.isOwner, required this.notificationTotal});
 
@@ -153,35 +141,62 @@ class _Menu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AccountMenuCard(
-      children: <Widget>[
-        AccountTile(
-          icon: Icons.person_outline,
-          title: AccountLabels.profile,
-          subtitle: AccountLabels.profileSubtitle,
-          onTap: () => context.push(profilePath),
-        ),
-        if (isOwner)
-          AccountTile(
-            icon: Icons.workspace_premium_outlined,
-            title: AccountLabels.subscription,
-            subtitle: AccountLabels.subscriptionSubtitle,
-            onTap: () => context.push(subscriptionPath),
+    final rows =
+        <
+          ({
+            IconData icon,
+            String title,
+            String subtitle,
+            int? badge,
+            String route,
+          })
+        >[
+          (
+            icon: Icons.person_outline,
+            title: AccountLabels.profile,
+            subtitle: AccountLabels.profileSubtitle,
+            badge: null,
+            route: profilePath,
           ),
-        AccountTile(
-          icon: Icons.notifications_none,
-          title: AccountLabels.notifications,
-          subtitle: AccountLabels.notificationsEmptySubtitle,
-          badgeCount: notificationTotal,
-          onTap: () => context.push(notificationsPath),
-        ),
-        AccountTile(
-          icon: Icons.support_agent_outlined,
-          title: AccountLabels.support,
-          subtitle: AccountLabels.supportSubtitle,
-          onTap: () => context.push(supportPath),
-        ),
-      ],
+          if (isOwner)
+            (
+              icon: Icons.workspace_premium_outlined,
+              title: AccountLabels.subscription,
+              subtitle: AccountLabels.subscriptionSubtitle,
+              badge: null,
+              route: subscriptionPath,
+            ),
+          (
+            icon: Icons.notifications_none,
+            title: AccountLabels.notifications,
+            subtitle: AccountLabels.notificationsEmptySubtitle,
+            badge: notificationTotal,
+            route: notificationsPath,
+          ),
+          (
+            icon: Icons.support_agent_outlined,
+            title: AccountLabels.support,
+            subtitle: AccountLabels.supportSubtitle,
+            badge: null,
+            route: supportPath,
+          ),
+        ];
+
+    return SectionCard(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        children: <Widget>[
+          for (int i = 0; i < rows.length; i++)
+            EzyListTile(
+              icon: rows[i].icon,
+              title: rows[i].title,
+              subtitle: rows[i].subtitle,
+              badgeCount: rows[i].badge,
+              showDivider: i < rows.length - 1,
+              onTap: () => context.push(rows[i].route),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -228,7 +243,8 @@ class _ProfileCard extends StatelessWidget {
                         color: surfaces.textSecondary,
                       ),
                     ),
-                    if (user.phone != null && user.phone!.isNotEmpty) ...<Widget>[
+                    if (user.phone != null &&
+                        user.phone!.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 2),
                       Text(
                         user.phone!,
@@ -247,12 +263,16 @@ class _ProfileCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: <Widget>[
-              _MetaChip(label: businessName),
+              EzyChip(label: businessName, inner: true),
               if (user.isSubscriptionOwner)
-                const _MetaChip(label: 'Propietario de la suscripción'),
+                const EzyChip(
+                  label: 'Propietario de la suscripción',
+                  inner: true,
+                ),
               if (!user.isEmailVerified)
-                const _MetaChip(
+                const EzyChip(
                   label: 'Correo sin verificar',
+                  inner: true,
                   tone: EzySeverity.warn,
                 ),
             ],
@@ -262,39 +282,6 @@ class _ProfileCard extends StatelessWidget {
     );
   }
 }
-
-/// Chip neutro para metadatos del perfil.
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.label, this.tone = EzySeverity.neutral});
-
-  final String label;
-  final EzySeverity tone;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-    final isNeutral = tone == EzySeverity.neutral;
-    final color = isNeutral
-        ? surfaces.textSecondary
-        : StatusPalette.text(context, tone);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: isNeutral ? surfaces.panelInner : StatusPalette.soft(tone),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: isNeutral ? surfaces.border : StatusPalette.border(tone),
-        ),
-      ),
-      child: Text(
-        label,
-        style: EzyTextStyles.caption.copyWith(color: color),
-      ),
-    );
-  }
-}
-
 
 /// Sucursal activa con la acción de cambio (§9b.1).
 class _BranchCard extends StatelessWidget {

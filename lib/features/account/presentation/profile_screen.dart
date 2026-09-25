@@ -8,6 +8,7 @@ import '../../../core/config/app_config.dart';
 import '../../../core/theme/status_palette.dart';
 import '../../../core/utils/evidence_image.dart';
 import '../../../core/widgets/ezy_bottom_sheet.dart';
+import '../../../core/widgets/ezy_dialog.dart';
 import '../../../core/widgets/ezy_list_tile.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../application/profile_controller.dart';
@@ -136,10 +137,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           onSubmit: _updatePassword,
         ),
         const SizedBox(height: 12),
-        SessionsCard(
-          state: state,
-          onLogoutOthers: _confirmLogoutOtherDevices,
-        ),
+        SessionsCard(state: state, onLogoutOthers: _confirmLogoutOtherDevices),
       ],
     );
   }
@@ -237,9 +235,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     if (image == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(AccountLabels.photoFailed)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text(AccountLabels.photoFailed)));
 
       return;
     }
@@ -249,27 +247,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   /// Elimina la foto de perfil (`DELETE /profile/photo`).
   Future<void> _confirmDeletePhoto() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text(AccountLabels.deletePhoto),
-        content: const Text(
+    final confirmed = await showEzyConfirmDialog(
+      context,
+      title: AccountLabels.deletePhoto,
+      message:
           'Se quitará tu foto de perfil. Puedes subir otra cuando quieras.',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text(AccountLabels.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text(AccountLabels.deletePhoto),
-          ),
-        ],
-      ),
+      confirmLabel: AccountLabels.deletePhoto,
+      isDestructive: true,
     );
 
-    if (!(confirmed ?? false)) {
+    if (!confirmed) {
       return;
     }
 
@@ -284,57 +271,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   /// "Cerrar otras sesiones": pide la contraseña en un diálogo y confirma.
   Future<void> _confirmLogoutOtherDevices() async {
-    final passwordController = TextEditingController();
+    final entered = await showEzyPromptDialog(
+      context,
+      title: AccountLabels.confirmClose,
+      message: AccountLabels.confirmCloseMessage,
+      fieldLabel: AccountLabels.password,
+      hint: '••••••••',
+      confirmLabel: AccountLabels.logoutOtherDevices,
+      obscureText: true,
+    );
 
-    try {
-      final entered = await showDialog<String>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text(AccountLabels.confirmClose),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Text(AccountLabels.confirmCloseMessage),
-              const SizedBox(height: 16),
-              TextField(
-                controller: passwordController,
-                obscureText: true,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: AccountLabels.password,
-                ),
-              ),
-            ],
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text(AccountLabels.cancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(
-                dialogContext,
-              ).pop(passwordController.text),
-              child: const Text(AccountLabels.logoutOtherDevices),
-            ),
-          ],
-        ),
-      );
+    final password = (entered ?? '').trim();
 
-      final password = (entered ?? '').trim();
-
-      if (password.isEmpty) {
-        return;
-      }
-
-      await ref
-          .read(profileControllerProvider.notifier)
-          .logoutOtherDevices(password);
-    } finally {
-      passwordController.dispose();
+    if (password.isEmpty) {
+      return;
     }
+
+    await ref
+        .read(profileControllerProvider.notifier)
+        .logoutOtherDevices(password);
   }
 }
-
-

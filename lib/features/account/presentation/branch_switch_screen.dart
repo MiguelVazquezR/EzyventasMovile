@@ -6,6 +6,9 @@ import '../../../core/auth/permissions_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/status_palette.dart';
+import '../../../core/widgets/ezy_chip.dart';
+import '../../../core/widgets/ezy_dialog.dart';
+import '../../../core/widgets/ezy_list_tile.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../auth/application/auth_controller.dart';
@@ -28,7 +31,8 @@ class BranchSwitchScreen extends ConsumerWidget {
     final accessContext = ref.watch(authControllerProvider).context;
     final state = ref.watch(branchSwitchControllerProvider);
     final controller = ref.read(branchSwitchControllerProvider.notifier);
-    final branches = accessContext?.availableBranches ?? const <AvailableBranch>[];
+    final branches =
+        accessContext?.availableBranches ?? const <AvailableBranch>[];
 
     return AccountScaffold(
       title: AccountLabels.branchTitle,
@@ -71,8 +75,7 @@ class BranchSwitchScreen extends ConsumerWidget {
                   ),
                 if (branches.isEmpty)
                   const NoticeBanner(
-                    message:
-                        'Tu usuario no tiene sucursales disponibles para cambiar.',
+                    message: 'Tu usuario no tiene sucursales disponibles para cambiar.',
                     tone: EzySeverity.warn,
                   ),
               ],
@@ -92,25 +95,14 @@ class BranchSwitchScreen extends ConsumerWidget {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(AccountLabels.branchConfirm(branch.label)),
-        content: const Text(AccountLabels.branchConfirmMessage),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text(AccountLabels.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text(AccountLabels.branchChange),
-          ),
-        ],
-      ),
+    final confirmed = await showEzyConfirmDialog(
+      context,
+      title: AccountLabels.branchConfirm(branch.label),
+      message: AccountLabels.branchConfirmMessage,
+      confirmLabel: AccountLabels.branchChange,
     );
 
-    if (!(confirmed ?? false)) {
+    if (!confirmed) {
       return;
     }
 
@@ -135,8 +127,8 @@ class BranchSwitchScreen extends ConsumerWidget {
   }
 }
 
-
-/// Fila de sucursal: la activa lleva un check verde y no se puede elegir.
+/// Fila de sucursal: la activa lleva el check y su etiqueta, y no se puede
+/// elegir.
 class _BranchRow extends StatelessWidget {
   const _BranchRow({
     required this.branch,
@@ -150,68 +142,25 @@ class _BranchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return InkWell(
-      onTap: branch.isCurrent || isBusy ? null : onSelect,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
-        child: Row(
-          children: <Widget>[
-            Icon(
-              branch.isCurrent
-                  ? Icons.check_circle
-                  : Icons.storefront_outlined,
-              size: 20,
-              color: branch.isCurrent
-                  ? EzyColors.success
-                  : surfaces.textMuted,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                branch.label,
-                style: EzyTextStyles.bodyStrong.copyWith(
-                  color: surfaces.textPrimary,
-                ),
-              ),
-            ),
-            if (branch.isCurrent)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: EzyColors.success.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: EzyColors.success.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Text(
-                  AccountLabels.branchCurrent.toUpperCase(),
-                  style: EzyTextStyles.badge.copyWith(
-                    color: EzyColors.success,
-                  ),
-                ),
-              )
-            else if (isBusy)
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else
-              Icon(
-                Icons.chevron_right,
-                size: 20,
-                color: surfaces.textMuted,
-              ),
-          ],
-        ),
-      ),
+    return EzyListTile(
+      icon: branch.isCurrent ? Icons.check_circle : Icons.storefront_outlined,
+      title: branch.label,
+      showDivider: false,
+      enabled: !isBusy,
+      onTap: branch.isCurrent ? null : onSelect,
+      trailing: branch.isCurrent
+          ? const EzyChip(
+              label: AccountLabels.branchCurrent,
+              compact: true,
+              tone: EzySeverity.success,
+            )
+          : (isBusy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null),
     );
   }
 }

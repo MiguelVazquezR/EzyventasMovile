@@ -5,6 +5,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_dialog.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/field_label.dart';
@@ -176,27 +177,16 @@ class _EditPaymentSheetState extends ConsumerState<_EditPaymentSheet> {
 
   /// Confirmación explícita: el borrado revierte el efecto del pago.
   Future<void> _confirmDelete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Eliminar pago'),
-        content: const Text(
+    final confirmed = await showEzyConfirmDialog(
+      context,
+      title: 'Eliminar pago',
+      message:
           '¿Estás seguro de que quieres eliminar este pago permanentemente?',
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Eliminar pago'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Eliminar pago',
+      isDestructive: true,
     );
 
-    if (!(confirmed ?? false)) {
+    if (!confirmed) {
       return;
     }
 
