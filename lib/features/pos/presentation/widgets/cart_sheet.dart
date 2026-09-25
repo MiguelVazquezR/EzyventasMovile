@@ -59,8 +59,17 @@ class CartSheet extends ConsumerWidget {
           ] else ...<Widget>[
             const SizedBox(height: 8),
             _CartHeader(cart: cart),
+            const SizedBox(height: 12),
+            _CartTotalBand(cart: cart),
             const SizedBox(height: 16),
             const _CustomerCard(),
+            const SizedBox(height: 8),
+            Text(
+              'PRODUCTOS',
+              style: EzyTextStyles.cardTitle.copyWith(
+                color: context.surfaces.textBody,
+              ),
+            ),
             const SizedBox(height: 12),
             for (final line in cart.lines) CartLineTile(line: line),
             if (cart.isEmpty)
@@ -96,7 +105,7 @@ class CartSheet extends ConsumerWidget {
   }
 }
 
-/// Encabezado del carrito con el número de líneas.
+/// Encabezado del carrito con el número de productos.
 class _CartHeader extends StatelessWidget {
   const _CartHeader({required this.cart});
 
@@ -105,6 +114,7 @@ class _CartHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
+    final products = cart.lines.length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -117,13 +127,59 @@ class _CartHeader extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '${cart.lines.length} línea${cart.lines.length == 1 ? '' : 's'} · '
+          '$products producto${products == 1 ? '' : 's'} · '
           '${Money.formatQuantity(cart.itemCount)} artículos',
           style: EzyTextStyles.secondary.copyWith(
             color: surfaces.textSecondary,
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Franja del total: el monto que se va a cobrar, arriba y en el color de la
+/// marca (para no tener que bajar hasta el final del carrito).
+class _CartTotalBand extends StatelessWidget {
+  const _CartTotalBand({required this.cart});
+
+  final CartState cart;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: EzyColors.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: EzyColors.primary.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(
+            Icons.shopping_bag_outlined,
+            size: 20,
+            color: EzyColors.primary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Total a cobrar',
+              style: EzyTextStyles.bodyStrong.copyWith(
+                color: surfaces.textPrimary,
+              ),
+            ),
+          ),
+          Text(
+            Money.format(cart.total),
+            style: EzyTextStyles.moneyMedium.copyWith(
+              color: EzyColors.primary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -244,6 +300,7 @@ class _CheckoutSection extends ConsumerWidget {
           EzyButton(
             label: 'Cobrar',
             icon: Icons.payments_outlined,
+            height: 56,
             onPressed: null,
           ),
         ],
@@ -259,6 +316,9 @@ class _CheckoutSection extends ConsumerWidget {
           label: 'Cobrar',
           icon: Icons.payments_outlined,
           isLoading: cart.isSubmitting,
+          // El cobro es la acción principal: botón más alto y en el naranja de
+          // la marca.
+          height: 56,
           onPressed: enabled
               ? () => showPaymentSheet(context, mode: PaymentMode.checkout)
               : null,
@@ -269,7 +329,9 @@ class _CheckoutSection extends ConsumerWidget {
             Expanded(
               child: EzyButton(
                 label: 'Apartar',
-                variant: EzyButtonVariant.outline,
+                icon: Icons.bookmark_add_outlined,
+                // Azul: deja el producto reservado sin cobrarlo.
+                variant: EzyButtonVariant.info,
                 onPressed: enabled
                     ? () => showPaymentSheet(context, mode: PaymentMode.layaway)
                     : null,
@@ -279,6 +341,7 @@ class _CheckoutSection extends ConsumerWidget {
             Expanded(
               child: EzyButton(
                 label: 'Pedido',
+                icon: Icons.local_shipping_outlined,
                 variant: EzyButtonVariant.outline,
                 onPressed: enabled
                     ? () => showStoreOrderSheet(context)

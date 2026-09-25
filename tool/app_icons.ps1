@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Genera el icono de lanzamiento de Android a partir de assets\images\ezyventas_icon.jfif.
+    Genera el icono de lanzamiento de Android a partir de assets\images\ezyventas_icon.jpg.
 
 .DESCRIPTION
     Android pide un PNG por densidad (48..192 px) y, desde Android 8 (API 26),
@@ -43,7 +43,7 @@ $ErrorActionPreference = 'Stop'
 # valores por defecto de param(), asi que las rutas se resuelven aqui.
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $Source) {
-    $Source = Join-Path $scriptDir '..\assets\images\ezyventas_icon.jfif'
+    $Source = Join-Path $scriptDir '..\assets\images\ezyventas_icon.jpg'
 }
 if (-not $ResRoot) {
     $ResRoot = Join-Path $scriptDir '..\android\app\src\main\res'

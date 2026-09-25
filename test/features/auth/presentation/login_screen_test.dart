@@ -21,14 +21,17 @@ class _FakeAuthRepository extends AuthRepository {
 
   String? lastEmail;
   String? lastPassword;
+  bool? lastKeepSession;
 
   @override
   Future<AuthSession> login({
     required String email,
     required String password,
+    bool keepSession = true,
   }) async {
     lastEmail = email;
     lastPassword = password;
+    lastKeepSession = keepSession;
 
     final failure = this.failure;
     if (failure != null) {
@@ -52,6 +55,13 @@ Widget _wrap(AuthRepository repository) => ProviderScope(
   overrides: [authRepositoryProvider.overrideWithValue(repository)],
   child: MaterialApp(theme: EzyTheme.dark(), home: const LoginScreen()),
 );
+
+/// Sesión de ejemplo (token + permisos mínimos del servidor).
+AuthSession _session() => AuthSession.fromJson(<String, dynamic>{
+  'token': '5|abc',
+  'user': <String, dynamic>{'id': 7, 'name': 'María López'},
+  'module_keys': <String>['module_pos'],
+});
 
 void main() {
   testWidgets('muestra el mensaje del servidor cuando el login falla', (
@@ -84,6 +94,50 @@ void main() {
     );
     expect(repository.lastEmail, 'maria@negocio.com');
     expect(repository.lastPassword, 'incorrecta');
+  });
+
+  testWidgets('"Mantener la sesión abierta" viaja marcado por defecto', (
+    tester,
+  ) async {
+    final repository = _FakeAuthRepository(session: _session());
+
+    await tester.pumpWidget(_wrap(repository));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mantener la sesión abierta'), findsOneWidget);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+
+    await tester.enterText(find.byType(TextField).first, 'maria@negocio.com');
+    await tester.enterText(find.byType(TextField).last, 'secreto');
+    await tester.pump();
+
+    await tester.tap(find.text('Iniciar sesión'));
+    await tester.pumpAndSettle();
+
+    expect(repository.lastKeepSession, isTrue);
+  });
+
+  testWidgets('sin marcar la casilla el login pide no recordar la sesión', (
+    tester,
+  ) async {
+    final repository = _FakeAuthRepository(session: _session());
+
+    await tester.pumpWidget(_wrap(repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+
+    await tester.enterText(find.byType(TextField).first, 'maria@negocio.com');
+    await tester.enterText(find.byType(TextField).last, 'secreto');
+    await tester.pump();
+
+    await tester.tap(find.text('Iniciar sesión'));
+    await tester.pumpAndSettle();
+
+    expect(repository.lastKeepSession, isFalse);
   });
 
   testWidgets('el botón se habilita solo con correo y contraseña', (

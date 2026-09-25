@@ -134,6 +134,55 @@ void main() {
       expect(payload.tsplText, isNotNull);
     });
 
+    test('avisa de lo que el servidor no pudo resolver y de lo que ajustó', () {
+      final payload = LabelPayload.fromJson(<String, dynamic>{
+        'operations': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'nombre': 'EscribirTexto',
+            'argumentos': <String>[
+              'SIZE 50 mm,30 mm\nBITMAP 10,10,4,8,0,FF\n'
+                  'BARCODE 10,60,"128",40,1,0,2,2,"P-42"\nPRINT 1,1\n',
+            ],
+          },
+        ],
+        'unsupported_operations': <String>[
+          'Image: https://ejemplo.test/logo.png',
+        ],
+        'warnings': <String>[
+          'Barcode: la plantilla no resolvió un valor, se usó «P-42».',
+        ],
+      });
+
+      expect(payload.hasUnsupportedOperations, isTrue);
+      expect(
+        payload.warningNotice,
+        contains('Image: https://ejemplo.test/logo.png'),
+      );
+      expect(payload.warningNotice, contains('se usó «P-42»'));
+      // El texto TSPL ya trae el BITMAP y el código de barras relleno.
+      expect(payload.tsplText, contains('BITMAP'));
+      expect(payload.tsplText, contains('BARCODE'));
+    });
+
+    test('sin avisos del servidor no hay nada que reportar', () {
+      final payload = LabelPayload.fromJson(<String, dynamic>{
+        'operations': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'nombre': 'EscribirTexto',
+            'argumentos': <String>[
+              'SIZE 50 mm,30 mm\nBITMAP 10,10,4,8,0,FF\nPRINT 1,1\n',
+            ],
+          },
+        ],
+        'unsupported_operations': <String>[],
+        'warnings': <String>[],
+      });
+
+      expect(payload.hasUnsupportedOperations, isFalse);
+      expect(payload.warningNotice, isNull);
+      expect(payload.unresolvedOperations, isEmpty);
+    });
+
     test('sin operación de texto no hay nada que imprimir', () {
       final payload = LabelPayload.fromJson(<String, dynamic>{
         'operations': <Map<String, dynamic>>[],

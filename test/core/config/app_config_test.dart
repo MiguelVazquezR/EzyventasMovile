@@ -52,6 +52,69 @@ void main() {
     });
   });
 
+  group('AppConfig.mediaRequests (intentos en orden)', () {
+    test('sin túnel solo intenta la URL del servidor', () {
+      final requests = AppConfig.mediaRequests(
+        'https://ezyventas2.test/storage/6/iphone.png',
+        hostHeader: '',
+        apiBaseUrlOverride: 'https://ezyventas2.test/api/v1',
+      );
+
+      expect(requests.length, 1);
+      expect(
+        requests.single.uri.toString(),
+        'https://ezyventas2.test/storage/6/iphone.png',
+      );
+      expect(requests.single.headers, isEmpty);
+    });
+
+    test('con túnel intenta el origen de la API y manda el Host de Herd', () {
+      final requests = AppConfig.mediaRequests(
+        'https://ezyventas2.test/storage/6/iphone.png',
+        hostHeader: 'ezyventas2.test',
+        apiBaseUrlOverride: 'https://127.0.0.1:8443/api/v1',
+      );
+
+      expect(
+        requests.first.uri.toString(),
+        'https://127.0.0.1:8443/storage/6/iphone.png',
+      );
+      expect(requests.first.headers['Host'], 'ezyventas2.test');
+      // Segundo intento: la URL original (por si el host resuelve en la red).
+      expect(requests.last.uri.host, 'ezyventas2.test');
+      expect(requests.last.headers, isEmpty);
+    });
+
+    test('los hosts externos (marcadores, avatares) nunca se reescriben', () {
+      final requests = AppConfig.mediaRequests(
+        'https://placehold.co/400x400/EBF8FF/3182CE?text=Iphone+20',
+        hostHeader: 'ezyventas2.test',
+        apiBaseUrlOverride: 'https://127.0.0.1:8443/api/v1',
+      );
+
+      expect(requests.length, 1);
+      expect(requests.single.uri.host, 'placehold.co');
+    });
+
+    test('una ruta relativa del servidor se resuelve contra la API', () {
+      final requests = AppConfig.mediaRequests(
+        '/storage/6/iphone.png',
+        hostHeader: '',
+        apiBaseUrlOverride: 'https://app.ezyventas.com/api/v1',
+      );
+
+      expect(
+        requests.single.uri.toString(),
+        'https://app.ezyventas.com/storage/6/iphone.png',
+      );
+    });
+
+    test('sin URL (o en blanco) no hay intentos', () {
+      expect(AppConfig.mediaRequests(null), isEmpty);
+      expect(AppConfig.mediaRequests('   '), isEmpty);
+    });
+  });
+
   group('AppConfig.mediaUri entradas no utilizables', () {
     test('sin URL o en blanco devuelve null', () {
       expect(AppConfig.mediaUri(null), isNull);

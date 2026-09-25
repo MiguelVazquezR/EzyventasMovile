@@ -1,5 +1,6 @@
 import '../../../../core/utils/json_reader.dart';
-import 'models/cash_cut_document.dart';
+import '../../../../core/utils/money.dart';
+import '../../printing/data/models/cash_cut_receipt.dart';
 
 /// Convierte el ticket del servidor en el texto que se envía por WhatsApp.
 ///
@@ -294,32 +295,32 @@ class WhatsAppMessageBuilder {
     return lines.join('\n');
   }
 
-  /// Texto del **corte de caja** (no hay endpoint de WhatsApp para el corte:
-  /// el documento se arma en el dispositivo, contrato §6.3).
-  static String cashCut(CashCutDocument cut) {
+  /// Texto del **corte de caja**.
+  ///
+  /// No hay endpoint de WhatsApp para el corte, así que se comparte el texto del
+  /// comprobante que devolvió el servidor
+  /// (`GET /cash-register-sessions/{id}/receipt`): no se arma nada en el
+  /// teléfono, solo se le quitan los comandos ESC/POS.
+  static String cashCutReceipt(CashCutReceipt receipt) {
+    final summary = receipt.summary;
+    final difference = summary?.difference;
     final lines = <String>[
       '» *CORTE DE CAJA* «',
-      '• *${cut.businessName}*',
-      '• Sucursal: *${cut.branchName}*',
-      '• Terminal: *${cut.terminalName}*',
-      '• Turno: *${cut.periodLabel}*',
-      '• Abrió: *${cut.openerName}*',
+      '• Caja: *${receipt.session.cashRegisterName}*',
+      '• Turno: *${receipt.session.turnLabel}*',
+      '• Plantilla: *${receipt.template.label}*',
       '',
       '» *Detalle del turno* «',
-      '• Fondo inicial: *${cut.money(cut.openingCash)}*',
-      '• Ventas en efectivo: *${cut.money(cut.cashSales)}*',
-      '• Ingresos: *${cut.money(cut.inflows)}*',
-      '• Egresos: *${cut.money(cut.outflows)}*',
-      '• Total esperado: *${cut.money(cut.expectedTotal)}*',
-      '',
-      '» *Cobros por método* «',
       '```',
-      ..._cashCutBreakdown(cut),
+      receipt.text.isEmpty ? '(sin detalle)' : receipt.text,
       '```',
-      '• Efectivo contado: *${cut.money(cut.countedTotal)}*',
-      '• Diferencia: *${cut.money(cut.difference)}*',
       '',
-      '» ${cut.hasDifference ? 'Revisa el descuadre del turno.' : 'Turno sin diferencia.'} «',
+      if (difference == null)
+        '» Turno en curso. «'
+      else if (difference.abs() < 0.01)
+        '» Turno sin diferencia. «'
+      else
+        '» Revisa el descuadre del turno: ${Money.format(difference)} «',
     ];
 
     return lines.join('\n');
@@ -403,24 +404,6 @@ class WhatsAppMessageBuilder {
         '${row[0].padRight(folioWidth)} '
         '${row[1].padLeft(abonadoWidth)} '
         '${row[2].padLeft(restanteWidth)}',
-    ];
-  }
-
-  /// Bloques de totales del corte (`Efectivo`, `Tarjeta`, ...).
-  static List<String> _cashCutBreakdown(CashCutDocument cut) {
-    final labels = cut.paymentBreakdown
-        .map((entry) => entry.key)
-        .toList(growable: false);
-    final amounts = cut.paymentBreakdown
-        .map((entry) => cut.money(entry.value))
-        .toList(growable: false);
-    final labelWidth = _maxWidth(<List<String>>[labels], 0, 8);
-    final amountWidth = _maxWidth(<List<String>>[amounts], 0, 6);
-
-    return <String>[
-      for (var index = 0; index < labels.length; index++)
-        '${labels[index].padRight(labelWidth)} '
-            '${amounts[index].padLeft(amountWidth)}',
     ];
   }
 

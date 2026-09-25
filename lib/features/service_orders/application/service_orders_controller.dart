@@ -192,6 +192,17 @@ final serviceOrderDetailProvider = FutureProvider.family<ServiceOrderDetail, int
   (ref, id) => ref.watch(serviceOrdersRepositoryProvider).fetchServiceOrder(id),
 );
 
+/// Definiciones de campos personalizados del módulo (`GET
+/// /service-orders/custom-fields`, §9).
+///
+/// Las usa el formulario de **alta**: en la edición ya viajan dentro del detalle
+/// de la orden.
+final serviceOrderCustomFieldsProvider =
+    FutureProvider<List<ServiceOrderCustomFieldDefinition>>(
+      (ref) =>
+          ref.watch(serviceOrdersRepositoryProvider).fetchCustomFieldDefinitions(),
+    );
+
 /// Estado del detalle y de sus acciones.
 class ServiceOrderDetailState {
   const ServiceOrderDetailState({

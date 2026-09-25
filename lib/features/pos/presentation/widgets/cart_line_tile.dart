@@ -28,7 +28,16 @@ class CartLineTile extends ConsumerWidget {
       decoration: BoxDecoration(
         color: surfaces.panelInner,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: surfaces.border),
+        // Franja de la marca a la izquierda: separa cada producto del carrito.
+        border: Border(
+          top: BorderSide(color: surfaces.border),
+          right: BorderSide(color: surfaces.border),
+          bottom: BorderSide(color: surfaces.border),
+          left: BorderSide(
+            color: EzyColors.primary.withValues(alpha: 0.55),
+            width: 3,
+          ),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -146,7 +155,11 @@ class _QuantityStepper extends ConsumerWidget {
             onPressed: () => controller.decrementLine(line),
             constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
             tooltip: 'Quitar una unidad',
-            icon: const Icon(Icons.remove, size: 18),
+            icon: Icon(
+              Icons.remove,
+              size: 18,
+              color: surfaces.textSecondary,
+            ),
           ),
           Text(
             Money.formatQuantity(line.quantity),
@@ -158,7 +171,7 @@ class _QuantityStepper extends ConsumerWidget {
             onPressed: () => controller.incrementLine(line),
             constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
             tooltip: 'Agregar una unidad',
-            icon: const Icon(Icons.add, size: 18),
+            icon: const Icon(Icons.add, size: 18, color: EzyColors.primary),
           ),
         ],
       ),

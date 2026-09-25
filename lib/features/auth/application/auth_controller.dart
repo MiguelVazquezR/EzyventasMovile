@@ -139,7 +139,14 @@ class AuthController extends Notifier<AuthState> {
   }
 
   /// `POST /auth/login`. Devuelve `true` si la sesión quedó iniciada.
-  Future<bool> login({required String email, required String password}) async {
+  ///
+  /// [keepSession] viene del check «Mantener la sesión abierta» del login: en
+  /// `false` el token no se guarda en el teléfono.
+  Future<bool> login({
+    required String email,
+    required String password,
+    bool keepSession = true,
+  }) async {
     _setState(
       state.copyWith(
         isSubmitting: true,
@@ -151,7 +158,11 @@ class AuthController extends Notifier<AuthState> {
     try {
       final session = await ref
           .read(authRepositoryProvider)
-          .login(email: email, password: password);
+          .login(
+            email: email,
+            password: password,
+            keepSession: keepSession,
+          );
 
       _setState(AuthState(status: AuthStatus.authenticated, session: session));
 

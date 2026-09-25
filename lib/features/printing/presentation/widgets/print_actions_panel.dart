@@ -61,12 +61,30 @@ class PrintActionsPanel extends ConsumerWidget {
         if (showPrinterStatus) ...<Widget>[
           Row(
             children: <Widget>[
-              Icon(
-                printer.isConnected
-                    ? Icons.print_outlined
-                    : Icons.print_disabled_outlined,
-                size: 16,
-                color: surfaces.textMuted,
+              Container(
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: printer.isConnected
+                      ? EzyColors.bluetooth.withValues(alpha: 0.16)
+                      : surfaces.panelInner,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: printer.isConnected
+                        ? EzyColors.bluetooth.withValues(alpha: 0.6)
+                        : surfaces.border,
+                  ),
+                ),
+                child: Icon(
+                  printer.isConnected
+                      ? Icons.bluetooth_connected
+                      : Icons.bluetooth_disabled_outlined,
+                  size: 15,
+                  color: printer.isConnected
+                      ? EzyColors.bluetooth
+                      : surfaces.textMuted,
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -97,7 +115,8 @@ class PrintActionsPanel extends ConsumerWidget {
           EzyButton(
             label: 'Enviar por WhatsApp',
             icon: Icons.chat_outlined,
-            variant: EzyButtonVariant.outline,
+            // Verde de WhatsApp: la acción se identifica con el canal.
+            variant: EzyButtonVariant.whatsApp,
             onPressed: _sendByWhatsApp(context, ref),
           ),
       ],

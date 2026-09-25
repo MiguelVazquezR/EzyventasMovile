@@ -86,6 +86,16 @@ class AppConfig {
   /// en el navegador externo.
   static String get subscriptionManageUrl => '$webBaseUrl/subscription/manage';
 
+  /// Sitio web público de EzyVentas.
+  ///
+  /// Es fijo a propósito: el login del teléfono abre el sitio de producción
+  /// aunque la API del build apunte al servidor local o al túnel USB.
+  static const String websiteUrl = 'https://ezyventas.com';
+
+  /// Login de la web (el enlace que ofrece la pantalla de inicio de sesión).
+  static const String webLoginUrl = '$websiteUrl/login';
+
+
   /// URL de un medio del servidor lista para descargar desde este dispositivo.
   ///
   /// Los medios llegan con **URL absoluta** al host del servidor
@@ -139,10 +149,105 @@ class AppConfig {
       ? const <String, String>{}
       : <String, String>{'Host': apiHostHeader};
 
+  /// Intentos de descarga de un medio, **en orden**.
+  ///
+  /// `Image.network` no reintenta: si el primer origen no es alcanzable desde el
+  /// teléfono, la imagen se queda en el marcador de la pantalla (`ServerImage`
+  /// los prueba uno tras otro).
+  ///
+  /// 1. **Con túnel USB** (`API_HOST_HEADER`): primero el origen de la API con el
+  ///    `Host` del vhost de Herd y después la URL tal cual (por si el dominio sí
+  ///    resuelve en la red donde está el teléfono).
+  /// 2. **Sin túnel**: la URL tal cual y, si el archivo vive en el `/storage/`
+  ///    de otro host, un intento contra el origen de la API con ese `Host` (el
+  ///    caso de un APK al servidor local sin `API_HOST_HEADER`).
+  ///
+  /// Los hosts externos (`placehold.co`, `ui-avatars.com`) nunca se reescriben y
+  /// una imagen sin URL no genera intentos.
+  static List<MediaRequest> mediaRequests(
+    String? url, {
+    String hostHeader = apiHostHeader,
+    String apiBaseUrlOverride = apiBaseUrl,
+  }) {
+    final raw = url?.trim() ?? '';
+
+    if (raw.isEmpty) {
+      return const <MediaRequest>[];
+    }
+
+    final parsed = Uri.tryParse(raw);
+
+    if (parsed == null) {
+      return const <MediaRequest>[];
+    }
+
+    final base = Uri.tryParse(apiBaseUrlOverride);
+    final hasBase = base != null && base.host.isNotEmpty;
+
+    // Ruta relativa del servidor (`/storage/6/iphone.png`): se resuelve contra
+    // el origen de la API (el dominio del servidor no resuelve en el teléfono).
+    if (!parsed.hasScheme) {
+      if (!hasBase || !parsed.path.startsWith('/storage/')) {
+        return const <MediaRequest>[];
+      }
+
+      return <MediaRequest>[
+        MediaRequest(
+          uri: Uri.parse('${base.scheme}://${base.authority}').replace(
+            path: parsed.path,
+            query: parsed.hasQuery ? parsed.query : null,
+          ),
+        ),
+      ];
+    }
+
+    if (parsed.host.isEmpty) {
+      return const <MediaRequest>[];
+    }
+
+    Uri viaApi() => parsed.replace(
+      scheme: base!.scheme,
+      host: base.host,
+      port: base.hasPort ? base.port : null,
+    );
+
+    if (hostHeader.isNotEmpty && parsed.host == hostHeader) {
+      return <MediaRequest>[
+        if (hasBase)
+          MediaRequest(
+            uri: viaApi(),
+            headers: <String, String>{'Host': hostHeader},
+          ),
+        MediaRequest(uri: parsed),
+      ];
+    }
+
+    return <MediaRequest>[
+      MediaRequest(uri: parsed),
+      if (hasBase && parsed.path.startsWith('/storage/') && parsed.host != base.host)
+        MediaRequest(
+          uri: viaApi(),
+          headers: <String, String>{'Host': parsed.host},
+        ),
+    ];
+  }
+
   /// Pie máximo (KB) de cada foto de diagnóstico aceptado por el servidor.
   static const int maxEvidenceImageKb = 2048;
   static const int maxEvidenceImages = 5;
 
   /// Pie máximo (KB) de la foto de perfil (`PUT /profile`, contrato §11b.4).
   static const int maxProfilePhotoKb = 1024;
+}
+
+/// Un intento de descarga de un medio del servidor: URL + headers de la
+/// petición (`Host` del vhost cuando se usa el túnel USB).
+class MediaRequest {
+  const MediaRequest({
+    required this.uri,
+    this.headers = const <String, String>{},
+  });
+
+  final Uri uri;
+  final Map<String, String> headers;
 }

@@ -103,19 +103,42 @@ class TransactionsController extends Notifier<TransactionsState> {
     return loadFirstPage();
   }
 
-  /// Filtra por estatus (`null` = todos).
-  Future<void> setStatus(String? status) {
-    if (status == state.filters.status) {
+  /// Filtra por uno o varios estatus (`null` o vacío = todos).
+  ///
+  /// El servidor acepta varios a la vez (§8): «Deudas por vencer» abre con
+  /// `apartado` + `pendiente` en una sola llamada.
+  Future<void> setStatuses(List<String>? statuses) {
+    final next = statuses ?? const <String>[];
+
+    if (_sameStatuses(next, state.filters.statuses)) {
       return Future<void>.value();
     }
 
     state = state.copyWith(
-      filters: status == null
+      filters: next.isEmpty
           ? state.filters.copyWith(clearStatus: true)
-          : state.filters.copyWith(status: status),
+          : state.filters.copyWith(statuses: next),
     );
 
     return loadFirstPage();
+  }
+
+  /// Filtra por un solo estatus (`null` = todos).
+  Future<void> setStatus(String? status) =>
+      setStatuses(status == null ? null : <String>[status]);
+
+  static bool _sameStatuses(List<String> a, List<String> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+
+    for (var index = 0; index < a.length; index++) {
+      if (a[index] != b[index]) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   /// Filtra por rango de fechas (`null` limpia ese extremo).

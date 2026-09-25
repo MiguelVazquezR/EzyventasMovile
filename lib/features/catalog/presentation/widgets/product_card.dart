@@ -31,7 +31,12 @@ class ProductCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: surfaces.panel,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: surfaces.border),
+        border: Border.all(
+          // La promoción tiñe el borde de la tarjeta: se distingue sin leer.
+          color: product.hasPromotion
+              ? EzyColors.primary.withValues(alpha: 0.5)
+              : surfaces.border,
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -154,13 +159,19 @@ class _Thumbnail extends StatelessWidget {
   }
 
   Widget _placeholder() {
-    return const ColoredBox(
-      color: EzyColors.surfaceDarkInner,
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[EzyColors.surfaceDark, EzyColors.surfaceDarkDeep],
+        ),
+      ),
       child: Center(
         child: Icon(
-          Icons.image_not_supported_outlined,
-          size: 28,
-          color: EzyColors.gray66,
+          Icons.image_outlined,
+          size: 30,
+          color: EzyColors.primary300,
         ),
       ),
     );
@@ -190,7 +201,10 @@ class _PriceLine extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: EzyTextStyles.moneyList.copyWith(
               fontSize: 16,
-              color: surfaces.textPrimary,
+              // El precio en promoción se pinta con el naranja de la marca.
+              color: product.hasPromotion
+                  ? EzyColors.primary
+                  : surfaces.textPrimary,
             ),
           ),
         ),
@@ -220,9 +234,11 @@ class _StockLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Con stock, verde; agotado, rojo. El color del stock es el semáforo de la
+    // tarjeta (el resto del texto ya es alto/medio/bajo).
     final severity = product.isOutOfStock
         ? EzySeverity.danger
-        : EzySeverity.neutral;
+        : EzySeverity.success;
     final color = StatusPalette.text(context, severity);
     final unit = product.measureUnit.isEmpty ? '' : ' ${product.measureUnit}';
 
@@ -242,7 +258,10 @@ class _StockLine extends StatelessWidget {
                 ? 'Sin stock'
                 : '${Money.formatQuantity(product.stock)}$unit',
             overflow: TextOverflow.ellipsis,
-            style: EzyTextStyles.caption.copyWith(color: color),
+            style: EzyTextStyles.caption.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ],

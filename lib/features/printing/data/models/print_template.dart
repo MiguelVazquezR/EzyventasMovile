@@ -39,6 +39,9 @@ enum PrintContextType {
   product('product'),
   customer('customer'),
   quote('quote'),
+
+  /// Plantilla diseñada para el corte de caja (§6.3).
+  cashRegister('cash_register'),
   general('general');
 
   const PrintContextType(this.wire);
@@ -52,6 +55,7 @@ enum PrintContextType {
     PrintContextType.product => 'Producto',
     PrintContextType.customer => 'Cliente',
     PrintContextType.quote => 'Cotización',
+    PrintContextType.cashRegister => 'Corte de caja',
     PrintContextType.general => 'General',
   };
 }

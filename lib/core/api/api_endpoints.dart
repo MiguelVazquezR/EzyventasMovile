@@ -32,6 +32,11 @@ class ApiEndpoints {
       '/cash-register-sessions/$id/leave';
   static String cashRegisterSessionSummary(int id) =>
       '/cash-register-sessions/$id/summary';
+
+  /// El corte listo para (re)imprimir, también el de un turno cerrado (§6.3).
+  static String cashRegisterSessionReceipt(int id) =>
+      '/cash-register-sessions/$id/receipt';
+
   static String closeCashRegisterSession(int id) =>
       '/cash-register-sessions/$id';
   static const String bankAccounts = '/bank-accounts';
@@ -52,6 +57,11 @@ class ApiEndpoints {
 
   // Órdenes de servicio
   static const String serviceOrders = '/service-orders';
+
+  /// Definiciones de campos personalizados del módulo (§9), para dibujar el
+  /// formulario de alta antes de que exista la orden.
+  static const String serviceOrderCustomFields = '/service-orders/custom-fields';
+
   static String serviceOrder(int id) => '/service-orders/$id';
   static String serviceOrderStatus(int id) => '/service-orders/$id/status';
   static String serviceOrderDiagnosis(int id) => '/service-orders/$id/diagnosis';

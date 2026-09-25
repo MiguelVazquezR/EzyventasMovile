@@ -5,7 +5,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../application/catalog_providers.dart';
 
-/// Buscador del catálogo con icono y botón para limpiar.
+/// Buscador del catálogo: pastilla con el icono de la marca y botón para limpiar.
 class CatalogSearchField extends StatelessWidget {
   const CatalogSearchField({
     super.key,
@@ -24,23 +24,53 @@ class CatalogSearchField extends StatelessWidget {
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
 
-    return TextField(
-      controller: controller,
-      onChanged: onChanged,
-      textInputAction: TextInputAction.search,
-      style: EzyTextStyles.fieldValue.copyWith(color: surfaces.textPrimary),
-      decoration: InputDecoration(
-        hintText: hint,
-        prefixIcon: Icon(Icons.search, size: 20, color: surfaces.textMuted),
-        suffixIcon: ValueListenableBuilder<TextEditingValue>(
-          valueListenable: controller,
-          builder: (context, value, child) => value.text.isEmpty
-              ? const SizedBox.shrink()
-              : IconButton(
-                  onPressed: onClear,
-                  tooltip: 'Limpiar búsqueda',
-                  icon: Icon(Icons.close, size: 18, color: surfaces.textMuted),
-                ),
+    return Container(
+      decoration: BoxDecoration(
+        color: surfaces.panel,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: EzyColors.primary.withValues(alpha: 0.45),
+          width: 1.5,
+        ),
+      ),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        style: EzyTextStyles.fieldValue.copyWith(color: surfaces.textPrimary),
+        decoration: InputDecoration(
+          hintText: hint,
+          // La pastilla ya pinta su propio fondo y borde.
+          filled: false,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          prefixIcon: Padding(
+            padding: const EdgeInsets.all(7),
+            child: Container(
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: EzyColors.primary,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.search, size: 18, color: EzyColors.black1),
+            ),
+          ),
+          suffixIcon: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, child) => value.text.isEmpty
+                ? const SizedBox.shrink()
+                : IconButton(
+                    onPressed: onClear,
+                    tooltip: 'Limpiar búsqueda',
+                    icon: Icon(
+                      Icons.close,
+                      size: 18,
+                      color: surfaces.textSecondary,
+                    ),
+                  ),
+          ),
         ),
       ),
     );
@@ -60,7 +90,7 @@ class CatalogCategoryChips extends ConsumerWidget {
     final controller = ref.read(productsControllerProvider.notifier);
 
     return SizedBox(
-      height: 46,
+      height: 48,
       child: categories.when(
         loading: () => const SizedBox.shrink(),
         error: (error, stackTrace) => const SizedBox.shrink(),
@@ -78,6 +108,7 @@ class CatalogCategoryChips extends ConsumerWidget {
               if (index == 0) {
                 return _CategoryChip(
                   label: 'Todas',
+                  icon: Icons.apps,
                   isSelected: selected == null,
                   onTap: () => controller.setCategory(null),
                 );
@@ -103,11 +134,13 @@ class _CategoryChip extends StatelessWidget {
     required this.label,
     required this.isSelected,
     required this.onTap,
+    this.icon,
   });
 
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -116,26 +149,40 @@ class _CategoryChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
         alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: isSelected
-              ? EzyColors.primary.withValues(alpha: 0.16)
-              : surfaces.panel,
+          // El chip activo se rellena con el naranja de la marca: se ve de un
+          // solo golpe cuál está aplicado.
+          color: isSelected ? EzyColors.primary : surfaces.panelInner,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: isSelected
-                ? EzyColors.primary.withValues(alpha: 0.5)
-                : surfaces.border,
+            color: isSelected ? EzyColors.primary : surfaces.borderStrong,
           ),
         ),
-        child: Text(
-          label,
-          style: EzyTextStyles.caption.copyWith(
-            color: isSelected ? EzyColors.primary : surfaces.textSecondary,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            if (icon != null) ...<Widget>[
+              Icon(
+                icon,
+                size: 16,
+                color: isSelected ? EzyColors.black1 : surfaces.textMuted,
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: EzyTextStyles.caption.copyWith(
+                color: isSelected
+                    ? EzyColors.black1
+                    : surfaces.textSecondary,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
         ),
       ),
     );

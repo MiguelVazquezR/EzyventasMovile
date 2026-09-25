@@ -58,7 +58,7 @@ class NotificationsScreen extends ConsumerWidget {
               title: AccountLabels.notificationsEmpty,
             )
           else
-            for (final category in NotificationCategory.values)
+            for (final category in state.counters.visibleCategories)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _CategoryCard(
@@ -86,9 +86,11 @@ class NotificationsScreen extends ConsumerWidget {
 
     switch (category) {
       case NotificationCategory.expiringDebts:
-        // El contador agrupa apartados y créditos; el listado acepta un solo
-        // estatus, así que se abre el historial completo (ver README).
-        ref.read(transactionsControllerProvider.notifier).refresh();
+        // El contador agrupa apartados y créditos: el listado los acepta juntos
+        // en una sola llamada (`?status[]=apartado&status[]=pendiente`, §8).
+        ref
+            .read(transactionsControllerProvider.notifier)
+            .setStatuses(SalesLabels.expiringDebtStatuses);
       case NotificationCategory.upcomingDeliveries:
         ref
             .read(transactionsControllerProvider.notifier)

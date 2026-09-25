@@ -31,6 +31,13 @@ class EzyColors {
   static const Color info = Color(0xFF3B82F6);
   static const Color neutral = Color(0xFF6B7280);
 
+  /// Verde de WhatsApp: botón de envío del ticket por chat.
+  static const Color whatsApp = Color(0xFF25D366);
+
+  /// Azul de Bluetooth: botones de impresora (buscar, conectar, cambiar).
+  static const Color bluetooth = Color(0xFF3B82F6);
+
+
   // Neutros
   static const Color grayF2 = Color(0xFFF2F2F2);
   static const Color grayD9 = Color(0xFFD9D9D9);

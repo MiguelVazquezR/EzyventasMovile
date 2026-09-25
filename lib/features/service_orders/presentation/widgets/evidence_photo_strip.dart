@@ -44,6 +44,10 @@ class DraftEvidenceStrip extends StatelessWidget {
 ///
 /// En modo edición se pueden marcar para borrarlas
 /// (`deleted_media_ids[]` del `PUT`); el diagnóstico **no** borra fotos.
+///
+/// La miniatura se pide con su URL original como respaldo: cuando la conversión
+/// del servidor no existe, la foto igual se ve. Tocar la foto la abre a pantalla
+/// completa.
 class EvidenceMediaStrip extends StatelessWidget {
   const EvidenceMediaStrip({
     super.key,
@@ -72,6 +76,7 @@ class EvidenceMediaStrip extends StatelessWidget {
           _Tile(
             caption: media.sizeLabel,
             imageUrl: media.thumbUrl,
+            fallbackUrl: media.originalUrl,
             isMarkedForDeletion: markedForDeletion.contains(media.id),
             onRemove: onToggleDelete == null
                 ? null
@@ -106,6 +111,7 @@ class _Tile extends StatelessWidget {
     required this.caption,
     this.bytes,
     this.imageUrl,
+    this.fallbackUrl,
     this.onRemove,
     this.isMarkedForDeletion = false,
   });
@@ -113,12 +119,14 @@ class _Tile extends StatelessWidget {
   final String caption;
   final Uint8List? bytes;
   final String? imageUrl;
+  final String? fallbackUrl;
   final VoidCallback? onRemove;
   final bool isMarkedForDeletion;
 
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
+    final canOpen = bytes != null || (imageUrl ?? '').isNotEmpty;
 
     return SizedBox(
       width: 96,
@@ -126,35 +134,39 @@ class _Tile extends StatelessWidget {
         children: <Widget>[
           Stack(
             children: <Widget>[
-              Container(
-                width: 84,
-                height: 66,
-                decoration: BoxDecoration(
-                  color: surfaces.panelInner,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isMarkedForDeletion
-                        ? StatusPalette.border(EzySeverity.danger)
-                        : surfaces.border,
+              GestureDetector(
+                onTap: canOpen ? () => _open(context) : null,
+                child: Container(
+                  width: 84,
+                  height: 66,
+                  decoration: BoxDecoration(
+                    color: surfaces.panelInner,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isMarkedForDeletion
+                          ? StatusPalette.border(EzySeverity.danger)
+                          : surfaces.border,
+                    ),
+                    image: bytes == null
+                        ? null
+                        : DecorationImage(
+                            image: MemoryImage(bytes!),
+                            fit: BoxFit.cover,
+                          ),
                   ),
-                  image: bytes == null
-                      ? null
-                      : DecorationImage(
-                          image: MemoryImage(bytes!),
+                  clipBehavior: Clip.antiAlias,
+                  child: bytes == null && (imageUrl ?? '').isNotEmpty
+                      ? ServerImage(
+                          imageUrl,
+                          fallbackUrl: fallbackUrl,
                           fit: BoxFit.cover,
-                        ),
+                          errorBuilder: (context, error, stackTrace) => Icon(
+                            Icons.broken_image_outlined,
+                            color: surfaces.textMuted,
+                          ),
+                        )
+                      : null,
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: bytes == null && (imageUrl ?? '').isNotEmpty
-                    ? ServerImage(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Icon(
-                          Icons.broken_image_outlined,
-                          color: surfaces.textMuted,
-                        ),
-                      )
-                    : null,
               ),
               if (onRemove != null)
                 Positioned(
@@ -187,6 +199,46 @@ class _Tile extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Abre la evidencia a pantalla completa (zoom con dos dedos).
+  void _open(BuildContext context) {
+    final Widget image = bytes == null
+        ? ServerImage(imageUrl, fallbackUrl: fallbackUrl, fit: BoxFit.contain)
+        : Image.memory(bytes!, fit: BoxFit.contain);
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.all(12),
+        backgroundColor: EzyColors.surfaceDarkDeep,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Flexible(
+              child: InteractiveViewer(
+                maxScale: 5,
+                child: SizedBox(width: 400, child: image),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                caption,
+                style: EzyTextStyles.caption.copyWith(
+                  color: EzyColors.textSecondaryDark,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
       ),
     );
   }

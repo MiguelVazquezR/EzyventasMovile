@@ -54,7 +54,7 @@ enum TransactionSort {
 class TransactionFilters {
   const TransactionFilters({
     this.search = '',
-    this.status,
+    this.statuses = const <String>[],
     this.dateStart,
     this.dateEnd,
     this.sort = TransactionSort.recent,
@@ -63,7 +63,11 @@ class TransactionFilters {
   final String search;
 
   /// Estatus de la venta (`completado`, `pendiente`, `apartado`, ...).
-  final String? status;
+  ///
+  /// El servidor acepta **varios a la vez** desde el 2026-09-20 (§8), que es lo
+  /// que necesita «Deudas por vencer» (apartados + créditos pendientes). Con un
+  /// solo elemento el comportamiento es el de antes.
+  final List<String> statuses;
 
   /// Rango de fechas (día inicial y final, hora local del dispositivo).
   final DateTime? dateStart;
@@ -73,7 +77,10 @@ class TransactionFilters {
 
   /// Hay algún filtro aplicado (sin contar el orden).
   bool get hasFilters =>
-      search.isNotEmpty || status != null || dateStart != null || dateEnd != null;
+      search.isNotEmpty ||
+      statuses.isNotEmpty ||
+      dateStart != null ||
+      dateEnd != null;
 
   /// Rango de fechas en formato `d MMM y`.
   String? get dateRangeLabel {
@@ -85,11 +92,15 @@ class TransactionFilters {
         '${dateEnd == null ? 'Hoy' : AppFormatters.date(dateEnd)}';
   }
 
-  /// Parámetros exactos del contrato (`search`, `status`, `date_start`,
+  /// Parámetros exactos del contrato (`search`, `status[]`, `date_start`,
   /// `date_end`, `sortField`, `sortOrder`).
+  ///
+  /// La clave lleva los corchetes a propósito: Dio serializa una lista pelada
+  /// repitiendo la clave (`status=a&status=b`) y **PHP se queda con la última**,
+  /// mientras que `status[]=a&status[]=b` sí llega como arreglo (contrato §8).
   Map<String, dynamic> toQuery() => <String, dynamic>{
     'search': search.isEmpty ? null : search,
-    'status': status,
+    if (statuses.isNotEmpty) 'status[]': statuses,
     'date_start': dateStart == null
         ? null
         : AppFormatters.apiDate(dateStart!),
@@ -100,7 +111,7 @@ class TransactionFilters {
 
   TransactionFilters copyWith({
     String? search,
-    String? status,
+    List<String>? statuses,
     DateTime? dateStart,
     DateTime? dateEnd,
     TransactionSort? sort,
@@ -110,7 +121,7 @@ class TransactionFilters {
   }) {
     return TransactionFilters(
       search: search ?? this.search,
-      status: clearStatus ? null : (status ?? this.status),
+      statuses: clearStatus ? const <String>[] : (statuses ?? this.statuses),
       dateStart: clearDateStart ? null : (dateStart ?? this.dateStart),
       dateEnd: clearDateEnd ? null : (dateEnd ?? this.dateEnd),
       sort: sort ?? this.sort,

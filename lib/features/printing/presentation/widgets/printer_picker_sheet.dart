@@ -113,7 +113,8 @@ class _PrinterPickerSheetState extends ConsumerState<_PrinterPickerSheet> {
           EzyButton(
             label: 'Buscar de nuevo',
             icon: Icons.bluetooth_searching_outlined,
-            variant: EzyButtonVariant.outline,
+            // Azul Bluetooth: la acción es el escaneo.
+            variant: EzyButtonVariant.info,
             isLoading: state.isBusy,
             onPressed: () => controller.loadDevices(),
           ),
@@ -158,11 +159,28 @@ class _PrinterTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: surfaces.panelInner,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: surfaces.border),
+          border: Border.all(
+            color: device.isPaired || device.isSaved
+                ? EzyColors.bluetooth.withValues(alpha: 0.5)
+                : surfaces.border,
+          ),
         ),
         child: Row(
           children: <Widget>[
-            Icon(Icons.print_outlined, size: 18, color: surfaces.textSecondary),
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: EzyColors.bluetooth.withValues(alpha: 0.16),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.bluetooth,
+                size: 18,
+                color: EzyColors.bluetooth,
+              ),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

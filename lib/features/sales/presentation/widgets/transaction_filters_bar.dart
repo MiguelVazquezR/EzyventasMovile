@@ -81,8 +81,8 @@ class _TransactionFiltersBarState extends ConsumerState<TransactionFiltersBar> {
           ),
         ),
         _StatusChips(
-          selected: filters.status,
-          onSelected: controller.setStatus,
+          selected: filters.statuses,
+          onSelected: controller.setStatuses,
         ),
         const SizedBox(height: 4),
         _FilterActions(filters: filters),
@@ -93,11 +93,14 @@ class _TransactionFiltersBarState extends ConsumerState<TransactionFiltersBar> {
 }
 
 /// Chips de estatus (`Todas` + los estatus del contrato).
+///
+/// Se pueden combinar varios a la vez: «Deudas por vencer» abre con `Apartado` y
+/// `Pendiente` marcados a la vez (§8).
 class _StatusChips extends ConsumerWidget {
   const _StatusChips({required this.selected, required this.onSelected});
 
-  final String? selected;
-  final Future<void> Function(String?) onSelected;
+  final List<String> selected;
+  final Future<void> Function(List<String>?) onSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -112,17 +115,22 @@ class _StatusChips extends ConsumerWidget {
           if (index == 0) {
             return _FilterChip(
               label: 'Todas',
-              isSelected: selected == null,
+              isSelected: selected.isEmpty,
               onTap: () => onSelected(null),
             );
           }
 
           final status = SalesLabels.statusFilters[index - 1];
+          final isSelected = selected.contains(status);
 
           return _FilterChip(
             label: SalesLabels.status(status),
-            isSelected: selected == status,
-            onTap: () => onSelected(status),
+            isSelected: isSelected,
+            onTap: () => onSelected(
+              isSelected
+                  ? selected.where((item) => item != status).toList()
+                  : <String>[...selected, status],
+            ),
           );
         },
       ),

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fondo del arranque nativo: el mismo del tema oscuro de la app
+         (`EzySurfaces.dark.background` = #1A1A1A), para que el paso del splash
+         nativo al de Flutter no se note (antes era el negro de
+         `?android:colorBackground`, que se veía como una pantalla negra). -->
+    <color name="launch_background">#FF1A1A1A</color>
+</resources>

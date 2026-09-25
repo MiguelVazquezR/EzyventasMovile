@@ -314,14 +314,19 @@ class _BalanceSwitch extends StatelessWidget {
               value: '-${Money.format(balanceUsed)}',
               emphasized: true,
             ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: value,
-            onChanged: onChanged,
-            title: Text(
-              'Usar saldo a favor',
-              style: EzyTextStyles.bodyStrong.copyWith(
-                color: surfaces.textPrimary,
+          // `Material` transparente: el `SectionCard` pinta su propio fondo y sin
+          // él el *ripple* del interruptor quedaría debajo del fondo.
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: value,
+              onChanged: onChanged,
+              title: Text(
+                'Usar saldo a favor',
+                style: EzyTextStyles.bodyStrong.copyWith(
+                  color: surfaces.textPrimary,
+                ),
               ),
             ),
           ),

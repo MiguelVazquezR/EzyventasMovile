@@ -49,8 +49,8 @@ flutter:
 
   # Imagenes de marca: el logotipo blanco (tema oscuro) y el negro (tema
   # claro) que pinta `BrandLogo`. Los originales del icono de la app
-  # (ezyventas_icon.jfif, isologo.png) viven en la misma carpeta pero no se
-  # empaquetan porque solo los usa tool/app_icons.ps1.
+  # (ezyventas_icon.jpg, isologo.png) viven en la misma carpeta pero no se
+  # empaquetan porque solo los usan tool/app_icons.ps1 y tool/launch_logo.ps1.
   assets:
     - assets/images/white_logo.png
     - assets/images/black_logo.png

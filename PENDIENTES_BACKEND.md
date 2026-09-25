@@ -16,6 +16,40 @@ evidencia observada, qué se pide y el criterio para darlo por cerrado.
   como **único** punto de partida, junto con el contrato `01-contrato-api-v1.md`. Los puntos ya están
   priorizados (P0 → P2) y con el orden de trabajo en la sección F.
 
+## Estado (21 sep 2026): cerrado por el backend y **verificado desde la app**
+
+Todo el documento (P0, P1 y P2) está **implementado en la API** y quedó anotado punto por punto en el
+changelog del contrato (`01-contrato-api-v1.md` §14). La app se adaptó a lo nuevo y **volvió a correr
+sus pruebas reales** contra `https://ezyventas2.test/api/v1` (dueño, empleado y super admin):
+
+| Punto | Estado | Cómo se verificó desde la app (21 sep 2026) |
+|---|---|---|
+| **A1** editar/borrar un abono concilia el cliente | ✅ verificado | `LIVE_SALES_LAYAWAY=true`: apartado `V-005` ($70) → abono $1 → edición $1.50 → borrado → abono $2 → cancelación con reembolso deja `[live] saldo del cliente tras la cadena completa: $0.00 (antes de la cadena $0.00)`. La prueba ya **exige** el saldo intacto (antes caracterizaba el desfase de +$1.00 por corrida) |
+| **A2** `remaining_due` = 0 en ventas anuladas | ✅ verificado | `[live] V-004 reembolsado Juanito babanas total=$70.00 saldo=$0.00` |
+| **A3** el saldo a favor solo con `use_balance` | ✅ verificado | La app manda `use_balance: false`: `[live] apartado V-005 … saldo=$70.00` y `pagos iniciales=0.0`; la prueba lo exige |
+| **A4** una sola regla de sobrepago | 🔵 backend | La app ya aplicaba la regla nueva (`CartState.change`: solo efectivo da cambio). La corrida usa pagos exactos (`V-003 … cambio=$0.00`), así que el sobrepago lo cubre `PosApiTest` |
+| **A5** una sola fórmula de totales en POS | ✅ verificado | Venta `V-003` y apartado `V-005` de una línea de $70: `total=$70.00` con `saldo=$70.00`/`pagado=$70.00`, sin descuentos ni desfases |
+| **A6** borrar una orden revierte stock y deuda | ✅ verificado | `LIVE_SERVICE_ORDERS_STOCK=true`: la prueba agrega una refacción real, borra la orden y exige que el stock vuelva al valor previo |
+| **B1** el logo viaja en el ESC/POS | ✅ verificado | Ticket de la plantilla #3: **8 739 bytes** (el bitmap del logo) y **el logo salió impreso** en la térmica del Redmi |
+| **B2** etiquetas con imagen rasterizada (`BITMAP`) | 🔵 backend (parcial) | La plantilla de etiqueta de la suscripción de prueba **no** tiene imagen: `noResueltas=[]`, una sola operación `EscribirTexto`. La rasterización la cubre `PrintingApiTest` |
+| **B3** WhatsApp de una orden de servicio | ✅ verificado (422) | `[live] WhatsApp de un cliente: 422 no_whatsapp_ticket Este documento no tiene ticket de WhatsApp.` y `[live] WhatsApp kind=sale telefono=3312650047 lineas=19` de una venta real |
+| **B4** `GET /print/templates` con varios contextos | ✅ verificado | 7 plantillas (4 tickets + 3 etiquetas); `[live] la app selecciona para una venta: #3, #7` |
+| **B5** corte de caja imprimible/reimprimible | ✅ verificado | `[live] corte del turno abierto #16 plantilla=Corte de caja (incorporada) operaciones=1 bytes=491 papel=80mm avisos=[]`; el corte de un turno **cerrado** lo pide la prueba de caja tras su propio corte. La app borró su renderizador local |
+| **B6** código de barras nunca vacío | ✅ verificado | `[live] … avisos=[Barcode: la plantilla no resolvió un valor, se usó «P-6».]` con `BARCODE …,"P-6"` (antes `,""`) |
+| **C1-C8** contrato vs realidad | ✅ alineado | Contrato corregido; la app ya cumplía (o se ajustó): `create_customer` opcional en el alta real, `available_branches` agrupadas en el super admin, 403 de suscripción con el mensaje genérico, etc. |
+| **D1** `history[].payment.id` | ✅ verificado | `[live] última versión: v12 … puedeFactura=true idPago=37` |
+| **D2** `payment_not_approved` | 🔵 backend | La app solo ofrece la factura con `can_request_invoice = true` y muestra el `message`; el `403` lo cubre `AccountApiTest` |
+| **D3** `modules` en `/notifications` | ✅ verificado | `[live] notificaciones: … pedidos=0 tiendaEnLinea=false` (la app oculta el contador) |
+| **D4** varios `status` en `/transactions` | ✅ verificado | `[live] deudas por vencer tras crear el apartado: total=1 estatus=apartado incluyeElApartado=true` y `422 claves=status.0` con un estatus inventado |
+| **D5** `GET /service-orders/custom-fields` | ✅ verificado | `[live] campos personalizados del módulo=0` (200 y lista vacía: la suscripción no tiene definidos); el dibujado con definiciones reales está cubierto por `service_order_form_screen_test.dart` |
+| **D6/D7/D8** decisiones de alcance | ✅ asumidas | Se quedan como están (contrato §13b) y la app lo advierte en la UI (sucursal global, sin motivo escrito al cancelar, sin listado de sesiones) |
+
+> Nota sobre `errors`: el `422` de un estatus inválido llega en **notación con punto**
+> (`{"errors":{"status.0":["El estatus seleccionado no es válido."]}}`), no como arreglo anidado. La app
+> expone las claves tal como las manda el servidor (`ApiException.errors`), así que leer
+> `errors['status']` no encuentra nada: hay que leer `status.0` (o cualquier clave que empiece por
+> `status.`). Comprobado con `curl` y con la prueba real.
+
 ## 0. Cómo se reproduce y cómo se verifica
 
 ```bash

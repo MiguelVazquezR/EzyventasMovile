@@ -65,8 +65,18 @@ if ($Remove) {
     & $adb reverse --remove "tcp:$Port"
     Write-Host "Tunel tcp:$Port eliminado."
 } elseif (-not $Status) {
+    # Se quita primero: si el telefono se reconecto (o el servidor adb se
+    # reinicio), el registro puede quedar "vivo" en la lista pero muerto en la
+    # practica (el telefono no llega a Herd). Volver a crearlo sin quitarlo deja
+    # ese estado pegado; quitarlo y volver a crearlo siempre funciona.
+    & $adb reverse --remove "tcp:$Port" 2>$null | Out-Null
     & $adb reverse "tcp:$Port" 'tcp:443'
     Write-Host "Tunel listo: en el telefono, https://127.0.0.1:$Port -> https://127.0.0.1:443 (Herd)."
+    Write-Host ''
+    Write-Host 'Comprueba desde el TELEFONO que llega a la API (Herd exige el Host del vhost):'
+    Write-Host "  adb push tool\android_tunnel_check.sh /data/local/tmp/   # y dos2unix si lo editas en Windows"
+    Write-Host "  adb shell sh /data/local/tmp/android_tunnel_check.sh correo@negocio.com 'secreto'"
+    Write-Host '  (404 sin Host, 401 con Host sin token, 200 en el login real = tunel OK)'
 }
 
 Write-Host ''

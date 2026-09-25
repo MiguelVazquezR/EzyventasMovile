@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/api/api_providers.dart';
-import '../data/cash_cut_renderer.dart';
-import '../data/models/cash_cut_document.dart';
+import '../../cash/application/cash_register_controller.dart';
+import '../data/models/cash_cut_receipt.dart';
 import '../data/models/print_document.dart';
 import '../data/models/print_payloads.dart';
 import '../data/models/print_template.dart';
@@ -35,36 +35,54 @@ class PrintJobState {
     this.isSubmitting = false,
     this.isFetchingHtml = false,
     this.isFetchingWhatsApp = false,
+    this.isFetchingCut = false,
     this.errorMessage,
     this.notice,
+    this.warningMessage,
   });
 
   /// Obtención del documento (o envío a la impresora) en curso.
   final bool isSubmitting;
   final bool isFetchingHtml;
   final bool isFetchingWhatsApp;
+  final bool isFetchingCut;
 
   /// `message` del servidor o aviso local de la impresora.
   final String? errorMessage;
+
+  /// Confirmación con el `message` del servidor.
   final String? notice;
 
-  bool get isBusy => isSubmitting || isFetchingHtml || isFetchingWhatsApp;
+  /// El documento se imprimió, pero el servidor (o la plantilla) reportó algo:
+  /// `unsupported_operations`, `warnings` o una operación que el teléfono no
+  /// puede emitir. Se muestra como aviso, nunca como éxito.
+  final String? warningMessage;
+
+  bool get isBusy =>
+      isSubmitting || isFetchingHtml || isFetchingWhatsApp || isFetchingCut;
 
   PrintJobState copyWith({
     bool? isSubmitting,
     bool? isFetchingHtml,
     bool? isFetchingWhatsApp,
+    bool? isFetchingCut,
     String? errorMessage,
     String? notice,
+    String? warningMessage,
     bool clearError = false,
     bool clearNotice = false,
+    bool clearWarning = false,
   }) {
     return PrintJobState(
       isSubmitting: isSubmitting ?? this.isSubmitting,
       isFetchingHtml: isFetchingHtml ?? this.isFetchingHtml,
       isFetchingWhatsApp: isFetchingWhatsApp ?? this.isFetchingWhatsApp,
+      isFetchingCut: isFetchingCut ?? this.isFetchingCut,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       notice: clearNotice ? null : (notice ?? this.notice),
+      warningMessage: clearWarning
+          ? null
+          : (warningMessage ?? this.warningMessage),
     );
   }
 }
@@ -121,10 +139,18 @@ class PrintJobController extends Notifier<PrintJobState> {
           .read(printerControllerProvider.notifier)
           .printBytes(payload.commands);
 
-      state = state.copyWith(
-        isSubmitting: false,
-        notice: printed ? null : _printerError(),
-      );
+      if (printed) {
+        state = state.copyWith(
+          isSubmitting: false,
+          clearError: true,
+          clearWarning: true,
+        );
+      } else {
+        state = state.copyWith(
+          isSubmitting: false,
+          errorMessage: _printerError(),
+        );
+      }
 
       return printed;
     } on ApiException catch (error) {
@@ -137,15 +163,20 @@ class PrintJobController extends Notifier<PrintJobState> {
   /// Imprime una **etiqueta** (TSPL) con `POST /print/payload`.
   ///
   /// El servidor devuelve la operación `EscribirTexto` con el comando TSPL
-  /// completo; se envía tal cual en UTF-8 (las térmicas de etiquetas aceptan el
-  /// comando en texto).
+  /// completo (imágenes ya rasterizadas como `BITMAP` y código de barras
+  /// relleno) y reporta en `unsupported_operations` / `warnings` lo que no pudo
+  /// resolver: se envía tal cual en UTF-8 y se avisa si viene algo.
   Future<bool> printLabel({
     required PrintDocument document,
     required int templateId,
     double offsetX = 0,
     double offsetY = 0,
   }) async {
-    state = state.copyWith(isSubmitting: true, clearError: true);
+    state = state.copyWith(
+      isSubmitting: true,
+      clearError: true,
+      clearWarning: true,
+    );
 
     try {
       final payload = await _repository.labelPayload(
@@ -173,14 +204,18 @@ class PrintJobController extends Notifier<PrintJobState> {
           .read(printerControllerProvider.notifier)
           .printBytes(Uint8List.fromList(utf8.encode(tspl)));
 
-      // La plantilla puede traer imágenes u operaciones que el teléfono no sabe
-      // convertir a comandos: se avisa en lugar de imprimir a medias.
-      final notice = printed && payload.hasUnsupportedOperations
-          ? 'La etiqueta se envió, pero la plantilla incluye imágenes que no se '
-                'imprimen desde el teléfono.'
-          : (printed ? null : _printerError());
-
-      state = state.copyWith(isSubmitting: false, notice: notice);
+      if (printed) {
+        state = state.copyWith(
+          isSubmitting: false,
+          clearError: true,
+          warningMessage: payload.warningNotice,
+        );
+      } else {
+        state = state.copyWith(
+          isSubmitting: false,
+          errorMessage: _printerError(),
+        );
+      }
 
       return printed;
     } on ApiException catch (error) {
@@ -190,25 +225,127 @@ class PrintJobController extends Notifier<PrintJobState> {
     }
   }
 
-  /// Imprime el **corte de caja** (documento local: la API no lo soporta).
-  Future<bool> printCashCut(
-    CashCutDocument cut, {
-    int charactersPerLine = 48,
+  /// Imprime el **corte de caja**: pide el comprobante al servidor y manda sus
+  /// `operations` tal cual (§6.3). Devuelve `false` si no se pudo traer o
+  /// imprimir.
+  Future<bool> printCashCut({required int sessionId, int? templateId}) async {
+    final receipt = await loadCashCutReceipt(
+      sessionId: sessionId,
+      templateId: templateId,
+    );
+
+    if (receipt == null) {
+      return false;
+    }
+
+    return printCashCutReceipt(receipt);
+  }
+
+  /// `GET /cash-register-sessions/{id}/receipt` — el corte listo para
+  /// (re)imprimir. `null` si el servidor no lo devolvió.
+  Future<CashCutReceipt?> loadCashCutReceipt({
+    required int sessionId,
+    int? templateId,
   }) async {
-    state = state.copyWith(isSubmitting: true, clearError: true);
+    state = state.copyWith(
+      isFetchingCut: true,
+      clearError: true,
+      clearWarning: true,
+    );
+
+    try {
+      final receipt = await ref
+          .read(cashRegisterRepositoryProvider)
+          .fetchCutReceipt(sessionId, templateId: templateId);
+
+      state = state.copyWith(isFetchingCut: false);
+
+      return receipt;
+    } on ApiException catch (error) {
+      state = state.copyWith(isFetchingCut: false, errorMessage: error.message);
+
+      return null;
+    }
+  }
+
+  /// Imprime el **corte de caja** con el comprobante del servidor.
+  ///
+  /// La app ya **no** arma el corte (contrato §6.3): manda las `operations` que
+  /// devuelve `GET /cash-register-sessions/{id}/receipt`, tal cual. Sirve igual
+  /// para el turno recién cerrado que para reimprimir el corte de un turno
+  /// cerrado hace días.
+  ///
+  /// Si la plantilla del **negocio** trae una imagen, el teléfono no puede
+  /// rasterizarla (el servidor solo la resuelve en
+  /// `POST /print/bluetooth-payload`), así que con `template.id` se pide ese
+  /// respaldo y, si falla, se imprime lo que sí se pudo resolver con el aviso
+  /// correspondiente.
+  Future<bool> printCashCutReceipt(CashCutReceipt receipt) async {
+    state = state.copyWith(
+      isSubmitting: true,
+      clearError: true,
+      clearWarning: true,
+    );
+
+    final encoded = receipt.encoded;
+
+    if (encoded.isEmpty) {
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: 'El servidor no devolvió el contenido del corte.',
+      );
+
+      return false;
+    }
+
+    var bytes = encoded.bytes;
+    var warning = receipt.warningNotice;
+
+    final templateId = receipt.template.id;
+
+    if (encoded.ignored.isNotEmpty && templateId != null) {
+      final rasterized = await _rasterizedCut(receipt, templateId);
+
+      if (rasterized != null) {
+        bytes = rasterized;
+        warning = receipt.warningNotice;
+      }
+    }
 
     final printed = await ref
         .read(printerControllerProvider.notifier)
-        .printBytes(
-          CashCutRenderer.escPos(cut, charactersPerLine: charactersPerLine),
-        );
+        .printBytes(bytes);
 
-    state = state.copyWith(
-      isSubmitting: false,
-      notice: printed ? null : _printerError(),
-    );
+    if (printed) {
+      state = state.copyWith(
+        isSubmitting: false,
+        clearError: true,
+        warningMessage: warning,
+      );
+    } else {
+      state = state.copyWith(
+        isSubmitting: false,
+        errorMessage: _printerError(),
+      );
+    }
 
     return printed;
+  }
+
+  /// El mismo corte por `POST /print/bluetooth-payload` (el servidor rasteriza
+  /// las imágenes de la plantilla). `null` si no se pudo.
+  Future<Uint8List?> _rasterizedCut(CashCutReceipt receipt, int templateId) async {
+    try {
+      final payload = await _repository.bluetoothPayload(
+        templateId: templateId,
+        source: PrintDataSourceType.cashRegisterSession,
+        sourceId: receipt.session.id,
+      );
+
+      return payload.isEmpty ? null : payload.commands;
+    } on ApiException {
+      return null;
+    }
   }
 
   /// Descarga el HTML de respaldo (para compartir sin impresora Bluetooth).
@@ -268,5 +405,7 @@ class PrintJobController extends Notifier<PrintJobState> {
   void consumeError() => state = state.copyWith(clearError: true);
 
   void consumeNotice() => state = state.copyWith(clearNotice: true);
+
+  void consumeWarning() => state = state.copyWith(clearWarning: true);
 }
 

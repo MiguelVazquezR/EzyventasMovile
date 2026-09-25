@@ -1,0 +1,4 @@
+# Los scripts de shell se ejecutan en el teléfono (`sh` de Android, mksh): con
+# finales CRLF los `\r` rompen las URLs de `curl` y el script falla sin decir
+# por qué (el teléfono responde `000`). Se fuerzan LF en el repo.
+*.sh text eol=lf

@@ -7,6 +7,7 @@ import 'models/bank_account.dart';
 import 'models/cash_register_snapshot.dart';
 import 'models/cash_session_summary.dart';
 import 'models/closed_cash_session.dart';
+import '../../printing/data/models/cash_cut_receipt.dart';
 
 /// Turno de caja: apertura, unión, retome, salida, resumen y corte.
 ///
@@ -117,6 +118,23 @@ class CashRegisterRepository {
     );
 
     return CashSessionSummary.fromJson(data);
+  }
+
+  /// `GET /cash-register-sessions/{id}/receipt` — el corte **listo para
+  /// imprimir o reimprimir** (§6.3).
+  ///
+  /// El servidor elige la plantilla: `templateId` si se pide (404 si no es de la
+  /// suscripción), la del negocio con contexto `cash_register` y, si el negocio
+  /// todavía no tiene una, la **incorporada** (`template.builtin = true`).
+  /// Devuelve las operaciones de impresión ya codificadas, así que la app no
+  /// arma el corte.
+  Future<CashCutReceipt> fetchCutReceipt(int sessionId, {int? templateId}) async {
+    final data = await api.getJson(
+      ApiEndpoints.cashRegisterSessionReceipt(sessionId),
+      query: <String, dynamic>{'template_id': templateId},
+    );
+
+    return CashCutReceipt.fromJson(data);
   }
 
   /// `PUT /cash-register-sessions/{id}` — cierra la caja (corte).

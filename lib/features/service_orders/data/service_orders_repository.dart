@@ -54,6 +54,21 @@ class ServiceOrdersRepository {
     return ServiceOrderDetail.fromJson(data);
   }
 
+  /// `GET /service-orders/custom-fields` — definiciones de campos personalizados
+  /// del módulo (§9).
+  ///
+  /// Son las mismas que trae `custom_field_definitions` del detalle, pero
+  /// disponibles **antes** de crear la orden (sin ellas la app solo podía
+  /// capturarlos al editar).
+  Future<List<ServiceOrderCustomFieldDefinition>>
+  fetchCustomFieldDefinitions() async {
+    final data = await api.getJson(ApiEndpoints.serviceOrderCustomFields);
+
+    return JsonReader.toMapList(data['data'])
+        .map(ServiceOrderCustomFieldDefinition.fromJson)
+        .toList(growable: false);
+  }
+
 
   /// `POST /service-orders` — alta con evidencias iniciales.
   ///

@@ -7,13 +7,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
-/// Payload real de `GET /notifications` (contrato §11b.2).
+/// Payload real de `GET /notifications` (contrato §11b.2; `modules` desde el
+/// 2026-09-20).
 Map<String, dynamic> notificationsFixture() => <String, dynamic>{
   'expiring_debts': 3,
   'upcoming_deliveries': 2,
   'unread_updates': 5,
   'pending_orders': 1,
   'total': 11,
+  'modules': <String, dynamic>{'online_store': true},
 };
 
 /// Payload real de `GET /support` (contrato §11b.3, capturado del servidor).
@@ -128,6 +130,7 @@ Map<String, dynamic> subscriptionFixture() => <String, dynamic>{
       'created_at': '2026-06-19T11:36:54-06:00',
       'total': '439.00',
       'payment': <String, dynamic>{
+        'id': 412,
         'folio': null,
         'status': 'approved',
         'paid_at': '2026-06-19T11:36:54-06:00',
@@ -216,6 +219,37 @@ void main() {
     expect(again.expiringDebts, counters.expiringDebts);
   });
 
+  test('notificaciones: los módulos contratados ocultan su contador', () {
+    final counter = NotificationCounters.fromJson(<String, dynamic>{
+      'expiring_debts': 0,
+      'upcoming_deliveries': 0,
+      'unread_updates': 0,
+      'pending_orders': 0,
+      'total': 0,
+      'modules': <String, dynamic>{'online_store': false},
+    });
+
+    expect(counter.modules.onlineStore, isFalse);
+    expect(
+      counter.isCategoryVisible(NotificationCategory.pendingOrders),
+      isFalse,
+    );
+    expect(counter.visibleCategories, isNot(contains(NotificationCategory.pendingOrders)));
+    // El resto de contadores sigue visible.
+    expect(counter.visibleCategories, contains(NotificationCategory.expiringDebts));
+  });
+
+  test('notificaciones: sin `modules` no se esconde nada', () {
+    // Tolerancia a un servidor que todavía no manda la bandera.
+    final counter = NotificationCounters.fromJson(<String, dynamic>{
+      'pending_orders': 2,
+      'total': 2,
+    });
+
+    expect(counter.modules.onlineStore, isTrue);
+    expect(counter.visibleCategories, contains(NotificationCategory.pendingOrders));
+  });
+
   test('soporte: canales, horario, temas y centro de ayuda', () {
     final support = SupportContent.fromJson(supportFixture());
 
@@ -269,10 +303,13 @@ void main() {
     expect(entry.amountLabel, r'$439.00');
     expect(entry.payment?.status, SubscriptionPaymentStatus.approved);
     expect(entry.canRequestInvoice, isTrue);
+    // El historial ya trae el id del pago (D1, 2026-09-20): es el que exige
+    // `POST /subscription/payments/{paymentId}/request-invoice`.
+    expect(entry.payment?.id, 412);
     expect(
       entry.payment?.isInvoiceRequestable,
-      isFalse,
-      reason: 'el historial no trae el id del pago (ver README)',
+      isTrue,
+      reason: 'el pago está aprobado, sin factura pedida y con id',
     );
 
     final branches = overview.plan.limits.first;

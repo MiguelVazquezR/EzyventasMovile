@@ -199,6 +199,21 @@ class _ServiceOrderFormScreenState
     });
   }
 
+  /// Campos personalizados del módulo que hay que dibujar.
+  ///
+  /// En la edición vienen dentro del detalle de la orden; en el alta se piden a
+  /// `GET /service-orders/custom-fields` (§9), porque todavía no hay orden de la
+  /// que sacarlos.
+  List<ServiceOrderCustomFieldDefinition> _customFieldDefinitions() {
+    if (_isEditing) {
+      return _loaded?.customFieldDefinitions ??
+          const <ServiceOrderCustomFieldDefinition>[];
+    }
+
+    return ref.watch(serviceOrderCustomFieldsProvider).asData?.value ??
+        const <ServiceOrderCustomFieldDefinition>[];
+  }
+
   /// Arma el payload del contrato con lo capturado en pantalla.
   ServiceOrderFormData _buildFormData() {
     final loaded = _loaded;
@@ -338,7 +353,9 @@ class _ServiceOrderFormScreenState
   Widget _body(ServiceOrderFormState formState, ActiveCashSession? session) {
     final surfaces = context.surfaces;
     final form = _buildFormData();
-    final definitions = _loaded?.customFieldDefinitions;
+    final definitions = _customFieldDefinitions();
+    final fieldsError = !_isEditing &&
+        ref.watch(serviceOrderCustomFieldsProvider).hasError;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -462,7 +479,7 @@ class _ServiceOrderFormScreenState
             }
           }),
         ),
-        if (definitions != null && definitions.isNotEmpty) ...<Widget>[
+        if (definitions.isNotEmpty) ...<Widget>[
           const SizedBox(height: 12),
           ServiceOrderCustomFieldsSection(
             definitions: definitions,
@@ -473,6 +490,14 @@ class _ServiceOrderFormScreenState
                 key: value,
               },
             ),
+          ),
+        ] else if (fieldsError) ...<Widget>[
+          const SizedBox(height: 12),
+          const NoticeBanner(
+            message:
+                'No se pudieron cargar los campos personalizados del módulo. '
+                'Puedes crear la orden y capturarlos al editarla.',
+            tone: EzySeverity.warn,
           ),
         ],
         const SizedBox(height: 12),

@@ -41,29 +41,49 @@ class BluetoothPayload {
 
 /// Respuesta de `POST /print/payload` (etiquetas / TSPL).
 ///
-/// `operations` son las operaciones que entiende el plugin de escritorio de la
-/// web; en Android la única aprovechable tal cual es `EscribirTexto`, que trae
-/// el comando **TSPL completo** de la etiqueta. Las imágenes
-/// (`DescargarImagenDeInternetEImprimir`) no se pueden enviar sin un rasterizador
-/// en el teléfono: se reportan como no soportadas.
+/// El servidor rasteriza las imágenes de la etiqueta y las inserta en el mismo
+/// texto TSPL como `BITMAP …`, además de rellenar el código de barras cuando la
+/// plantilla no resuelve un valor. Todo eso viaja dentro de la operación
+/// `EscribirTexto`, que es el comando completo que se manda a la impresora.
+///
+/// Los campos `unsupported_operations` (lo que el servidor **no** pudo
+/// resolver) y `warnings` (ajustes que hizo) existen para que la app avise en
+/// lugar de imprimir en silencio.
 class LabelPayload {
   const LabelPayload({
     required this.operations,
     required this.paperWidth,
     required this.feedLines,
+    this.unsupportedOperations = const <String>[],
+    this.warnings = const <String>[],
   });
 
   factory LabelPayload.fromJson(Map<String, dynamic> json) => LabelPayload(
     operations: JsonReader.toMapList(json['operations']),
     paperWidth: JsonReader.stringOr(json['paperWidth'], '80mm'),
     feedLines: JsonReader.integerOr(json['feedLines'], 0),
+    unsupportedOperations: JsonReader.stringList(
+      json['unsupported_operations'],
+    ),
+    warnings: JsonReader.stringList(json['warnings']),
   );
 
   static const String textOperation = 'EscribirTexto';
 
+  /// Pulso del cajón: no imprime nada, así que no cuenta como no soportada.
+  static const String drawerOperation = 'AbrirCajon';
+
   final List<Map<String, dynamic>> operations;
   final String paperWidth;
   final int feedLines;
+
+  /// Lo que el servidor **no** pudo resolver (p. ej. `Image: https://…`): la
+  /// etiqueta sale sin ese elemento.
+  final List<String> unsupportedOperations;
+
+  /// Ajustes que hizo el servidor (p. ej.
+  /// `Barcode: la plantilla no resolvió un valor, se usó «P-42».`).
+  final List<String> warnings;
 
   /// Comando TSPL listo para la impresora de etiquetas.
   String? get tsplText {
@@ -86,12 +106,42 @@ class LabelPayload {
     return null;
   }
 
-  /// La plantilla incluye imágenes o códigos que la app no puede rasterizar.
-  bool get hasUnsupportedOperations => operations.any(
-    (operation) =>
-        JsonReader.string(operation['nombre']) != textOperation &&
-        JsonReader.string(operation['nombre']) != 'AbrirCajon',
-  );
+  /// Operaciones que la plantilla trae y el teléfono no puede emitir.
+  List<String> get unresolvedOperations => operations
+      .map((operation) => JsonReader.stringOr(operation['nombre'], ''))
+      .where(
+        (name) =>
+            name.isNotEmpty &&
+            name != textOperation &&
+            name != drawerOperation,
+      )
+      .toList(growable: false);
+
+  /// `true` si el servidor reportó algo o si la plantilla trae operaciones que
+  /// este cliente no sabe emitir.
+  bool get hasUnsupportedOperations =>
+      unsupportedOperations.isNotEmpty ||
+      warnings.isNotEmpty ||
+      unresolvedOperations.isNotEmpty;
+
+  /// Aviso en español con lo que reportó el servidor (`null` si todo salió
+  /// bien).
+  String? get warningNotice {
+    if (!hasUnsupportedOperations) {
+      return null;
+    }
+
+    final parts = <String>[
+      if (unsupportedOperations.isNotEmpty)
+        'El servidor no pudo incluir: ${unsupportedOperations.join('; ')}.',
+      ...warnings,
+      if (unresolvedOperations.isNotEmpty)
+        'La plantilla trae ${unresolvedOperations.join(', ')}, que el teléfono '
+            'no imprime.',
+    ];
+
+    return '${parts.join(' ')} Revisa la etiqueta: puede salir incompleta.';
+  }
 
   bool get isEmpty => tsplText == null;
 }

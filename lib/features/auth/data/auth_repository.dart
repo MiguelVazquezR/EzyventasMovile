@@ -24,9 +24,13 @@ class AuthRepository {
   final SessionPersistence sessionStore;
 
   /// `POST /auth/login` â†’ token + contexto de acceso.
+  ///
+  /// Con [keepSession] en `false` el token **no** se guarda en el dispositivo: la
+  /// sesión vive solo en memoria y al cerrar la app se vuelve al login.
   Future<AuthSession> login({
     required String email,
     required String password,
+    bool keepSession = true,
   }) async {
     final data = await api.postJson(
       ApiEndpoints.login,
@@ -47,10 +51,11 @@ class AuthRepository {
       throw ApiException.unexpected();
     }
 
-    await sessionStore.saveSession(session);
+    await sessionStore.saveSession(session, persist: keepSession);
 
     return session;
   }
+
 
   /// `GET /auth/me` â†’ contexto actualizado (permisos, sucursal, turno).
   Future<AccessContext> fetchAccessContext() async {

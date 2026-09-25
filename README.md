@@ -41,14 +41,16 @@ flutter build apk --release --dart-define=API_BASE_URL=https://app.ezyventas.com
 
 ```bash
 flutter analyze     # debe quedar sin issues
-flutter test        # 241 tests: dinero, errores, sesion, permisos, catalogo, caja, cobro,
-                    # ventas, ordenes, impresion (CP850, ESC/POS del corte, plantillas,
-                    # ESC/POS/HTML/WhatsApp, filtro de plantillas por contexto, la hoja de
-                    # impresion en pantalla y el controlador de la impresora: permisos de
-                    # Android 12+, lista de dispositivos y estados del envio) y cuenta
-                    # (sucursal, notificaciones, soporte, perfil y suscripcion), mas config
-                    # (reescritura de las URLs de medios por el tunel USB, `ServerImage`) y el
-                    # logotipo de marca (`BrandLogo`: asset segun el tema y respaldo sin asset)
+flutter test        # 282 tests (9 omitidas: las live sin credenciales): dinero, errores, sesion,
+                    # permisos, catalogo, caja, cobro, ventas, ordenes, impresion (las
+                    # `operations` del servidor -> bytes ESC/POS/TSPL, el comprobante del corte,
+                    # plantillas y su filtro por contexto, la hoja de impresion, el controlador de
+                    # la impresora -permisos de Android 12+, lista de dispositivos y estados del
+                    # envio- y el troceado del envio por MTU) y cuenta (sucursal, notificaciones,
+                    # soporte, perfil y suscripcion), mas config (reescritura de las URLs de medios
+                    # por el tunel USB, `ServerImage` y su cadena de origenes), texto plano a partir
+                    # del HTML de las descripciones (`HtmlText`) y el logotipo de marca (`BrandLogo`:
+                    # asset segun el tema y respaldo sin asset)
 ```
 
 Pruebas **reales** contra el servidor (no corren en `flutter test` normal):
@@ -390,23 +392,26 @@ el documento ya codificado.
   La elegida se recuerda por tipo en el dispositivo, y cuando el cobro ya manda `print.template_ids`
   la app respeta esos ids (`PrintDocument.posCheckout`).
 - **Hoja de impresión** (una sola, reutilizada en todos los flujos): estado de la impresora +
-  conectar/cambiar/olvidar, selector de plantilla, interruptor de **abrir cajón**, `Imprimir ticket`,
-  `Imprimir etiqueta` (TSPL, cuando el negocio tiene plantillas de etiqueta), `Ver respaldo HTML` y
-  `Enviar por WhatsApp`.
+  conectar/cambiar/olvidar (botones en **azul Bluetooth**), selector de plantilla, interruptor de
+  **abrir cajón**, `Imprimir ticket`/`Imprimir etiqueta` (según el documento) y `Enviar por WhatsApp`
+  (**verde**). La hoja **no** ofrece respaldo HTML: el botón se quitó porque el endpoint devolvía
+  error en el servidor real y la operación se hace a mano desde la web.
 - **Ticket** (`POST /print/bluetooth-payload`): `commands_base64` → `Uint8List` → bloques de 20 bytes.
   Si la impresora se desconecta a media impresión se avisa y se permite reimprimir; el ticket **no**
   se marca como impreso (no hay reimpresión automática).
 - **Etiquetas** (`POST /print/payload`): se envía el comando TSPL completo de la operación
   `EscribirTexto`; si la plantilla trae imágenes que el teléfono no puede rasterizar, se avisa.
-- **Respaldo** (`POST /print/ticket-html`): se muestra el HTML del mismo documento para copiarlo.
+- **Respaldo HTML** (`POST /print/ticket-html`): sigue en la capa de datos (lo cubren las pruebas de
+  parser y el escenario live de impresión), pero la **UI ya no lo ofrece**.
 - **WhatsApp** (`POST /print/whatsapp-ticket`): el ticket lo arma el servidor y la app lo convierte al
   **mismo texto que la web** (`WhatsAppMessageBuilder`, réplica de `useWhatsAppTicket.js` para
   `sale`, `abono`, `order` y `order_payment`), abre una vista previa y lanza
   `https://wa.me/{customer_phone}?text=…` (con el prefijo 52 en teléfonos de 10 dígitos); sin teléfono
   abre `https://wa.me/?text=…` para elegir el contacto.
 - **Dónde se ofrece**: al cobrar (carrito), al abonar una venta o un pedido (con el ticket que devolvió
-  la operación), al **cerrar caja**, y desde el detalle de venta/pedido y de orden de servicio. El
-  detalle de producto ofrece `Imprimir etiqueta`.
+  la operación), al **cerrar caja**, y desde el detalle de venta/pedido y de orden de servicio (ahí sí,
+  con etiquetas: la venta vinculada puede imprimir su etiqueta). El detalle de **producto** ya no
+  ofrece `Imprimir etiqueta`.
 - **Corte de caja**: el ticket se arma en el teléfono (`CashCutRenderer` + `EscPosBuilder`, CP850,
   corte parcial y apertura de cajón) con el `summary` que ya calculó el servidor: encabezado, periodo
   del turno, efectivo, cobros por método, movimientos, bancos, total esperado, contado y diferencia
@@ -606,14 +611,118 @@ MIUI no deja automatizar toques desde el equipo (hallazgo 34), así que estas se
 
 | Prueba | Cómo |
 |---|---|
-| **Corte de caja** (bytes que arma el teléfono con `CashCutRenderer` + ESC/POS local, contrato §6.3) | Caja → `Hacer corte` → completar el arqueo → `Finalizar turno`; el ticket del corte se ofrece al cerrar (imprimir o WhatsApp) |
+| **Corte de caja** (con `GET /cash-register-sessions/{id}/receipt`; las `operations` las arma el servidor, contrato §6.3) | Caja → `Hacer corte` → completar el arqueo → `Finalizar turno`; el corte se ofrece al cerrar (imprimir o WhatsApp) y se puede **reimprimir** después desde la misma pantalla |
+| **Etiqueta** con aviso del servidor | Imprimir una etiqueta de producto: si el servidor responde `unsupported_operations` o `warnings` (código de barras rellenado, imagen que no pudo resolver), la hoja lo avisa en vez de imprimir a medias |
 | **Pulso del cajón** | En la hoja del ticket, activar `Abrir el cajón al imprimir` (`open_drawer` del `POST /print/bluetooth-payload`): con el cajón conectado a la impresora, `Imprimir ticket` debe abrirlo |
 | **Corte del enlace a media impresión** | Apagar la impresora mientras sale un ticket: la app avisa «Se perdió la conexión con la impresora.» y deja reimprimir (no reintenta sola) |
 
 La **etiqueta TSPL** no se puede probar con la impresora del equipo (es térmica de recibos): ese
 recorrido sigue verificado con las pruebas del encoder y con el `POST /print/payload` real.
 
-### Discrepancias y hallazgos (etapa 8, dispositivo)
+### Corrida real del 21 sep 2026 — contrato nuevo (A1-A6, B1-B6, D1-D5) y dispositivos
+
+La API cerró todo `PENDIENTES_BACKEND.md` (P0/P1/P2) y el contrato quedó con el changelog punto por
+punto (§14). La app se adaptó a lo nuevo —**sin rodeos**: el corte ya no se arma en el teléfono, las
+etiquetas se mandan tal cual y se avisan los `warnings`, y las pantallas usan los campos nuevos— y se
+volvió a correr **todo** contra la API real (`https://ezyventas2.test/api/v1`, cuentas de §2):
+
+```bash
+# Caja y cobro (se une al turno abierto, vende y resume el corte)          → 1/1 en verde
+flutter test test/live/api_smoke_test.dart --dart-define=LIVE_API_EMAIL=••• \
+  --dart-define=LIVE_POS=true --plain-name caja
+
+# Ventas + apartado completo (historial, filtros, pagos, cancelación)      → 1/1 en verde
+flutter test test/live/api_smoke_test.dart --dart-define=LIVE_API_EMAIL=••• \
+  --dart-define=LIVE_SALES=true --dart-define=LIVE_SALES_LAYAWAY=true --plain-name ventas
+
+# Impresión: plantillas, ESC/POS, TSPL, HTML, WhatsApp y el corte          → 1/1 en verde
+flutter test test/live/api_smoke_test.dart --dart-define=LIVE_API_EMAIL=••• \
+  --dart-define=LIVE_PRINTING=true --plain-name impresi
+
+# Órdenes de servicio (alta con foto, estatus, diagnóstico, anticipo…)     → 1/1 en verde
+flutter test test/live/api_smoke_test.dart --dart-define=LIVE_API_EMAIL=••• \
+  --dart-define=LIVE_SERVICE_ORDERS=true --plain-name diagn
+
+# Cuenta (notificaciones + `modules`), suscripción y sucursal              → 1/1 cada una
+flutter test test/live/api_smoke_test.dart --dart-define=LIVE_API_EMAIL=••• \
+  --dart-define=LIVE_ACCOUNT=true --plain-name notificaciones
+flutter test test/live/api_smoke_test.dart --dart-define=LIVE_API_EMAIL=••• \
+  --dart-define=LIVE_ACCOUNT=true --plain-name plan
+
+# Super admin y empleado (pestañas, permisos y el 403 real)               → 1/1 cada una
+flutter test test/live/api_smoke_test.dart --dart-define=LIVE_API_EMAIL=ezyventas@gmail.com --plain-name login
+flutter test test/live/api_smoke_test.dart --dart-define=LIVE_API_EMAIL=daniel@apontephone.com \
+  --dart-define=LIVE_EXPECT_OWNER=false --dart-define=LIVE_EXPECT_FORBIDDEN_PATH=/subscription --plain-name login
+flutter test test/live/api_smoke_test.dart --dart-define=LIVE_API_EMAIL=daniel@apontephone.com \
+  --dart-define=LIVE_EXPECT_OWNER=false --dart-define=LIVE_ACCOUNT=true --plain-name plan
+```
+
+| Punto | Evidencia real de la corrida |
+|---|---|
+| **A1/A3** saldo del cliente y `use_balance` | `[live] apartado V-005 estatus=apartado total=$70.00 saldo=$70.00` → `[live] apartado con pagos iniciales=0.0` → `[live] pago borrado pagado=$0.00 saldo=$70.00` → `[live] saldo del cliente tras la cadena completa: $0.00 (antes de la cadena $0.00)` |
+| **A2** ventas anuladas sin saldo | `[live] V-004 reembolsado Juanito babanas total=$70.00 saldo=$0.00` |
+| **A4** sobrepago (regla única) | `[live] venta folio=V-003 … total=$70.00 pagado=$70.00 saldo=$0.00 cambio=$0.00` (la app ya calculaba el cambio solo con efectivo) |
+| **A5** una fórmula de totales | La venta y el apartado de una línea de $70 dan `total=$70.00` con `saldo`/`pagado` coherentes en `/pos/checkout`, `/pos/layaway` y `GET /transactions` |
+| **B1/B5** impresión del servidor | `[live] ESC/POS venta=27 plantilla=3 bytes=8739 papel=58mm` (con el logo rasterizado) y `[live] corte del turno abierto #16 plantilla=Corte de caja (incorporada) operaciones=1 bytes=491 papel=80mm avisos=[]` |
+| **B2/B6** etiqueta TSPL | `[live] TSPL plantilla=4 producto=6 operaciones=1 noResueltas=[] avisos=[Barcode: la plantilla no resolvió un valor, se usó «P-6».]` y el comando real `BARCODE 23.976377952756,89.43188976378,"128",30,1,0,2,2,"P-6"` |
+| **B3** WhatsApp | `[live] WhatsApp kind=sale telefono=3312650047 lineas=19` y `[live] WhatsApp de un cliente: 422 no_whatsapp_ticket Este documento no tiene ticket de WhatsApp.` |
+| **B4** plantillas por tipo | `[live] plantillas=7 … tickets=4 etiquetas=3` y `[live] la app selecciona para una venta: #3, #7` |
+| **D1** factura de la suscripción | `[live] última versión: v12 2026-06-19 11:36:54.000 total=$439.00 estatus=Aprobado puedeFactura=true idPago=37` |
+| **D3** módulos contratados | `[live] notificaciones: total=0 deudas=0 entregas=0 novedades=0 pedidos=0 tiendaEnLinea=false` |
+| **D4** varios estatus | `[live] deudas por vencer tras crear el apartado: total=1 estatus=apartado incluyeElApartado=true` (+ `422 claves=status.0` con un estatus inventado) |
+| **D5** campos personalizados | `[live] campos personalizados del módulo=0` (200 con lista vacía; el dibujado con definiciones está cubierto por `service_order_form_screen_test.dart`) |
+| **Permisos** | Super admin: `␣permisos=85␣pestanas=Vender | Órdenes | Caja | Ventas | Cuenta`. Empleado: `permisos=53`, mismas pestañas y `403 en /subscription: Tu usuario no tiene permiso para esta acción.` |
+| **A6** borrar una orden devuelve el stock | Se comprueba con `LIVE_SERVICE_ORDERS_STOCK=true` (la prueba agrega una refacción, borra la orden y exige el stock previo) |
+
+> Nota de la corrida: había un **turno abierto** (#16, de una sesión anterior) que bloqueaba todas las
+> terminales de la sucursal (`available_cash_registers: []`). La app ofrece «Unirme» justo para eso, así
+> que las pruebas ahora **se unen** a ese turno en vez de abandonar el escenario (y no lo cierran: no es
+> suyo). Si prefieres partir de cero, se cierra desde la app/web y la prueba abre su propio turno.
+
+Y en el **teléfono** (Redmi 2201116TG, MIUI/HyperOS, túnel USB de §4.1) el escenario de impresora:
+
+```bash
+flutter test integration_test/qa_device_test.dart -d EE95QSVKORE6WCL7 \
+  --dart-define=API_BASE_URL=https://127.0.0.1:8443/api/v1 \
+  --dart-define=API_HOST_HEADER=ezyventas2.test \
+  --dart-define=LIVE_API_EMAIL=••• --dart-define=LIVE_API_PASSWORD=••• \
+  --dart-define=LIVE_PRINTER_NAME=MP210 --plain-name impresora
+# 01:01 +1: All tests passed!
+```
+
+| Qué se comprobó | Resultado real |
+|---|---|
+| Login y venta reales por el túnel | `POST /auth/login`, `GET /transactions/27` y `GET /print/templates?type=ticket_venta` por `https://127.0.0.1:8443/api/v1` (con `Host: ezyventas2.test`) |
+| Conexión con la térmica (BLE) | `[printer] conectada "MP210" mtu=248 bloque=245 B conRespuesta=true sinRespuesta=true` y el aviso «Ticket enviado a la impresora.» |
+| Velocidad del ticket con el **logo** (8 739 B) | `[printer] 8739 bytes en 36 bloques de 245 (mtu=248, sinRespuesta=false) en 3406 ms` (antes ~11 s con 20 B/25 ms) y **el ticket salió impreso, con el logo**, en la térmica del equipo |
+| Estado de la impresora en la hoja | Badge `CONECTADA` y «Impresora conectada: MP210» (la impresora queda guardada, así que reconecta sin escanear) |
+
+> Antes de esta corrida, con el **Bluetooth del teléfono apagado** la prueba fallaba en el paso 2 con
+> el texto real de la app (`El Bluetooth está apagado`), que no es ninguno de los dos estados que la
+> prueba acepta: es un fallo del entorno, no de la app (queda documentado aquí para no confundirlo).
+
+### Revisión de UI/UX de la prueba manual (21 sep 2026)
+
+Cambios pedidos en la revisión manual, pantalla por pantalla. Se mantiene la identidad de marca
+(**naranja primario** y superficies oscuras); fuera de eso, esta pasada se tomó la libertad de
+reacomodar tamaños, formas y colores para que cada acción se reconozca de un golpe.
+
+| Pantalla | Cambio |
+|---|---|
+| **Login** | Check **«Mantener la sesión abierta»** (marcado por defecto): sin marcarlo, `POST /auth/login` guarda el token **solo en memoria** (`SessionStore.saveSession(persist: false)`) y al cerrar la app se vuelve a pedir la contraseña. Se quitó la URL base de la API que se imprimía en modo debug y en su lugar hay un enlace directo a `https://ezyventas.com/login` (`url_launcher` → navegador del teléfono). |
+| **Vender** | Buscador en pastilla con el icono de la marca, chips de categoría rellenos de naranja al estar activos, tarjetas con borde naranja y precio en naranja cuando hay promoción, stock en **verde**/**rojo**, y barra del carrito con filete y contador (`3 productos · 5 artículos`). |
+| **Detalle de producto** | Descripción en **texto plano** (`HtmlText.toPlain`: el servidor la guarda como texto enriquecido, `<p>dsfg</p>`). Se quitó la sección `Etiqueta` / `Imprimir etiqueta`. |
+| **Carrito** | Total destacado arriba en una franja de la marca, sección `PRODUCTOS`, franja de color por producto, stepper con el `+` en naranja, `Cobrar` más alto (56 px), `Apartar` en azul y `Pedido` con borde. Se dejó de llamar «línea» al producto. |
+| **Impresión** | Fuera `Ver respaldo HTML` (devolvía error del servidor; ver más abajo). Botón principal `Imprimir ticket`/`Imprimir etiqueta` según el documento y más alto, **Buscar/Conectar/Cambiar impresora en azul Bluetooth** y **Enviar por WhatsApp en verde**. |
+| **Orden de servicio** | Las evidencias ya se ven: era el certificado autofirmado (ver §4.1). Además, si la miniatura del servidor no existe se cae a la **foto original** y tocar una evidencia la abre a pantalla completa con zoom. |
+| **Notificaciones** | **Sí estaba desarrollada**: la campana lee `GET /notifications` (`expiring_debts`, `upcoming_deliveries`, `unread_updates`, `pending_orders`) y `Cuenta → Notificaciones` las explica y navega. Lo que faltaba era **refrescar**: ahora el cascarón vuelve a pedir los contadores cada vez que la app pasa a primer plano (`AppShell` con `WidgetsBindingObserver`), así que un apartado que vence o un pedido que entra mientras el teléfono está guardado se ve sin reiniciar la app. Comprobado contra la API real con la cuenta del propietario: `{"expiring_debts":1,…,"total":1}` (el mismo aviso que muestra la web). |
+
+**Respaldo HTML.** `POST /print/ticket-html` respondía `Ocurrió un error en el servidor.` en la
+corrida real, así que el botón se quitó de la hoja (y se borró el widget `ticket_html_sheet.dart`).
+La capa de datos y sus pruebas se conservan: si el backend lo arregla, solo hay que volver a pintar
+el botón.
+
+
 
 32. **El plugin de Bluetooth solo pide los permisos al escanear, y la hoja pedía primero las
     emparejadas (app, corregido).** `flutter_blue_plus` resuelve `BLUETOOTH_SCAN` /
@@ -679,17 +788,19 @@ recorrido sigue verificado con las pruebas del encoder y con el `POST /print/pay
     `"status": "activo"`. La app modela los valores reales (`SubscriptionStatus`) y **no** usa ese texto
     para la etiqueta visible: pinta `status_data.label` («Activa», «Por vencer», «Expirada») y colorea con
     `is_expired` + `days_left`/`warning`, que es lo que tampoco depende de traducciones.
-24. **El historial de la suscripción no incluye el `id` del pago, así que la app no puede pedir la
-    factura.** `history[].payment` trae `folio`, `status`, `paid_at` y `can_request_invoice`, pero **no**
-    `id`, y `POST /subscription/payments/{paymentId}/request-invoice` exige ese id. Evidencia real:
-    `[live] última versión: v12 … puedeFactura=true idPago=null`. La app implementa el método completo
-    (`AccountRepository.requestInvoice`) —probado con `404` de un id inexistente—, modela `id` de forma
-    tolerante y **solo** muestra «Solicitar factura» cuando el servidor lo incluya; mientras, el historial
-    explica que la factura se solicita desde la web. **Hueco del backend**, no de la app.
-25. **El historial no expone los pagos `pending` / `rejected` con id tampoco**, solo
-    `pending_payment` / `last_rejected_payment` (que sí traen `id`, pero no son aprobados y el servidor
-    responde `403 payment_not_approved`). Con el contrato actual no hay ningún camino en la app móvil para
-    solicitar una factura de un pago aprobado.
+24. **El historial de la suscripción no incluía el `id` del pago — CORREGIDO por el backend (D1,
+    2026-09-20).** `history[].payment` traía `folio`, `status`, `paid_at` y `can_request_invoice`, pero
+    **no** `id`, y `POST /subscription/payments/{paymentId}/request-invoice` exige ese id: la app no podía
+    pedir la factura de un pago desde el teléfono (evidencia original:
+    `[live] última versión: v12 … puedeFactura=true idPago=null`). Ahora el id viaja en el historial y la
+    app muestra «Solicitar factura» cuando el pago está aprobado y aún sin factura. Verificado el 21 sep
+    2026: `[live] última versión: v12 2026-06-19 11:36:54.000 total=$439.00 estatus=Aprobado
+    puedeFactura=true idPago=37`.
+25. **Pagos `pending` / `rejected`: no son facturables** (D2, documentado el 2026-09-20). Su id sí viaja
+    (`pending_payment` / `last_rejected_payment`), pero el servidor rechaza la factura con
+    `403 payment_not_approved` («Solo puedes solicitar facturas de pagos aprobados.»), que ya está en el
+    catálogo de códigos (contrato §12). La app solo ofrece la acción cuando
+    `can_request_invoice = true` y muestra el `message` del servidor si lo rechaza.
 26. **El `403` de la suscripción usa el mensaje genérico de permisos.** `SubscriptionRequest::authorize`
     devuelve `false` para un empleado, así que el cuerpo es «Tu usuario no tiene permiso para esta
     acción.» y **no** el `owner_only` que documenta el catálogo de códigos (§12 del contrato). La app
@@ -697,13 +808,23 @@ recorrido sigue verificado con las pruebas del encoder y con el `POST /print/pay
 27. **El stack aprobado no incluye un selector de archivos**, así que la constancia de situación fiscal se
     sube como **imagen** (cámara/galería, ≤ 2 MB) y no como PDF (el servidor sí acepta
     `pdf,jpg,jpeg,png,webp`). La pantalla lo explica y el envío del PDF queda para la web (pendiente 8).
-28. **`GET /notifications` no distingue por módulo contratado** (los cuatro contadores llegan siempre;
-    `pending_orders` solo se calcula si la tienda en línea está activa). La app pinta los cuatro y explica
-    en «Novedades» y «Pedidos pendientes» que su gestión es de la web, en vez de inventar pantallas.
-29. **`expiring_debts` agrupa dos estatus** (`apartado` y `pendiente`) y el listado de ventas solo acepta
-    **un** `status` por llamada (contrato §8), así que «Deudas por vencer» abre el historial sin filtro
-    (con el texto de la categoría explicando qué cuenta). «Entregas próximas» sí abre filtrado por
-    `por_entregar`, que es exactamente lo que cuenta el servidor.
+28. **`GET /notifications` no distinguía por módulo contratado — CORREGIDO por el backend (D3,
+    2026-09-20).** Los cuatro contadores llegan siempre (un usuario sin `transactions.access` los recibe
+    en `0`) y `pending_orders` solo se calcula si la tienda en línea está contratada, así que la app
+    mostraba un cero que no podía explicar. La respuesta incluye ahora `modules` (`{"online_store":
+    bool}`) y la app **oculta** el contador del módulo que el negocio no tiene contratado
+    (`NotificationCounters.isCategoryVisible`). Verificado el 21 sep 2026:
+    `[live] notificaciones: total=0 deudas=0 entregas=0 novedades=0 pedidos=0 tiendaEnLinea=false` (la
+    pantalla no pinta «Pedidos pendientes»).
+29. **`expiring_debts` agrupa dos estatus y el listado solo aceptaba uno — CORREGIDO por el backend (D4,
+    2026-09-20).** El contador suma `apartado` **y** `pendiente`, y `GET /transactions` aceptaba un solo
+    `status`, así que «Deudas por vencer» abría el historial **sin filtro**. Ahora la API acepta varios
+    (`?status[]=apartado&status[]=pendiente`, notación con corchetes; la app la manda así porque PHP se
+    queda con el último valor de una clave repetida) y un valor desconocido sigue respondiendo `422` con
+    `errors["status.0"]`. Verificado el 21 sep 2026 con un apartado **real**, creado por la propia prueba
+    (V-005, $70, `Juanito babanas`): `[live] deudas por vencer tras crear el apartado: total=1
+    estatus=apartado incluyeElApartado=true`, y con un estatus inventado:
+    `[live] estatus inválido: 422 claves=status.0 El estatus seleccionado no es válido.`
 30. **`PUT /profile` funciona igual con JSON que con `multipart`.** El contrato exige
     `multipart/form-data`; la API real acepta JSON cuando no hay foto (verificado: `200` con el mismo
     `message`). La app envía `multipart` **solo** cuando hay foto y JSON cuando no, para no convertir a
@@ -732,15 +853,46 @@ el tema oscuro, negro sobre el claro) y el ícono del lanzador se genera con `to
 `lib/core/printing/`:
 - `bluetooth_printer_service.dart`: conexión GATT con `flutter_blue_plus`, búsqueda de la
   característica escribible (primero los servicios conocidos `0000af30…`, `49535343…`,
-  `00001101…`, y `writeWithoutResponse` antes de `write`), envío en **bloques de 20 bytes con 25 ms
-  de pausa** y aviso `Se perdió la conexión con la impresora.` si el enlace cae a media impresión.
+  `00001101…`) y **aviso `Se perdió la conexión con la impresora.`** si el enlace cae a media
+  impresión (el ticket nunca queda a medias sin avisar).
+- **Velocidad de envío (21 sep 2026).** El contrato §10 describe el procedimiento de la **web**
+  (`useBluetoothPrinter.js`: bloques de **20 bytes con 25 ms** de pausa ≈ 800 B/s), y así estaba la
+  app. Con eso, el ticket real de la plantilla #3 —que lleva el **logo del negocio** rasterizado como
+  bitmap ESC/POS (`GS v 0`), **8 739 bytes** medidos— tardaba ~11 s en llegar a la impresora: el texto
+  salía al instante y **el logo tardaba una eternidad**, porque el 96 % del documento es el bitmap.
+  Ahora:
+
+    | Pieza | Antes | Ahora |
+    |---|---|---|
+    | Tamaño de bloque | 20 B fijos | `MTU - 3` (`requestMtu(512)` al conectar, acotado a 512) |
+    | Ritmo | pausa fija de 25 ms por bloque | el **ACK** de cada bloque con `write` (con respuesta) |
+    | `writeWithoutResponse` | siempre | solo si la característica **no** admite `write`; ahí se deja una pausa de 10 ms (sin ACK no hay control de flujo) |
+    | Ticket con logo (8.7 KB) | ~11 s | **3.4 s** medidos (36 bloques de 245 B con ACK; el MTU de la MP210 es 248) |
+
+  El troceado es puro y está probado sin impresora (`chunkSizeFor` / `chunkRanges` en
+  `test/core/printing/bluetooth_printer_service_test.dart`: sin huecos, sin bytes repetidos y con el
+  último bloque corto), y el teléfono registra en el log lo que realmente usó:
+  `[printer] 8739 bytes en 36 bloques de 245 (mtu=248, sinRespuesta=false) en 3406 ms`.
+
+  Lo que queda en el cronómetro es la **latencia de cada ACK** (~94 ms con el intervalo de conexión
+  negociado): si algún día hace falta más, la palanca es `requestConnectionPriority(high)` (Android;
+  probado aparte, no se dejó por prudencia: acortar el intervalo en un módulo BLE barato puede
+  desestabilizar el enlace, y con 3.4 s el ticket ya sale sin que el usuario note el bitmap).
 - `printer_preferences.dart`: guarda el identificador de la impresora y la plantilla elegida por
   tipo. Se usa `flutter_secure_storage` porque el stack aprobado **no** incluye `shared_preferences`
   y el almacén seguro ya estaba en la app (sesión y tema).
+- `print_operations_encoder.dart` (contrato §10): traduce las `operations` del servidor a bytes de
+  impresora. `TextoSegunPaginaDeCodigos` → selección de tabla (`ESC t n`, `cp850` → `ESC t 2`) + los
+  bytes ESC/POS que **ya armó** el servidor byte por byte; `EscribirTexto` → el texto TSPL tal cual en
+  UTF-8 (la etiqueta con su `BITMAP` y su `BARCODE` rellenos); `AbrirCajon` → el pulso `ESC p`. Lo que
+  el teléfono no puede emitir queda en `EncodedPrintOperations.ignored` y la UI lo avisa en vez de
+  imprimir a medias. `EscPosTextExtractor` saca el texto legible del ESC/POS para previsualizar o
+  compartir.
 - `esc_pos_builder.dart` + `cp850.dart`: encoder ESC/POS **local** con la página de códigos **CP850**
-  (la misma que usa `PrintEncoderService` en el servidor). Solo se usa para el **corte de caja**, el
-  único documento que la API no puede codificar (contrato §6.3); queda aislado para reutilizarlo en
-  la fase offline.
+  (la misma que usa `PrintEncoderService` en el servidor). Ya **no** lo usa ningún documento: el corte
+  de caja se imprime con las `operations` del servidor (contrato §6.3) y el ticket también. Queda
+  aislado (con sus pruebas) como base del respaldo sin conexión de la fase 5 (contrato §10,
+  «Impresión sin conexión»); si la app no llega a necesitarlo, se puede borrar.
 - **Permisos de Android 12+ (ver hallazgo 32).** El plugin **solo** pide `BLUETOOTH_SCAN` /
   `BLUETOOTH_CONNECT` al **escanear** (`startScan`); el listado de emparejadas
   (`getBondedDevices`) **no** los pide y sin ellos el sistema lanza `SecurityException`. Por eso
@@ -775,10 +927,14 @@ el tema oscuro, negro sobre el claro) y el ícono del lanzador se genera con `to
    El plan de trabajo pedia "cancelar/reembolsar con motivo", asi que la app muestra una
    confirmacion explicita (que ocurre con el dinero, cuanto se paga, aviso de caja/cliente) pero
    **no** envia ningun campo nuevo al servidor; el texto que se muestra al final es su `message`.
-5. `POST /transactions/{id}/payments` **rechaza** el sobrepago con `422` "El monto total del pago
-   excede el saldo pendiente." (`TransactionPaymentService::applyPaymentToTransaction`), mientras
-   `/pos/checkout` recorta el pago al total. El contrato §8 no lo menciona: la app valida el monto
-   antes de enviar y usa el mismo texto del servidor.
+5. **Sobrepago: cada camino lo trataba distinto — CORREGIDO por el backend (A4, 2026-09-20).**
+    `POST /transactions/{id}/payments` rechazaba con `422` "El monto total del pago excede el saldo
+    pendiente." mientras `/pos/checkout` recortaba el pago al total. El servidor aplica ahora **una
+    sola regla** (contrato §7): en **efectivo** el sobrante es el cambio que devuelve `change`; con
+    cualquier otro método, un pago mayor al saldo se rechaza. La app ya implementaba esa misma regla
+    en `CartState.change` («solo cuando todos los pagos son en efectivo»), así que no hubo que tocar
+    nada: verificado el 21 sep 2026 con la venta `V-003` (`cambio=$0.00`, pago exacto) y con los
+    abonos de la prueba de apartado.
 6. `GET /transactions/{id}` no expone `customer_id` en la raiz (solo `customer: {id, name, balance,
    credit_limit}` o `null`), pero la web (`TransactionCancellationModal.vue`) decide si el reembolso
    puede ir a saldo con `transaction.customer_id`. La app usa `customer != null` (y `customer.id`).
@@ -786,26 +942,33 @@ el tema oscuro, negro sobre el claro) y el ícono del lanzador se genera con `to
    `saldo` e `intercambio`), pero el modal web (`EditPaymentModal.vue`) solo ofrece 4 (sin
    `intercambio`). La app ofrece los 4 de la web mas el metodo actual cuando es `intercambio`, para
    no perderlo al guardar.
-8. **Hallazgo de conciliacion (backend, probado contra la API real).** `DELETE
-   /transactions/{id}/payments/{paymentId}` no revierte el `payDebt` que el abono escribio en
-   `customers.balance`: `TransactionPaymentEditService::delete()` revierte la cuenta bancaria, el
-   saldo **usado como pago** (`saldo`) y el movimiento de caja del turno, y el `PUT` solo concilia
-   el banco; ninguno ajusta la deuda del cliente. Evidencia (`LIVE_SALES_LAYAWAY=true`): apartado de
-   $140 del cliente `Juanito P` ($0.00 inicial) → abono de $1 → edicion a $1.50 → borrado del pago →
-   abono de $2 → cancelacion con reembolso en efectivo. Resultado: la venta queda `reembolsado`, el
-   stock se devuelve, pero el cliente termina con **+$1.00 de saldo a favor** (exactamente el
-   importe del pago borrado) porque al cancelar el servidor perdona `total - total_paid` sin contar
-   ese pago. La prueba lo deja impreso y caracteriza el desfase; **cada corrida deja ese $1** en el
-   cliente de prueba (se ajusta desde la web: *Clientes → ficha → ajustar saldo*).
-9. `remaining_due` **no** se pone a 0 al cancelar/reembolsar: es `max(0, total - total_paid)`, asi
-   que una venta `reembolsado` sigue reportando saldo en `GET /transactions` (visto en la prueba:
-   `V-005 reembolsado ... saldo=$138.00`). La app **oculta** el saldo pendiente en ventas anuladas
-   (`TransactionSummary.hasPendingBalance`); la web lo muestra tal cual.
-10. `POST /pos/layaway` (y el cobro) **aplican automaticamente el saldo a favor** del cliente cuando
-    la venta queda con deuda, aunque no se envie `use_balance` (visto en la primera corrida de la
-    prueba: el cliente tenia $1 a favor y el servidor lo uso). El contrato §7.3 lo describe como una
-    accion explicita del cajero; la app ya envia `use_balance` y el ticket de abono muestra lo que el
-    servidor aplico de verdad.
+8. **Conciliacion del cliente al editar/borrar un abono — CORREGIDO por el backend (A1, 2026-09-20).**
+    Era el fallo mas caro que encontro la app: `DELETE /transactions/{id}/payments/{paymentId}` no
+    revertia el `payDebt` que el abono habia escrito en `customers.balance`
+    (`TransactionPaymentEditService::delete()` conciliaba el banco, el saldo *usado como pago* y el
+    movimiento de caja, pero no la deuda del cliente; el `PUT` solo el banco), y al cancelar el
+    servidor perdonaba `total - total_paid` sin contar el pago borrado. Evidencia original
+    (`LIVE_SALES_LAYAWAY=true`): apartado de $140 → abono de $1 → edicion a $1.50 → borrado → abono de
+    $2 → cancelacion con reembolso; el cliente terminaba con **+$1.00 a favor** (el importe del pago
+    borrado) en cada corrida, y se ajustaba a mano desde la web. El servidor hace ahora la operacion
+    simetrica (`payDebt` ↔ `addDebt`, `useBalance` ↔ `addRefund`). **Verificado el 21 sep 2026**
+    (apartado `V-005` de $70 del cliente `Juanito babanas`):
+    `[live] saldo del cliente tras la cadena completa: $0.00 (antes de la cadena $0.00)`. La prueba ya
+    no caracteriza el desfase: **exige** el saldo intacto.
+9. **`remaining_due` en ventas anuladas — CORREGIDO por el backend (A2, 2026-09-20).** Antes era
+    `max(0, total - total_paid)`, asi que una venta `reembolsado` seguia reportando saldo en
+    `GET /transactions` (`V-005 reembolsado ... saldo=$138.00`); ahora `remaining_due` (y por tanto
+    `pending_balance` / `is_paid`) es **0** en `cancelado` y `reembolsado`. Verificado el 21 sep 2026:
+    `[live] V-004 reembolsado Juanito babanas total=$70.00 saldo=$0.00`. La app mantiene
+    `TransactionSummary.hasPendingBalance` (oculta el saldo en ventas anuladas) por si un servidor
+    viejo lo sigue reportando: con el servidor actual el resultado es el mismo.
+10. **El saldo a favor se aplicaba sin `use_balance` — CORREGIDO por el backend (A3, 2026-09-20).**
+    `POST /pos/layaway` (y el cobro) consumian el saldo del cliente cuando la venta quedaba con deuda
+    aunque no se enviara `use_balance`; el contrato §7.3 lo describe como accion explicita del cajero.
+    Ahora el saldo **solo** se aplica con `use_balance: true`. Verificado el 21 sep 2026: la app envia
+    `use_balance: false` y el apartado se crea sin pagos iniciales
+    (`[live] apartado V-005 estatus=apartado total=$70.00 saldo=$70.00`, `pagos iniciales=0.0`); la
+    prueba lo **exige** (`no debe aplicarse sin use_balance`).
 11. `POST /service-orders` exige `create_customer` **siempre** (`required|boolean`), tambien cuando se
     elige un cliente existente; el contrato §9 lo marca como \"required boolean\" pero el ejemplo de
     `curl` **no** lo envia, y el `422` responde \"El campo create customer es obligatorio.\". La app lo
@@ -814,54 +977,86 @@ el tema oscuro, negro sobre el claro) y el ícono del lanzador se genera con `to
 12. El `message` del cambio de estatus es \"Estatus de la orden actualizado correctamente.\", no el
     \"Estatus actualizado a “Terminado”.\" que ilustra el contrato §9. La app muestra el `message` del
     servidor tal cual (nunca compone el texto) y, para el `422`, prioriza `errors.status[0]`.
-13. `DeleteServiceOrderAction` borra la orden **y su venta vinculada**, pero **no** revierte el stock
-    de las refacciones ni la deuda que genero en el cliente (`addDebt` en el alta). La app avisa que
-    la accion no se puede deshacer; el desfase de stock/saldo es del backend (misma logica que la
-    web). Por eso la prueba de humo usa un **servicio** como concepto y una orden **sin cliente**, y
-    solo consume stock real con `LIVE_SERVICE_ORDERS_STOCK=true`.
-14. `custom_field_definitions` solo viaja dentro del detalle de una orden
-    (`GET /service-orders/{id}`): no hay endpoint que liste las definiciones antes de crear una. La
-    app puede capturar y editar campos personalizados en la **edicion** (donde ya conoce las
-    definiciones), pero en el **alta** no tiene como dibujarlos; no se inventan campos.
+13. **Borrar una orden de servicio no revertía stock ni deuda — CORREGIDO por el backend (A6,
+    2026-09-20).** `DeleteServiceOrderAction` borraba la orden y su venta vinculada, pero dejaba el
+    stock de las refacciones consumido y la deuda del cliente (`addDebt` del alta) en pie. Ahora
+    revierte ambos efectos. Verificado el 21 sep 2026 con `LIVE_SERVICE_ORDERS_STOCK=true`: la prueba
+    agrega un producto real como concepto, borra la orden y **exige** que el stock vuelva al valor
+    previo (`[live] stock de la refacción tras borrar la orden: … (antes …)`).
+14. **Campos personalizados al crear una orden — CORREGIDO por el backend (D5, 2026-09-20).** Antes
+    `custom_field_definitions` solo viajaba dentro del detalle (`GET /service-orders/{id}`), asi que la
+    app podia capturarlos al **editar** pero no al **crear**. Ahora existe
+    `GET /service-orders/custom-fields` (contrato §9) con las mismas definiciones del modulo
+    (`module = service_orders`), y el formulario de alta las dibuja con **el mismo renderizador** que
+    la edicion (`ServiceOrderCustomFieldsSection`); si la llamada falla, avisa que se pueden capturar
+    al editar en vez de bloquear el alta. Verificado el 21 sep 2026: el endpoint responde `200` con
+    `campos personalizados del módulo=0` en la suscripcion de prueba (no tiene ninguno definido), asi
+    que la lista vacia se comporta como antes (sin seccion); el dibujado con definiciones reales esta
+    cubierto por `service_order_form_screen_test.dart`.
 15. `promised_at` es una fecha con hora en el backend (`America/Mexico_City`): la app la envia como
     `YYYY-MM-DD` (medianoche local) para que la fecha mostrada sea la elegida por el usuario y no se
     corra un dia por la zona horaria.
 
 ### Discrepancias y hallazgos (etapa 6)
 
-16. **`POST /print/whatsapp-ticket` no arma el ticket de una orden de servicio.** `PrintController::whatsappTicket`
-    resuelve el origen con `PrintDataSourceResolver` y, si **no** es una `Transaction`, responde `200`
-    con `ticket: null` (`customer_phone: null`). Evidencia real (`LIVE_SERVICE_ORDERS=true` + `LIVE_PRINTING=true`):
-    `[live] WhatsApp service_order=3 ticket=null telefono=sin telefono`. La app **sí** imprime la orden
-    (`service_order` funciona en `/print/bluetooth-payload` y `/print/ticket-html`) y, para WhatsApp,
-    ofrece el ticket de la **venta vinculada** de la orden cuando existe (`POST /print/whatsapp-ticket`
-    con `transaction`/`order` + el id de esa venta); si la orden no tiene venta, el botón se oculta y
-    se explica que se genera con “Cobrar ahora”. Además, el `kind` del ticket lo decide el servidor
-    según la transacción (`isOrder()`), no el `data_source_type`: la venta vinculada devuelve `kind=sale`.
-17. **`GET /print/templates` filtra por un solo `context`, pero la web usa conjuntos.** Los controladores
-    web piden las plantillas por `type` y **varios** contextos: `PointOfSaleController` → `pos` + `general`,
-    `TransactionController` → `transaction` + `general`, `ServiceOrderController` → `service_order`,
-    `ProductController` → `product` + `general`, `CustomerController` → `customer` + `general`. El endpoint
-    móvil solo acepta un `context` por llamada, así que la app pide todas las plantillas del **tipo**
-    (`GET /print/templates?type=…`) y aplica el conjunto de contextos en
-    `PrintDocument.selectTemplates` (y `selectLabelTemplates`). Evidencia real con la suscripción de
-    prueba (7 plantillas): los tickets son `general` (#3, #7) y `service_order` (#1, #5); la app
-    selecciona `#3, #7` para una venta y `#1, #5` para una orden. Si se pidiera `context=pos` (como
-    sugería el ejemplo del contrato) la lista llegaría **vacía** y el POS no podría imprimir.
-18. **`/print/payload` (etiquetas) devuelve operaciones del plugin de escritorio**, no bytes. En la
-    práctica la plantilla `etiqueta` produce **una sola** operación `EscribirTexto` cuyo argumento es el
-    comando **TSPL completo** (`SIZE`, `GAP`, `CLS`, `TEXT`, `BARCODE`, `QRCODE`, `PRINT 1,1`). La app
-    envía ese texto tal cual (UTF-8) a la impresora de etiquetas; las operaciones que no puede resolver
-    (p. ej. `DescargarImagenDeInternetEImprimir`) se reportan en `LabelPayload.hasUnsupportedOperations`
-    y se avisan, en lugar de imprimir una etiqueta incompleta en silencio.
-19. En la etiqueta real de la suscripción de prueba el `BARCODE` viaja con el valor **vacío**
-    (`BARCODE 23.97,89.43,"128",30,1,0,2,2,""`): es la plantilla configurada, no un campo que la app
-    invente. Se reimprime tal cual lo que devuelve el servidor (revisar la plantilla en la web si se
-    quiere un código con contenido).
-20. **El corte de caja no tiene endpoint de impresión** (`cash_register_session` no es un
-    `data_source_type` válido, contrato §6.3): el ticket se arma en el teléfono con el encoder ESC/POS
-    local y el texto de WhatsApp se compone con el mismo formato de los demás tickets. Si más adelante
-    se quiere plantilla del negocio para el corte, hay que añadir ese tipo en el backend.
+16. **`POST /print/whatsapp-ticket` no armaba el ticket de una orden de servicio — CORREGIDO por el
+    backend (B3, 2026-09-20).** `PrintController::whatsappTicket` resolvía el origen con
+    `PrintDataSourceResolver` y, si **no** era una `Transaction`, respondía `200` con `ticket: null`
+    (`customer_phone: null`). Evidencia original (`LIVE_SERVICE_ORDERS=true` + `LIVE_PRINTING=true`):
+    `[live] WhatsApp service_order=3 ticket=null telefono=sin telefono`. Ahora
+    `WhatsAppTicketService` arma el ticket de la orden (`kind: service_order`) y un origen que **no**
+    puede producir ticket (`product`, `customer`) responde `422 no_whatsapp_ticket` en vez de un `200`
+    vacío. Verificado el 21 sep 2026: `[live] WhatsApp de un cliente: 422 no_whatsapp_ticket Este
+    documento no tiene ticket de WhatsApp.` (la app ya no puede creer que envió algo) y
+    `[live] WhatsApp kind=sale telefono=3312650047 lineas=19` para una venta real. El `kind` lo sigue
+    decidiendo el documento resuelto, no el `data_source_type` pedido, así que en el detalle de una
+    orden la app ofrece el ticket de su **venta vinculada**.
+17. **`GET /print/templates` filtraba por un solo `context` — CORREGIDO por el backend (B4,
+    2026-09-20).** La web siempre pide **conjuntos** (`PointOfSaleController` → `pos` + `general`,
+    `TransactionController` → `transaction` + `general`, …) y el endpoint móvil solo aceptaba uno.
+    Ahora acepta varios a la vez (`?context[]=pos&context[]=general`, `?context=pos,general`; un
+    contexto desconocido responde `422` con `errors.context.N`). La app **sigue** pidiendo por `type`
+    (`GET /print/templates?type=ticket_venta`) y aplicando el conjunto de contextos en
+    `PrintDocument.selectTemplates` / `selectLabelTemplates`: así una sola llamada trae las plantillas
+    de todos los contextos de ese tipo y quedan cacheadas para imprimir sin conexión (contrato §10).
+    Verificado el 21 sep 2026 con la suscripción de prueba (7 plantillas, 4 de ticket y 3 de etiqueta):
+    `[live] la app selecciona para una venta: #3, #7` (las dos de contexto `general`, 58 y 80 mm).
+18. **Etiquetas con imagen: se imprimían incompletas — CORREGIDO por el backend (B2, 2026-09-20).**
+    `POST /print/payload` devolvía la operación **del plugin de escritorio**
+    `DescargarImagenDeInternetEImprimir`, que el teléfono no puede ejecutar (exige descargar la imagen y
+    rasterizarla con GD). Ahora el servidor descarga la imagen, la rasteriza a 1 bit y la inserta en el
+    mismo texto TSPL como `BITMAP x,y,ancho_en_bytes,alto,0,<hex>` (limitada al ancho de la etiqueta), y
+    lo que no pueda resolver lo declara en el campo nuevo `unsupported_operations` (`"Image: <url>"`).
+    La app manda el texto TSPL tal cual en UTF-8 a la impresora de etiquetas y **avisa** cuando
+    `unsupported_operations` o `warnings` vienen con algo, en vez de imprimir a medias en silencio
+    (`LabelPayload.warningNotice`). Verificado el 21 sep 2026: la plantilla #4 resuelve **una sola**
+    operación `EscribirTexto` con el comando completo (`noResueltas=[]`); el `BITMAP` solo aparece si la
+    plantilla trae una imagen, y ninguna de las tres etiquetas de la suscripción de prueba la tiene (esa
+    parte queda cubierta por `PrintingApiTest` en el backend, no por esta corrida).
+19. **La etiqueta salía con el código de barras vacío — CORREGIDO por el backend (B6, 2026-09-20).**
+    El `BARCODE` de la plantilla real viajaba con el valor vacío
+    (`BARCODE 23.97,89.43,"128",30,1,0,2,2,""`). Ahora, si el valor se resuelve a cadena vacía, el
+    servidor lo rellena con el identificador del documento (`products.sku`, o `P-<id>`; `folio` de la
+    venta o la orden; `C-<id>` de un cliente) y lo declara en `warnings`. Verificado el 21 sep 2026
+    (producto #6): `[live] … avisos=[Barcode: la plantilla no resolvió un valor, se usó «P-6».]` y el
+    comando real `BARCODE 23.976377952756,89.43188976378,"128",30,1,0,2,2,"P-6"`.
+20. **El corte de caja no se podía imprimir (ni reimprimir) — CORREGIDO por el backend (B5,
+    2026-09-20).** `cash_register_session` no era un `data_source_type` válido (contrato §6.3), así que
+    el corte se armaba en el teléfono con el encoder ESC/POS local y el de un turno cerrado días atrás
+    era **irrecuperable**. Ahora `GET /cash-register-sessions/{id}/receipt` devuelve el corte listo para
+    (re)imprimir: `session`, `summary` con las cifras congeladas del cierre, la plantilla usada y las
+    `operations` en el mismo formato que §10; además `data_source_type = cash_register_session` funciona
+    en `/print/bluetooth-payload`, `/print/payload` y `/print/ticket-html`. La plantilla se resuelve
+    `template_id` → plantilla del negocio con contexto `cash_register` → **incorporada** del servidor
+    (`template.builtin = true`, `template.id = null`, así que no hay `template_id` que mandar). La app
+    **borró** su renderizador local (`cash_cut_renderer.dart` + `cash_cut_document.dart`) y ahora
+    imprime las `operations` del comprobante tal cual (`CashCutReceipt` + `PrintOperationsEncoder`), con
+    el respaldo de `/print/bluetooth-payload` cuando la plantilla es del negocio y trae una imagen (el
+    servidor la rasteriza; el teléfono no). Verificado el 21 sep 2026 sobre el turno **abierto** #16:
+    `[live] corte del turno abierto #16 plantilla=Corte de caja (incorporada) operaciones=1 bytes=491
+    papel=80mm avisos=[]`, y el corte del turno **cerrado** en la prueba de caja (`LIVE_POS=true`).
+    `PrintOperationsEncoder` traduce `TextoSegunPaginaDeCodigos` a `ESC t 2` (CP850) y concatena los
+    bytes que armó el servidor, así que la app ya no tiene tablas de códigos propias para el corte.
 21. El respaldo HTML (`/print/ticket-html`) se muestra para copiarlo porque el stack aprobado no incluye
     un paquete de compartir/PDF (`share_plus`, `printing`): generar el PDF o abrir la hoja de compartir
     del sistema queda como pendiente si el negocio lo necesita.
@@ -927,11 +1122,56 @@ flutter run -d <serial> `
   (`https://ezyventas2.test/storage/6/iphone.png`) y ese dominio **no resuelve en el teléfono**
   (comprobado en el dispositivo: `ping: unknown host ezyventas2.test`), así que la imagen caía
   siempre en el marcador de la pantalla. `ServerImage` (`lib/core/widgets/server_image.dart`)
-  resuelve la URL con `AppConfig.mediaUri` —reescribe el origen al de `API_BASE_URL`
-  (`https://127.0.0.1:8443`) y `AppConfig.mediaHeaders` manda el `Host` con el que Herd elige el
-  sitio— y se usa en el catálogo, el detalle de producto, las evidencias de órdenes y la foto de
+  recorre **en orden** los intentos que arma `AppConfig.mediaRequests` —el origen de la API
+  (`https://127.0.0.1:8443`) con el `Host` con el que Herd elige el sitio y, si fallara, la URL tal
+  cual— y se usa en el catálogo, el detalle de producto, las evidencias de órdenes y la foto de
   perfil. Sin `API_HOST_HEADER` (producción) la URL se descarga tal cual y **no** se añade ningún
-  header; los hosts externos (`ui-avatars.com`, `placehold.co`) nunca se reescriben.
+  header; los hosts externos (`ui-avatars.com`, `placehold.co`) nunca se reescriben, y una ruta
+  relativa (`/storage/…`) se resuelve contra el origen de la API.
+- **El certificado autofirmado también afectaba a las imágenes.** `ApiClient` aceptaba el
+  certificado en debug, pero `Image.network` usa el `HttpClient` del motor: **todas** las imágenes
+  del servidor (la del `Iphone 20`, las evidencias de una orden) fallaban mientras la API
+  respondía, y solo se veían las que vienen de hosts con certificado válido (`placehold.co`,
+  `ui-avatars.com`). `main.dart` inyecta `debugNetworkImageHttpClientProvider` con
+  `badCertificateCallback` **solo en debug** (`kDebugMode && ALLOW_BAD_CERTIFICATE`), igual que la
+  API; en release se ignora.
+
+#### Pruebas manuales en el teléfono (túnel + APK ya configurado)
+
+Para usar la app **a mano** en el teléfono contra la API local (sin depender de F5) se dejan las dos
+piezas puestas y verificadas:
+
+```powershell
+# 1) túnel (idempotente: quita el registro viejo y lo vuelve a crear)
+powershell -ExecutionPolicy Bypass -File tool\android_tunnel.ps1
+#    -> en el TELÉFONO, https://127.0.0.1:8443 llega al Herd del equipo (127.0.0.1:443)
+
+# 2) comprobar DESDE el teléfono que la API responde (el teléfono trae `curl` en /system/bin)
+$adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+& $adb push tool\android_tunnel_check.sh /data/local/tmp/
+& $adb shell sh /data/local/tmp/android_tunnel_check.sh correo@negocio.com 'secreto'
+#    sin Host -> 404 (el "Site not found" de Herd) · con Host, sin token -> 401 · login real -> 200
+
+# 3) instalar la app apuntando al túnel (build DEBUG, ver aviso abajo)
+flutter build apk --debug `
+  --dart-define=API_BASE_URL=https://127.0.0.1:8443/api/v1 `
+  --dart-define=API_HOST_HEADER=ezyventas2.test
+adb install -r -t build\app\outputs\flutter-apk\app-debug.apk
+```
+
+- **Tiene que ser `--debug`.** El certificado autofirmado de Herd se acepta **solo** con
+  `kDebugMode` (`ApiClient`: `if (kDebugMode && AppConfig.allowBadCertificate)`), así que un APK de
+  **profile/release apuntado al túnel falla la conexión** (fallo de certificado). El `flutter run
+  --profile` del `launch.json` sirve para medir fluidez, no para el túnel con Herd.
+- El `Host` viaja por `API_HOST_HEADER`; sin él Herd no sabe qué sitio es y devuelve su HTML de `404`.
+- `adb reverse` **se pierde** si el teléfono se reconecta, se reinicia el servidor `adb` o cambia el
+  modo USB: si la app deja de conectar, vuelve a correr el paso 1 (y el 2 para confirmar). Ojo también
+  con el estado raro que se ve al volver a crear un túnel ya existente (figura en `adb reverse --list`
+  pero no llega): por eso el script **quita y crea**.
+- El script `tool\android_tunnel_check.sh` se ejecuta con el `sh` de Android (`mksh`), así que va en
+  **LF**: el repo lo fuerza con `.gitattributes` (`*.sh text eol=lf`). Si lo editas en Windows y lo
+  subes con CRLF, `curl` recibe las URLs con `\r` y todo responde `000` sin explicar por qué
+  (`adb shell dos2unix /data/local/tmp/android_tunnel_check.sh` lo arregla en el teléfono).
 
 ### 4.2 Instalar la app en un teléfono Xiaomi/Redmi (MIUI/HyperOS)
 
@@ -977,9 +1217,9 @@ Los archivos de marca viven en `assets/images/`:
 
 | Archivo | Uso |
 |---|---|
-| `white_logo.png` (734x335, fondo transparente) | Logotipo para **fondos oscuros** (el tema por defecto) |
+| `white_logo.png` (734x335, fondo transparente) | Logotipo para **fondos oscuros** (el tema por defecto) y para la pantalla de carga nativa (`tool/launch_logo.ps1`) |
 | `black_logo.png` (726x351) | Logotipo para fondos claros |
-| `ezyventas_icon.jfif` (1024x1024) | Arte del **ícono de la app** (lo consume `tool/app_icons.ps1`) |
+| `ezyventas_icon.jpg` (685x685) | Arte del **ícono de la app** (lo consume `tool/app_icons.ps1`); sustituye al anterior `ezyventas_icon.jfif`, ya borrado |
 | `isologo.png` (228x207) | Isologo suelto, para piezas que necesiten solo la «E» |
 
 `BrandLogo` (`lib/core/widgets/brand_logo.dart`) elige el PNG según el `Brightness` del tema y cae al
@@ -1006,6 +1246,55 @@ powershell -ExecutionPolicy Bypass -File tool\app_icons.ps1
 - Los dos XML se escriben en ASCII (sin BOM) y el script es idempotente: si cambia el arte, vuelve a
   correrlo y recompila (`flutter build apk --debug` + `adb install -r -t`). También acepta
   `-CornerRadius`, `-BackgroundColor` y `-ForegroundScale`.
+
+### 4.4 Pantalla de carga nativa (el "estado de carga" desde el arranque)
+
+Hasta esta entrega el arranque mostraba la ventana de Android **en negro** (el
+`?android:colorBackground` del `NormalTheme`/`LaunchTheme` de la plantilla) hasta que Flutter pintaba
+su primer frame, y solo entonces aparecía el splash con el logotipo y el indicador giratorio. Ahora el
+tema de lanzamiento es de la marca, así que el usuario ve el logo **desde el primer instante**:
+
+| Archivo | Qué pinta |
+|---|---|
+| `res/values/colors.xml` | `launch_background` = `#FF1A1A1A`, el mismo fondo del tema oscuro de la app (`EzySurfaces.dark.background`) |
+| `res/drawable/launch_background.xml` y `res/drawable-v21/…` | Fondo de marca + el logotipo **centrado** (`@drawable/launch_logo`) |
+| `res/values/styles.xml` y `res/values-night/styles.xml` | `LaunchTheme` y `NormalTheme` con ese fondo (y sin destello al cerrar el splash) |
+| `res/values-v31/styles.xml` | En Android 12+ el sistema dibuja su propio splash: `windowSplashScreenBackground` = fondo de marca y `windowSplashScreenAnimatedIcon` = `@mipmap/ic_launcher` (el icono ya actualizado) |
+
+`launch_logo.png` (736x336 px en `drawable-xxxhdpi` = 184x84 dp, el mismo tamaño que el `BrandLogo`
+del splash de Flutter) se genera con **System.Drawing** desde `white_logo.png`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool\launch_logo.ps1
+```
+
+El paso del splash nativo al de Flutter es continuo: mismo fondo, mismo logotipo en el mismo tamaño y
+el indicador giratorio que añade `SplashScreen`. `main()` sigue esperando
+`initializeDateFormatting('es_MX')` antes de `runApp`, pero eso es un mapa ya compilado en la app (unos
+milisegundos), no una petición: lo que se veía era el fondo negro de la ventana nativa.
+
+**Verificación real (21 sep 2026, en el Redmi).** Se comprobó en el APK instalado que el tema de
+lanzamiento ya no pinta negro: `values/colors.xml` → `launch_background=#FF1A1A1A`,
+`drawable/launch_background.xml` (y `drawable-v21`) → color + `launch_logo` centrado, `values-v31` →
+`windowSplashScreenBackground=@color/launch_background` e icono = `@mipmap/ic_launcher`; el icono nuevo
+(`assets/images/ezyventas_icon.jpg`, ya sin el `.jfif` viejo) está en los cinco `mipmap-*` con el tamaño
+correcto (48/192/432 px y el arte de la app en el cajón).
+
+Lo que **queda** en el cronómetro de un arranque en frío es el motor de Flutter, no el tema: midiendo
+con `adb exec-out screencap` cada ~0.6 s desde `am start`, en un build **debug** el primer frame de la
+app tarda ~4.8 s (el motor arranca con JIT y sin AOT); el tramo oscuro previo es la superficie de
+Flutter todavía vacía. En **release** ese tramo es mucho menor (el AOT no compila en caliente), así que
+la comprobación definitiva del "ya no se ve negro" se hace con un APK de release: en este entorno el
+build de release (`assembleRelease` con R8 sobre un APK de depuración de 214 MB) no terminó dentro del
+tiempo de la sesión y quedó pendiente. Si al abrir la app todavía se nota el tramo oscuro, el siguiente
+paso es mantener visible el splash nativo hasta el primer frame (`io.flutter.embedding.android.
+BackgroundMode = transparent` en el manifiesto), que no se aplicó para no cambiar el rendimiento del
+arranque sin medirlo.
+
+La pantalla ya cargada se verificó igual (histograma de la captura, sin subir imágenes): el login ocupa
+la pantalla completa con el fondo y los paneles del tema — **59.2 % `#232323`, 29.7 % `#1A1A1A` y
+1.9 % del naranja de marca `#F68C0F`** — y **0 %** de negro puro; el `#1A1A1A` coincide con el
+`launch_background`, así que el paso del splash nativo al de Flutter no cambia de color.
 
 ---
 

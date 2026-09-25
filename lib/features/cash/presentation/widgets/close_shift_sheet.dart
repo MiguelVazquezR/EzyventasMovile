@@ -599,6 +599,15 @@ class _CloseResult extends ConsumerWidget {
             onAction: ref.read(printJobProvider.notifier).consumeError,
           ),
         ],
+        if (job.warningMessage != null) ...<Widget>[
+          const SizedBox(height: 12),
+          NoticeBanner(
+            message: job.warningMessage!,
+            tone: EzySeverity.warn,
+            actionLabel: 'Ocultar',
+            onAction: ref.read(printJobProvider.notifier).consumeWarning,
+          ),
+        ],
         const SizedBox(height: 12),
         SectionCard(
           title: 'Impresión del corte',
@@ -613,8 +622,8 @@ class _CloseResult extends ConsumerWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'El corte se arma en el teléfono porque la API no genera este '
-                'documento.',
+                'El corte lo arma el servidor y el teléfono solo lo imprime: '
+                'puedes reimprimirlo cuando quieras.',
                 style: EzyTextStyles.caption.copyWith(
                   color: surfaces.textMuted,
                 ),
@@ -623,9 +632,9 @@ class _CloseResult extends ConsumerWidget {
               EzyButton(
                 label: 'Imprimir corte',
                 icon: Icons.print_outlined,
-                isLoading: job.isSubmitting,
+                isLoading: job.isSubmitting || job.isFetchingCut,
                 onPressed: printer.isAdapterOn && !job.isBusy
-                    ? () => printCashCut(context, ref, result: result)
+                    ? () => printCashCut(context, ref, sessionId: session.id)
                     : null,
               ),
               const SizedBox(height: 8),
@@ -635,7 +644,11 @@ class _CloseResult extends ConsumerWidget {
                 variant: EzyButtonVariant.outline,
                 onPressed: job.isBusy
                     ? null
-                    : () => sendCashCutByWhatsApp(context, ref, result: result),
+                    : () => sendCashCutByWhatsApp(
+                        context,
+                        ref,
+                        sessionId: session.id,
+                      ),
               ),
             ],
           ),

@@ -83,13 +83,12 @@ class _TemplateTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
-              ? EzyColors.primary.withValues(alpha: 0.12)
+              ? EzyColors.primary.withValues(alpha: 0.14)
               : surfaces.panelInner,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected
-                ? EzyColors.primary.withValues(alpha: 0.5)
-                : surfaces.border,
+            color: isSelected ? EzyColors.primary : surfaces.border,
+            width: isSelected ? 1.5 : 1,
           ),
         ),
         child: Row(

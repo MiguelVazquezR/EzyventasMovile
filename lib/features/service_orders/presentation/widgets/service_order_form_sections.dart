@@ -165,14 +165,20 @@ class ServiceOrderTechnicianSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: assign,
-            onChanged: onAssignChanged,
-            title: Text(
-              'Asignar técnico',
-              style: EzyTextStyles.bodyStrong.copyWith(
-                color: surfaces.textPrimary,
+          // `Material` transparente: el `SectionCard` pinta su propio fondo, así
+          // que sin él el *ripple* del interruptor quedaría debajo y Flutter
+          // avisa en debug («ListTile background color or ink splashes …»).
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: assign,
+              onChanged: onAssignChanged,
+              title: Text(
+                'Asignar técnico',
+                style: EzyTextStyles.bodyStrong.copyWith(
+                  color: surfaces.textPrimary,
+                ),
               ),
             ),
           ),
@@ -342,11 +348,16 @@ class _CustomFieldState extends State<_CustomField> {
     final definition = widget.definition;
 
     if (definition.isSwitch) {
-      return SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        value: _isTruthy(widget.value),
-        onChanged: widget.onChanged,
-        title: Text(definition.name),
+      // `Material` transparente: el `SwitchListTile` vive dentro de un
+      // `SectionCard` (con fondo propio) y sin él el *ripple* queda oculto.
+      return Material(
+        type: MaterialType.transparency,
+        child: SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _isTruthy(widget.value),
+          onChanged: widget.onChanged,
+          title: Text(definition.name),
+        ),
       );
     }
 

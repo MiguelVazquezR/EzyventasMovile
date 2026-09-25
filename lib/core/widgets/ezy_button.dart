@@ -4,7 +4,10 @@ import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
 /// Variantes de acción del design system.
-enum EzyButtonVariant { primary, outline, danger, text }
+///
+/// `info` (azul Bluetooth) e `whatsApp` (verde) son acciones con color propio:
+/// el color identifica la acción, no el estado.
+enum EzyButtonVariant { primary, outline, danger, text, info, whatsApp }
 
 /// Botón pill de 48 px de alto como mínimo (§4).
 ///
@@ -19,6 +22,7 @@ class EzyButton extends StatelessWidget {
     this.icon,
     this.variant = EzyButtonVariant.primary,
     this.expand = true,
+    this.height,
   });
 
   final String label;
@@ -28,21 +32,25 @@ class EzyButton extends StatelessWidget {
   final EzyButtonVariant variant;
   final bool expand;
 
+  /// Alto propio (por defecto el mínimo del design system, 48 px).
+  final double? height;
+
   @override
   Widget build(BuildContext context) {
     final isEnabled = onPressed != null && !isLoading;
+    final foreground = _foreground;
 
     final child = Row(
       mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: <Widget>[
         if (isLoading)
-          const SizedBox(
+          SizedBox(
             width: 16,
             height: 16,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: EzyColors.white,
+              color: foreground,
             ),
           )
         else if (icon != null)
@@ -63,17 +71,19 @@ class EzyButton extends StatelessWidget {
         onPressed: isEnabled ? onPressed : null,
         child: child,
       ),
+      EzyButtonVariant.info => FilledButton(
+        onPressed: isEnabled ? onPressed : null,
+        style: _filledStyle(EzyColors.bluetooth, foreground),
+        child: child,
+      ),
+      EzyButtonVariant.whatsApp => FilledButton(
+        onPressed: isEnabled ? onPressed : null,
+        style: _filledStyle(EzyColors.whatsApp, foreground),
+        child: child,
+      ),
       EzyButtonVariant.danger => FilledButton(
         onPressed: isEnabled ? onPressed : null,
-        style: FilledButton.styleFrom(
-          backgroundColor: EzyColors.danger,
-          foregroundColor: EzyColors.white,
-          minimumSize: const Size(0, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          elevation: 0,
-          shape: const StadiumBorder(),
-          textStyle: EzyTextStyles.button,
-        ),
+        style: _filledStyle(EzyColors.danger, EzyColors.white),
         child: child,
       ),
       EzyButtonVariant.outline => OutlinedButton(
@@ -93,6 +103,28 @@ class EzyButton extends StatelessWidget {
       return button;
     }
 
-    return SizedBox(width: double.infinity, child: button);
+    return SizedBox(
+      width: double.infinity,
+      height: height,
+      child: button,
+    );
   }
+
+  /// Color del texto y del spinner de las variantes rellenas.
+  Color get _foreground => switch (variant) {
+    EzyButtonVariant.whatsApp => EzyColors.black1,
+    _ => EzyColors.white,
+  };
+
+  static ButtonStyle _filledStyle(Color background, Color foreground) =>
+      FilledButton.styleFrom(
+        backgroundColor: background,
+        foregroundColor: foreground,
+        minimumSize: const Size(0, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        elevation: 0,
+        shape: const StadiumBorder(),
+        textStyle: EzyTextStyles.button,
+      );
 }
+

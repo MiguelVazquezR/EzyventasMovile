@@ -23,6 +23,15 @@ class SalesLabels {
   /// filtrado por el mismo estatus que cuenta el servidor.
   static const String toDeliver = 'por_entregar';
 
+  /// Estatus que cuenta `expiring_debts` (`GET /notifications`).
+  ///
+  /// El contador mezcla apartados y créditos: el historial los pide juntos en
+  /// una sola llamada (`?status[]=apartado&status[]=pendiente`, contrato §8).
+  static const List<String> expiringDebtStatuses = <String>[
+    'apartado',
+    'pendiente',
+  ];
+
   /// Canal de la venta (`channel` del contrato §8).
   static const Map<String, String> _channelLabels = <String, String>{
     'punto_de_venta': 'Punto de venta',

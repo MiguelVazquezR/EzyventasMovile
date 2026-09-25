@@ -302,20 +302,25 @@ class _ManualCustomerCard extends StatelessWidget {
             keyboardType: TextInputType.emailAddress,
           ),
           const SizedBox(height: 8),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: createCustomer,
-            onChanged: onToggleCreate,
-            title: Text(
-              'Dar de alta este cliente',
-              style: EzyTextStyles.bodyStrong.copyWith(
-                color: surfaces.textPrimary,
+          // `Material` transparente: el `SectionCard` pinta su propio fondo y sin
+          // él el *ripple* del interruptor quedaría debajo del fondo.
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: createCustomer,
+              onChanged: onToggleCreate,
+              title: Text(
+                'Dar de alta este cliente',
+                style: EzyTextStyles.bodyStrong.copyWith(
+                  color: surfaces.textPrimary,
+                ),
               ),
-            ),
-            subtitle: Text(
-              'El servidor crea el cliente al guardar la orden.',
-              style: EzyTextStyles.caption.copyWith(
-                color: surfaces.textSecondary,
+              subtitle: Text(
+                'El servidor crea el cliente al guardar la orden.',
+                style: EzyTextStyles.caption.copyWith(
+                  color: surfaces.textSecondary,
+                ),
               ),
             ),
           ),

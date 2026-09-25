@@ -11,6 +11,9 @@ enum PrintDataSourceType {
   product('product'),
   customer('customer'),
   order('order'),
+
+  /// Turno de caja (el corte de §6.3): el servidor lo imprime como ticket.
+  cashRegisterSession('cash_register_session'),
   general('general');
 
   const PrintDataSourceType(this.wire);
@@ -102,6 +105,28 @@ class PrintDocument {
     ],
     title: 'Etiqueta de producto',
     subtitle: name,
+  );
+
+  /// Corte de caja de un turno (`cash_register_session`).
+  ///
+  /// Es el respaldo para una plantilla de corte del **negocio** que traiga una
+  /// imagen: `POST /print/bluetooth-payload` la rasteriza en el servidor, algo
+  /// que el teléfono no puede hacer con las operaciones del comprobante.
+  factory PrintDocument.cashCut({
+    required int sessionId,
+    required int templateId,
+    String subtitle = '',
+  }) => PrintDocument(
+    source: PrintDataSourceType.cashRegisterSession,
+    id: sessionId,
+    contexts: const <PrintContextType>[
+      PrintContextType.cashRegister,
+      PrintContextType.general,
+    ],
+    templateIds: <int>[templateId],
+    labelContexts: const <PrintContextType>[PrintContextType.cashRegister],
+    title: 'Corte de caja',
+    subtitle: subtitle,
   );
 
   /// Ficha / estado de cuenta del cliente (`customer` + `general`): es el

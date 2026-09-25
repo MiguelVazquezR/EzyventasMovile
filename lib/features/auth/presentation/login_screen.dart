@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +5,7 @@ import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/status_palette.dart';
+import '../../../core/utils/external_links.dart';
 import '../../../core/widgets/brand_logo.dart';
 import '../../../core/widgets/ezy_button.dart';
 import '../../../core/widgets/ezy_text_field.dart';
@@ -31,6 +31,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
+  /// Deja la sesión abierta en este teléfono (marcado por defecto).
+  bool _keepSession = true;
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -54,8 +57,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         .login(
           email: _emailController.text,
           password: _passwordController.text,
+          keepSession: _keepSession,
         );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -96,7 +101,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             const SizedBox(height: 16),
                           ],
                           _buildFields(state),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 8),
+                          _buildKeepSession(state),
+                          const SizedBox(height: 20),
                           EzyButton(
                             label: 'Iniciar sesión',
                             icon: Icons.login,
@@ -116,22 +123,72 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       color: surfaces.textMuted,
                     ),
                   ),
-                  if (kDebugMode) ...<Widget>[
-                    const SizedBox(height: 20),
-                    Text(
-                      AppConfig.apiBaseUrl,
-                      textAlign: TextAlign.center,
-                      style: EzyTextStyles.badge.copyWith(
-                        color: surfaces.textMuted,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
+                  const SizedBox(height: 12),
+                  _WebsiteLink(surfaces: surfaces),
                 ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// "Mantener la sesión abierta": sin marcar, la sesión vive solo en memoria y
+  /// al cerrar la app hay que volver a iniciar sesión.
+  Widget _buildKeepSession(AuthState state) {
+    final surfaces = context.surfaces;
+
+    return GestureDetector(
+      onTap: state.isSubmitting
+          ? null
+          : () => setState(() => _keepSession = !_keepSession),
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: Checkbox(
+              value: _keepSession,
+              onChanged: state.isSubmitting
+                  ? null
+                  : (value) => setState(() => _keepSession = value ?? true),
+              activeColor: EzyColors.primary,
+              checkColor: EzyColors.black1,
+              side: BorderSide(color: surfaces.borderStrong),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Mantener la sesión abierta',
+                    style: EzyTextStyles.bodyStrong.copyWith(
+                      color: surfaces.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'No tendrás que escribir tus datos otra vez en este '
+                    'teléfono.',
+                    style: EzyTextStyles.caption.copyWith(
+                      color: surfaces.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -192,6 +249,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Enlace directo al sitio web de EzyVentas (login de la web).
+///
+/// Sustituye a la URL base de la API que se mostraba en modo debug: en su lugar
+/// se ofrece la dirección que sí le sirve a la persona que tiene el teléfono.
+class _WebsiteLink extends StatelessWidget {
+  const _WebsiteLink({required this.surfaces});
+
+  final EzySurfaces surfaces;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: () => ExternalLinks.open(
+        context,
+        AppConfig.webLoginUrl,
+        failureMessage: 'No se pudo abrir el navegador en este teléfono.',
+      ),
+      icon: const Icon(Icons.open_in_new, size: 16),
+      label: Text(
+        AppConfig.websiteUrl.replaceFirst('https://', ''),
+        style: EzyTextStyles.button.copyWith(color: surfaces.textSecondary),
+      ),
+      style: TextButton.styleFrom(foregroundColor: surfaces.textSecondary),
     );
   }
 }

@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 /// Estado del adaptador Bluetooth del teléfono.
@@ -81,19 +81,79 @@ class PrinterException implements Exception {
 
 /// Impresora térmica Bluetooth por GATT (ESC/POS y etiquetas TSPL).
 ///
-/// Réplica en Android de `resources/js/Composables/useBluetoothPrinter.js`:
-/// busca la característica escribible del servicio, prefiere
-/// `writeWithoutResponse` y envía los bytes en **bloques de 20 bytes con 25 ms
-/// de pausa** (las térmicas baratas pierden datos si se envían de golpe).
+/// Busca la característica escribible del servicio, prefiere el envío **con
+/// respuesta** (cada bloque lo confirma la impresora) y trocea el documento en
+/// bloques del tamaño que permite el **MTU negociado**.
+///
+/// El contrato §10 describe el procedimiento de la web (`useBluetoothPrinter.js`:
+/// bloques de 20 bytes con 25 ms de pausa ≈ 800 B/s). Eso vale para el *Web
+/// Bluetooth* del navegador, pero en Android el MTU negociado es mayor, así que
+/// 20 bytes por bloque condenaban a ~11 s cualquier documento con imagen: el
+/// ticket de la plantilla real, que lleva el logo del negocio rasterizado como
+/// bitmap ESC/POS (`GS v 0`), mide ~8.7 KB. Con bloques del tamaño del MTU
+/// (`245 B` medidos con la MP210) y ACK, el mismo ticket sale en **3.4 s**
+/// (36 bloques) en vez de ~11 s. Lo que queda es la latencia de cada ACK
+/// (~94 ms), que baja si se pide un intervalo de conexión más corto.
 ///
 /// La app **no** arma aquí ningún documento: recibe los bytes ya codificados
-/// por el servidor (`commands_base64`) o por `EscPosBuilder` para el corte.
+/// por el servidor (`commands_base64`) o por `PrintOperationsEncoder` (las
+/// `operations` del corte y de la etiqueta).
 class BluetoothPrinterService {
-  /// Tamaño de bloque probado con las impresoras soportadas.
-  static const int chunkSize = 20;
+  /// MTU que se pide al conectar (Android).
+  ///
+  /// Es el máximo que anuncian los módulos de las térmicas; Android suele
+  /// negociar 517 por su cuenta, pero pedirlo explícitamente lo garantiza en
+  /// teléfonos que se quedan en el mínimo (23 → bloques de 20 bytes).
+  static const int preferredMtu = 512;
 
-  /// Pausa entre bloques.
-  static const Duration chunkDelay = Duration(milliseconds: 25);
+  /// Tope del bloque útil (`MTU - 3`), incluso si el MTU negociado es mayor.
+  static const int maxChunkSize = 512;
+
+  /// Bloque útil cuando el MTU no se puede leer (mínimo BLE, `23 - 3`).
+  static const int fallbackChunkSize = 20;
+
+  /// Pausa entre bloques **sin** respuesta.
+  ///
+  /// Con `write` (con respuesta) el propio ACK marca el ritmo y el control de
+  /// flujo lo da el enlace; solo hace falta cuando la característica únicamente
+  /// admite `writeWithoutResponse` (las térmicas baratas pierden datos si se
+  /// envían de golpe).
+  static const Duration chunkDelay = Duration(milliseconds: 10);
+
+  /// Bloque útil para un MTU negociado: `MTU - 3` (la cabecera ATT), acotado.
+  ///
+  /// Android negocia 517 con las térmicas probadas (`512` útiles); si el teléfono
+  /// se queda en el mínimo BLE (23) el bloque vuelve a 20 bytes, que es el
+  /// procedimiento del contrato §10.
+  static int chunkSizeFor(int? mtu) {
+    if (mtu == null || mtu <= 23) {
+      return fallbackChunkSize;
+    }
+
+    final usable = mtu - 3;
+
+    return usable > maxChunkSize ? maxChunkSize : usable;
+  }
+
+  /// Bloques `(inicio, fin)` en los que se parte un documento de [length] bytes.
+  ///
+  /// Es puro a propósito: así se prueba que el envío no pierde ni repite bytes
+  /// (y que el último bloque va corto) sin necesidad de una impresora conectada.
+  static List<(int, int)> chunkRanges(int length, int chunkSize) {
+    if (chunkSize <= 0) {
+      throw ArgumentError.value(chunkSize, 'chunkSize', 'debe ser > 0');
+    }
+
+    final ranges = <(int, int)>[];
+
+    for (var start = 0; start < length; start += chunkSize) {
+      final end = start + chunkSize > length ? length : start + chunkSize;
+
+      ranges.add((start, end));
+    }
+
+    return ranges;
+  }
 
   /// UUIDs de servicio de las térmicas probadas (contrato §10).
   static const List<String> knownServiceUuids = <String>[
@@ -233,6 +293,16 @@ class BluetoothPrinterService {
       );
     }
 
+    // MTU grande (Android): de él sale el tamaño de bloque del envío. Se pide
+    // explícitamente porque hay teléfonos que se quedan en el mínimo BLE (23) y
+    // con 20 bytes por bloque un ticket con el logo tardaría ~11 s.
+    try {
+      await target.requestMtu(preferredMtu);
+    } on FlutterBluePlusException {
+      // La impresora (o el teléfono) no aceptan el MTU pedido: se sigue con el
+      // negociado, que `mtuNow` ya refleja.
+    }
+
     final List<BluetoothService> services;
 
     try {
@@ -255,6 +325,14 @@ class BluetoothPrinterService {
 
     _device = target;
     _characteristic = characteristic;
+
+    debugPrint(
+      '[printer] conectada "${device.label}" mtu=${target.mtuNow} '
+      'bloque=${chunkSizeFor(target.mtuNow)} B '
+      'conRespuesta=${characteristic.properties.write} '
+      'sinRespuesta=${characteristic.properties.writeWithoutResponse}',
+    );
+
     _connectionSubscription = target.connectionState.listen((state) {
       if (state == BluetoothConnectionState.disconnected) {
         _forgetDevice(notify: true);
@@ -263,6 +341,13 @@ class BluetoothPrinterService {
   }
 
   /// Envía los bytes ya codificados (ESC/POS o TSPL) a la impresora.
+  ///
+  /// Trocea el documento en bloques de `MTU - 3` bytes: cada bloque se escribe
+  /// **con respuesta** siempre que la característica lo permita (el ACK marca el
+  /// ritmo y garantiza que no se pierde nada), y si la impresora solo admite
+  /// `writeWithoutResponse` se deja la pausa de [chunkDelay] para no desbordar su
+  /// búfer. Un ticket con el logo del negocio pasa de ~11 s a **3.4 s** medidos
+  /// (36 bloques de 245 B con ACK).
   ///
   /// Si la impresora se desconecta en medio del envío lanza
   /// [PrinterException.connectionLost] para que la UI avise y permita
@@ -275,21 +360,24 @@ class BluetoothPrinterService {
       throw const PrinterException('Impresora Bluetooth no conectada.');
     }
 
-    final withoutResponse = characteristic.properties.writeWithoutResponse;
+    // Con respuesta siempre que se pueda: el ACK da control de flujo (nada de
+    // pausas artificiales) y el enlace marca el ritmo de cada bloque.
+    final withoutResponse =
+        characteristic.properties.writeWithoutResponse &&
+        !characteristic.properties.write;
 
-    for (var offset = 0; offset < bytes.length; offset += chunkSize) {
+    final chunkSize = chunkSizeFor(device.mtuNow);
+    final started = DateTime.now();
+
+    for (final (start, end) in chunkRanges(bytes.length, chunkSize)) {
       if (device.isDisconnected) {
         _forgetDevice(notify: true);
         throw const PrinterException.connectionLost();
       }
 
-      final end = offset + chunkSize > bytes.length
-          ? bytes.length
-          : offset + chunkSize;
-
       try {
         await characteristic.write(
-          Uint8List.sublistView(bytes, offset, end),
+          Uint8List.sublistView(bytes, start, end),
           withoutResponse: withoutResponse,
         );
       } on FlutterBluePlusException {
@@ -297,9 +385,20 @@ class BluetoothPrinterService {
         throw const PrinterException.connectionLost();
       }
 
-      // Pausa obligatoria: sin ella las térmicas BT pierden datos.
-      await Future<void>.delayed(chunkDelay);
+      if (withoutResponse) {
+        // Sin ACK no hay control de flujo: la pausa evita perder bloques.
+        await Future<void>.delayed(chunkDelay);
+      }
     }
+
+    final elapsed = DateTime.now().difference(started);
+
+    debugPrint(
+      '[printer] ${bytes.length} bytes en '
+      '${(bytes.length / chunkSize).ceil()} bloques de $chunkSize '
+      '(mtu=${device.mtuNow}, sinRespuesta=$withoutResponse) en '
+      '${elapsed.inMilliseconds} ms',
+    );
   }
 
   /// Cierra la conexión a petición del usuario (sin avisar de desconexión).

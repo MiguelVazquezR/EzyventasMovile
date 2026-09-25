@@ -16,12 +16,11 @@ import '../data/models/print_template.dart';
 import '../data/whatsapp_message_builder.dart';
 import 'widgets/print_template_picker.dart';
 import 'widgets/printer_status_card.dart';
-import 'widgets/ticket_html_sheet.dart';
 import 'widgets/whatsapp_ticket_sheet.dart';
 
 /// Acción que se ejecuta al abrir la hoja.
 enum PrintSheetAction {
-  /// Solo muestra las opciones (impresión, WhatsApp y respaldo HTML).
+  /// Solo muestra las opciones (impresión y WhatsApp).
   print,
   whatsApp,
 }
@@ -299,26 +298,22 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
           ],
           const SizedBox(height: 16),
           EzyButton(
-            label: 'Imprimir ticket',
+            label: widget.document.templateType == PrintTemplateType.label
+                ? 'Imprimir etiqueta'
+                : 'Imprimir ticket',
             icon: Icons.print_outlined,
             isLoading: job.isSubmitting,
+            // La impresión es la acción principal de la hoja.
+            height: 56,
             onPressed: canSubmit ? () => _printTicket(templateId) : null,
           ),
           const SizedBox(height: 8),
           EzyButton(
             label: 'Enviar por WhatsApp',
             icon: Icons.chat_outlined,
-            variant: EzyButtonVariant.outline,
+            variant: EzyButtonVariant.whatsApp,
             isLoading: job.isFetchingWhatsApp,
             onPressed: job.isBusy ? null : _sendWhatsApp,
-          ),
-          const SizedBox(height: 8),
-          EzyButton(
-            label: 'Ver respaldo HTML',
-            variant: EzyButtonVariant.text,
-            onPressed: templateId == null || job.isBusy
-                ? null
-                : () => _openHtml(templateId),
           ),
         ],
       ),
@@ -363,23 +358,17 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
         .read(printJobProvider.notifier)
         .printLabel(document: widget.document, templateId: templateId);
 
-    if (printed && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Etiqueta enviada a la impresora.')),
-      );
-    }
-  }
-
-  Future<void> _openHtml(int templateId) async {
-    final html = await ref
-        .read(printJobProvider.notifier)
-        .loadHtml(document: widget.document, templateId: templateId);
-
-    if (html == null || !mounted) {
+    if (!printed || !mounted) {
       return;
     }
 
-    await showTicketHtmlSheet(context, html: html);
+    final warning = ref.read(printJobProvider).warningMessage;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(warning ?? 'Etiqueta enviada a la impresora.'),
+      ),
+    );
   }
 
   /// Pide el ticket al servidor y abre la previsualización de WhatsApp.
@@ -398,7 +387,7 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
       setState(
         () => _whatsAppNotice =
             'El servidor no generó el ticket de WhatsApp para este documento. '
-            'Puedes imprimirlo o usar el respaldo HTML.',
+            'Puedes imprimirlo desde esta misma hoja.',
       );
 
       return;
@@ -413,7 +402,6 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
           : widget.document.subtitle,
     );
   }
-
 }
 
 /// Plantilla implícita: la elegida, la guardada o la predeterminada del negocio.
@@ -482,6 +470,18 @@ class _FeedbackSection extends ConsumerWidget {
           icon: Icons.check_circle_outline,
           actionLabel: 'Ocultar',
           onAction: jobController.consumeNotice,
+        ),
+      );
+    }
+
+    if (job.warningMessage != null) {
+      messages.add(const SizedBox(height: 12));
+      messages.add(
+        NoticeBanner(
+          message: job.warningMessage!,
+          tone: EzySeverity.warn,
+          actionLabel: 'Ocultar',
+          onAction: jobController.consumeWarning,
         ),
       );
     }

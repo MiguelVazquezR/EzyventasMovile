@@ -308,20 +308,25 @@ class _ServiceOrderPaymentSheetState
             const SizedBox(height: 12),
             SectionCard(
               title: 'Saldo a favor',
-              child: SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _useBalance,
-                onChanged: _setUseBalance,
-                title: Text(
-                  'Usar saldo a favor',
-                  style: EzyTextStyles.bodyStrong.copyWith(
-                    color: surfaces.textPrimary,
+              // `Material` transparente: sin él el *ripple* del interruptor se
+              // pinta debajo del fondo de la tarjeta.
+              child: Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _useBalance,
+                  onChanged: _setUseBalance,
+                  title: Text(
+                    'Usar saldo a favor',
+                    style: EzyTextStyles.bodyStrong.copyWith(
+                      color: surfaces.textPrimary,
+                    ),
                   ),
-                ),
-                subtitle: Text(
-                  'Disponible ${Money.format(_balanceAvailable)}',
-                  style: EzyTextStyles.caption.copyWith(
-                    color: surfaces.textSecondary,
+                  subtitle: Text(
+                    'Disponible ${Money.format(_balanceAvailable)}',
+                    style: EzyTextStyles.caption.copyWith(
+                      color: surfaces.textSecondary,
+                    ),
                   ),
                 ),
               ),

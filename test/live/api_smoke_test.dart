@@ -10,6 +10,7 @@ import 'package:ezyventas_app/core/auth/session_store.dart';
 import 'package:ezyventas_app/core/utils/money.dart';
 import 'package:ezyventas_app/core/utils/uuid_generator.dart';
 import 'package:ezyventas_app/features/account/data/account_repository.dart';
+import 'package:ezyventas_app/features/account/data/models/notification_counters.dart';
 import 'package:ezyventas_app/features/auth/data/auth_repository.dart';
 import 'package:ezyventas_app/features/auth/data/models/access_context.dart';
 import 'package:ezyventas_app/features/auth/data/models/auth_session.dart';
@@ -56,7 +57,8 @@ class _MemorySessionStore implements SessionPersistence {
   Future<AuthSession?> readSession() async => _session;
 
   @override
-  Future<void> saveSession(AuthSession session) async => _session = session;
+  Future<void> saveSession(AuthSession session, {bool? persist}) async =>
+      _session = session;
 }
 
 /// Prueba de humo **real** contra la API `/api/v1` (no corre en `flutter test`
@@ -420,14 +422,32 @@ void liveCashAndSaleTest() {
       );
 
       var openedHere = false;
+      var joinedHere = false;
       var activeSession = current.activeSession;
+
+      if (activeSession == null && current.canJoinShift) {
+        // Sin terminal libre pero con un turno abierto en la sucursal: es lo que
+        // ofrece la pestaña Caja («Unirme», contrato §6). Se entra a ese turno
+        // para poder cobrar; **no** se cierra al terminar porque no lo abrimos
+        // nosotros (el turno es de su dueño original).
+        activeSession = await cash.joinSession(
+          current.joinableSessions.first.id,
+        );
+        joinedHere = true;
+
+        debugPrint(
+          '[live] unido al turno id=${activeSession.id} '
+          'terminal=${activeSession.cashRegisterName} '
+          'abierto=${activeSession.openedAt}',
+        );
+      }
 
       if (activeSession == null) {
         expect(
           current.canStartShift,
           isTrue,
           reason:
-              'No hay terminal libre ni turno abierto: no se puede probar el cobro',
+              'No hay terminal libre ni turno al que unirse: no se puede probar el cobro',
         );
 
         activeSession = await cash.openSession(
@@ -538,7 +558,10 @@ void liveCashAndSaleTest() {
         expect(closed.session.hasDifference, isFalse);
       } else {
         debugPrint(
-          '[live] el turno ya estaba abierto: no se corta desde la prueba',
+          joinedHere
+              ? '[live] el turno era de otro usuario: la prueba se unió a él y '
+                    'no lo corta'
+              : '[live] el turno ya estaba abierto: no se corta desde la prueba',
         );
       }
 
@@ -599,10 +622,64 @@ void liveSalesTest() {
 
       // Filtros del contrato: estatus y rango de fechas.
       final completed = await sales.fetchTransactions(
-        filters: const TransactionFilters(status: 'completado'),
+        filters: const TransactionFilters(statuses: <String>['completado']),
         perPage: 3,
       );
       expect(completed.items.every((item) => item.status == 'completado'), isTrue);
+
+      // Varios estatus a la vez (D4, 2026-09-20): «Deudas por vencer» pide
+      // apartados + créditos en una sola llamada.
+      final debts = await sales.fetchTransactions(
+        filters: const TransactionFilters(
+          statuses: <String>['apartado', 'pendiente'],
+        ),
+        perPage: 10,
+      );
+
+      debugPrint(
+        '[live] deudas por vencer (apartado+pendiente) total=${debts.total} '
+        'estatus=${debts.items.map((item) => item.status).toSet().join(', ')}',
+      );
+
+      expect(
+        debts.items
+            .every(
+              (item) => item.status == 'apartado' || item.status == 'pendiente',
+            ),
+        isTrue,
+        reason: 'la API debe aplicar los dos estatus, no solo el último',
+      );
+
+      // Un estatus desconocido sigue respondiendo `422` con `errors.status.N`:
+      // el servidor lo manda en **notación con punto** (`errors["status.0"]`,
+      // comprobado con `curl` el 21 sep 2026), así que no hay una clave pelada
+      // `status` que leer.
+      final badStatus = await _capture(
+        () => sales.fetchTransactions(
+          filters: const TransactionFilters(statuses: <String>['inventado']),
+          perPage: 1,
+        ),
+      );
+
+      final statusErrors = badStatus.errors.entries
+          .where(
+            (entry) => entry.key == 'status' || entry.key.startsWith('status.'),
+          )
+          .expand((entry) => entry.value)
+          .toList(growable: false);
+
+      debugPrint(
+        '[live] estatus inválido: ${badStatus.statusCode} '
+        'claves=${badStatus.errors.keys.join(', ')} '
+        '${statusErrors.isEmpty ? badStatus.message : statusErrors.first}',
+      );
+
+      expect(badStatus.statusCode, 422);
+      expect(
+        statusErrors,
+        isNotEmpty,
+        reason: 'el 422 debe decir qué campo falló (`status.N`)',
+      );
 
       final today = DateTime.now();
       final range = await sales.fetchTransactions(
@@ -618,7 +695,7 @@ void liveSalesTest() {
 
       // Una venta anulada no admite abonos (`already_cancelled`).
       final cancelled = await sales.fetchTransactions(
-        filters: const TransactionFilters(status: 'cancelado'),
+        filters: const TransactionFilters(statuses: <String>['cancelado']),
         perPage: 3,
       );
       final cancelledSale = cancelled.items
@@ -794,6 +871,21 @@ void liveServiceOrdersTest() {
       debugPrint('[live] orden inexistente: ${missing.statusCode} ${missing.message}');
       expect(missing.statusCode, 404);
 
+      // 2b) Campos personalizados del módulo (D5, 2026-09-20): con esto la app
+      // puede dibujarlos al **crear** una orden, no solo al editarla.
+      final definitions = await orders.fetchCustomFieldDefinitions();
+
+      debugPrint(
+        '[live] campos personalizados del módulo=${definitions.length} '
+        '${definitions.map((field) => '${field.key}:${field.type}${field.isRequired ? ' (obligatorio)' : ''}').join(', ')}',
+      );
+
+      for (final field in definitions) {
+        expect(field.key, isNotEmpty);
+        expect(field.name, isNotEmpty);
+        expect(field.type, isNotEmpty);
+      }
+
       if (!liveServiceOrders) {
         debugPrint('[live] sin LIVE_SERVICE_ORDERS: solo lectura');
         await auth.logout();
@@ -918,11 +1010,20 @@ Future<void> _liveServiceOrderRoundTrip({
       ),
   ];
 
+  /// Refacción con la que se prueba que borrar la orden **devuelve el stock**
+  /// (corrección A6 del backend, 2026-09-20). Queda como `id`/stock previos para
+  /// volver a leer el producto después del borrado.
+  var stockedProductId = 0;
+  var stockedProductStock = 0.0;
+
   if (liveServiceOrdersStock) {
     final products = await catalog.fetchProducts(perPage: 20);
     final product = products.items.where((item) => item.stock > 0).firstOrNull;
 
     if (product != null) {
+      stockedProductId = product.id;
+      stockedProductStock = product.stock;
+
       items.add(
         ServiceOrderItemDraft(
           description: 'Refacción de prueba: ${product.name}',
@@ -1157,6 +1258,27 @@ Future<void> _liveServiceOrderRoundTrip({
   debugPrint('[live] orden eliminada: ${gone.statusCode} ${gone.message}');
   expect(gone.statusCode, 404);
 
+  // Corrección A6 del backend (2026-09-20): borrar la orden **devuelve** el
+  // stock de la refacción (antes se quedaba consumido). Solo se puede
+  // comprobar con `LIVE_SERVICE_ORDERS_STOCK=true` y una venta vinculada.
+  if (stockedProductId > 0) {
+    final after = await catalog.fetchProduct(stockedProductId);
+
+    debugPrint(
+      '[live] stock de la refacción tras borrar la orden: '
+      '${Money.formatQuantity(after.stock)} '
+      '(antes ${Money.formatQuantity(stockedProductStock)})',
+    );
+
+    expect(
+      after.stock,
+      closeTo(stockedProductStock, 0.001),
+      reason:
+          'borrar la orden debe devolver el stock consumido (corrección A6 '
+          'del backend)',
+    );
+  }
+
   // El corte de la sesión de prueba lo hace el `addTearDown` registrado arriba
   // (se ejecuta aunque el escenario falle); aquí solo se cierra la sesión.
   if (!openedHere) {
@@ -1337,6 +1459,17 @@ Future<void> _liveLayawayRoundTrip({
   var activeSession = current.activeSession;
   var openedHere = false;
 
+  if (activeSession == null && current.canJoinShift) {
+    // Igual que la pestaña Caja: sin terminal libre se entra al turno abierto
+    // («Unirme») en vez de abandonar el escenario.
+    activeSession = await cash.joinSession(current.joinableSessions.first.id);
+
+    debugPrint(
+      '[live] apartado: unido al turno id=${activeSession.id} '
+      'terminal=${activeSession.cashRegisterName}',
+    );
+  }
+
   if (activeSession == null) {
     if (!current.canStartShift) {
       debugPrint('[live] sin terminal libre: no se crea el apartado');
@@ -1374,10 +1507,57 @@ Future<void> _liveLayawayRoundTrip({
   expect(layaway.transaction.status, 'apartado');
   expect(layaway.transaction.remainingDue, greaterThan(0));
 
-  // El servidor puede haber aplicado el saldo a favor del cliente aunque no se
-  // envió `use_balance` (hallazgo 10): si lo hizo, no se valida el desfase final
-  // de la deuda porque la aritmética incluye ese saldo.
+  // El apartado recién creado sale en la consulta que usa «Deudas por vencer»
+  // (D4, 2026-09-20): dos estatus en una sola llamada, sin abrir el historial
+  // sin filtro. Es la prueba real de que el servidor aplica **los dos**.
+  final debts = await sales.fetchTransactions(
+    filters: const TransactionFilters(
+      statuses: <String>['apartado', 'pendiente'],
+    ),
+    perPage: 100,
+  );
+
+  final debtsIncludeLayaway = debts.items.any(
+    (item) => item.id == layaway.transaction.id,
+  );
+
+  debugPrint(
+    '[live] deudas por vencer tras crear el apartado: total=${debts.total} '
+    'estatus=${debts.items.map((item) => item.status).toSet().join(', ')} '
+    'incluyeElApartado=$debtsIncludeLayaway',
+  );
+
+  expect(
+    debts.items.every(
+      (item) => item.status == 'apartado' || item.status == 'pendiente',
+    ),
+    isTrue,
+    reason: 'la API debe aplicar los dos estatus, no solo el último',
+  );
+  expect(
+    debtsIncludeLayaway,
+    isTrue,
+    reason: 'el apartado recién creado debe salir en «deudas por vencer»',
+  );
+
+  // Corrección A3 del backend (2026-09-20, contrato §14): el saldo a favor del
+  // cliente solo se aplica cuando el request lo pide (`use_balance: true`) y la
+  // app lo manda en `false`, así que crear el apartado no debe tocarlo (antes el
+  // servidor lo aplicaba solo, hallazgo 10).
   final usedBalanceOnLayaway = layaway.transaction.totalPaid > 0.01;
+
+  debugPrint(
+    '[live] apartado con pagos iniciales=${layaway.transaction.totalPaid} '
+    '(el payload no manda ninguno, así que debe ser 0.00)',
+  );
+
+  expect(
+    usedBalanceOnLayaway,
+    isFalse,
+    reason:
+        'el saldo a favor no debe aplicarse sin `use_balance: true` '
+        '(corrección A3 del backend)',
+  );
 
   if (usedBalanceOnLayaway) {
     debugPrint(
@@ -1486,37 +1666,33 @@ Future<void> _liveLayawayRoundTrip({
 
   expect(productAfter.stock, greaterThanOrEqualTo(product.stock));
 
-  // HALLAZGO DE BACKEND (no se corrige desde la app): el `DELETE` de un pago no
-  // revierte el `payDebt` que el abono escribió en `customers.balance`
-  // (`TransactionPaymentEditService::delete` solo revierte el banco, el saldo
-  // usado como pago y el movimiento de caja; tampoco lo hace el PUT). Al
-  // cancelar con reembolso en efectivo, `reverseCustomerDebt` perdona
-  // `total - total_paid` (sin el pago borrado), así que el cliente conserva el
-  // importe del pago eliminado como saldo a favor.
+  // Correcciones A1/A3 del backend (2026-09-20, contrato §14): editar o borrar
+  // un pago vuelve a conciliar `customers.balance` (el `DELETE` revierte el
+  // `payDebt` con su `addDebt` simétrico) y el saldo a favor solo se aplica con
+  // `use_balance: true` (la app lo manda en `false`). La cadena completa queda,
+  // por tanto, **simétrica**: el cliente termina con el saldo que tenía antes.
   //
-  // La prueba **caracteriza** ese comportamiento (en vez de exigir deuda
-  // intacta) para que el fallo quede documentado y visible, y no como una
-  // assertion roja permanente.
-  final deletedAmount = firstAbono;
-
+  // Antes de la corrección esto dejaba el importe del pago borrado a favor del
+  // cliente (`+$1.00` por corrida) y la prueba lo caracterizaba; ahora se exige
+  // el comportamiento corregido.
   if (usedBalanceOnLayaway) {
     debugPrint(
-      '[live] desfase de saldo no evaluado: el apartado usó saldo a favor del '
-      'cliente (saldo final ${Money.format(customerAfter.customer.balance)})',
+      '[live] el apartado consumió saldo a favor del cliente: '
+      'saldo final ${Money.format(customerAfter.customer.balance)}',
     );
   } else {
     debugPrint(
-      '[live] desfase conocido de backend al borrar el pago: '
-      'saldo a favor de ${Money.format(deletedAmount)} '
-      '(cada corrida deja ese saldo en el cliente de prueba)',
+      '[live] saldo del cliente tras la cadena completa: '
+      '${Money.format(customerAfter.customer.balance)} '
+      '(antes de la cadena ${Money.format(customerBefore.customer.balance)})',
     );
 
     expect(
       customerAfter.customer.balance,
-      closeTo(customerBefore.customer.balance + deletedAmount, 0.01),
+      closeTo(customerBefore.customer.balance, 0.01),
       reason:
-          'el cliente conserva el importe del pago borrado como saldo a favor '
-          '(bug de conciliación del backend, ver README)',
+          'la cadena abono → edición → borrado → cancelación debe dejar el '
+          'saldo del cliente como estaba (correcciones A1/A3 del backend)',
     );
   }
 
@@ -1655,11 +1831,37 @@ Future<void> _liveAbonoRoundTrip({
   if (openedHere) {
     final summary = await cash.fetchSummary(activeSession.id);
 
-    await cash.closeSession(
+    final closed = await cash.closeSession(
       sessionId: activeSession.id,
       closingCashBalance: summary.expectedTotal,
       notes: 'Corte de la prueba de humo de la etapa 4',
     );
+
+    // El corte ya lo imprime el servidor (§6.3, B5): el comprobante sirve para
+    // imprimir o **reimprimir** el turno y la app solo manda sus operaciones.
+    final receipt = await cash.fetchCutReceipt(closed.session.id);
+
+    debugPrint(
+      '[live] corte del turno #${receipt.session.id} '
+      'cerrado=${receipt.session.isClosed} '
+      'plantilla=${receipt.template.label} incorporada=${receipt.template.builtin} '
+      'operaciones=${receipt.operations.length} papel=${receipt.paperWidth} '
+      'bytes=${receipt.bytes.length} noResueltas=${receipt.unsupportedOperations} '
+      'avisos=${receipt.warnings}',
+    );
+    debugPrint('[live] corte (texto del servidor):\n${receipt.text}');
+
+    expect(receipt.session.id, closed.session.id);
+    expect(receipt.session.isClosed, isTrue);
+    expect(receipt.operations, isNotEmpty);
+    expect(receipt.bytes, isNotEmpty);
+    expect(receipt.paperWidth, isNotEmpty);
+    expect(receipt.text, isNotEmpty);
+    // La plantilla incorporada no tiene id: no hay `template_id` que mandar.
+    if (receipt.template.builtin) {
+      expect(receipt.template.id, isNull);
+      expect(receipt.text, contains('CORTE DE CAJA'));
+    }
   }
 
   await auth.logout();
@@ -1846,8 +2048,8 @@ void livePrintingTest() {
 
         expect(orderPayload.isEmpty, isFalse);
 
-        // …pero el ticket de WhatsApp solo se arma para ventas o pedidos
-        // (`WhatsAppTicketService`): el servidor responde `200` con `ticket: null`.
+        // El ticket de WhatsApp de una orden de servicio ya se arma en el
+        // servidor (antes respondía `200` con `ticket: null`).
         final orderTicket = await printing.whatsappTicket(
           source: PrintDataSourceType.serviceOrder,
           sourceId: serviceOrderId,
@@ -1855,12 +2057,68 @@ void livePrintingTest() {
 
         debugPrint(
           '[live] WhatsApp orden=$serviceOrderId '
-          'ticket=${orderTicket.isEmpty ? 'null (sin venta vinculada)' : orderTicket.ticket!['kind']}',
+          'ticket=${orderTicket.isEmpty ? 'null' : orderTicket.ticket!['kind']} '
+          'telefono=${orderTicket.customerPhone ?? "sin telefono"}',
         );
 
-        expect(orderTicket.isEmpty, isTrue);
+        expect(orderTicket.isEmpty, isFalse);
+        expect(orderTicket.ticket!['kind'], 'service_order');
+        expect(WhatsAppMessageBuilder.build(orderTicket.ticket!), isNotEmpty);
       } else {
         debugPrint('[live] sin órdenes de servicio para probar la impresión');
+      }
+
+      // 3b) Un origen sin ticket de WhatsApp responde `422 no_whatsapp_ticket`
+      // (antes respondía `200` con `ticket: null` y la app creía que había
+      // enviado algo).
+      final customerPage = await CustomersRepository(
+        api: api,
+      ).fetchCustomers(perPage: 1);
+
+      if (customerPage.isEmpty) {
+        debugPrint('[live] sin clientes: no se probó el 422 de WhatsApp');
+      } else {
+        final noTicket = await _capture(
+          () => printing.whatsappTicket(
+            source: PrintDataSourceType.customer,
+            sourceId: customerPage.items.first.id,
+          ),
+        );
+
+        debugPrint(
+          '[live] WhatsApp de un cliente: ${noTicket.statusCode} '
+          '${noTicket.code} ${noTicket.message}',
+        );
+
+        expect(noTicket.statusCode, 422);
+        expect(noTicket.code, 'no_whatsapp_ticket');
+      }
+
+      // 3c) El corte de caja: si hay un turno abierto, el comprobante se puede
+      // pedir e imprimir con las mismas operaciones que devuelve el servidor.
+      final cash = CashRegisterRepository(api: api);
+      final snapshot = await cash.fetchCurrent();
+      final sessionId = snapshot.activeSession?.id;
+
+      if (sessionId == null) {
+        debugPrint(
+          '[live] sin turno abierto: el corte se valida en la prueba de caja '
+          '(LIVE_POS=true) y en la de dispositivo',
+        );
+      } else {
+        final receipt = await cash.fetchCutReceipt(sessionId);
+
+        debugPrint(
+          '[live] corte del turno abierto #$sessionId '
+          'plantilla=${receipt.template.label} '
+          'operaciones=${receipt.operations.length} bytes=${receipt.bytes.length} '
+          'papel=${receipt.paperWidth} avisos=${receipt.warnings}',
+        );
+
+        expect(receipt.session.id, sessionId);
+        expect(receipt.session.isClosed, isFalse);
+        expect(receipt.bytes, isNotEmpty);
+        expect(receipt.text, isNotEmpty);
       }
 
       // 4) Etiqueta (TSPL) de un producto real.
@@ -1884,12 +2142,21 @@ void livePrintingTest() {
           debugPrint(
             '[live] TSPL plantilla=${labelTemplate.id} producto=$productId '
             'operaciones=${label.operations.length} '
-            'noSoportadas=${label.hasUnsupportedOperations}',
+            'noResueltas=${label.unsupportedOperations} '
+            'avisos=${label.warnings}',
           );
           debugPrint('[live] TSPL:\n${label.tsplText}');
 
           expect(label.tsplText, isNotNull);
           expect(label.tsplText, contains('PRINT'));
+          // El servidor rasteriza las imágenes (BITMAP) y rellena el código de
+          // barras: nunca sale un `BARCODE …,2,2,""` vacío (B6).
+          expect(
+            label.tsplText!.contains('BARCODE'),
+            isTrue,
+            reason: 'la plantilla de prueba imprime un código de barras',
+          );
+          expect(label.tsplText, isNot(contains(',""')));
         }
       } else {
         debugPrint(
@@ -1930,7 +2197,8 @@ void livePrintingTest() {
         'deudas=${counters.expiringDebts} '
         'entregas=${counters.upcomingDeliveries} '
         'novedades=${counters.unreadUpdates} '
-        'pedidos=${counters.pendingOrders}',
+        'pedidos=${counters.pendingOrders} '
+        'tiendaEnLinea=${counters.modules.onlineStore}',
       );
 
       expect(counters.total, greaterThanOrEqualTo(0));
@@ -1942,6 +2210,21 @@ void livePrintingTest() {
             counters.pendingOrders,
         reason: 'el total lo suma el servidor con los cuatro contadores',
       );
+
+      // La app oculta el contador de pedidos de la tienda en línea cuando el
+      // módulo no está contratado (D3): el servidor dice qué módulos tiene.
+      expect(
+        counters.isCategoryVisible(NotificationCategory.pendingOrders),
+        counters.modules.onlineStore,
+      );
+
+      if (!counters.modules.onlineStore) {
+        expect(
+          counters.pendingOrders,
+          0,
+          reason: 'sin tienda en línea contratada el contador siempre es 0',
+        );
+      }
 
       // 2) Centro de soporte (`GET /support`).
       final support = await account.fetchSupport();
@@ -2030,13 +2313,17 @@ void livePrintingTest() {
         );
 
         expect(first.total, isNotNull);
-        expect(
-          first.payment?.id,
-          isNull,
-          reason:
-              'hueco del contrato §11b.5: el historial no trae el id del pago, '
-              'así que la app no puede llamar request-invoice (ver README)',
-        );
+        // D1 (2026-09-20): el historial trae el id del pago, que es el que exige
+        // `POST /subscription/payments/{paymentId}/request-invoice`.
+        if (first.canRequestInvoice) {
+          expect(
+            first.payment?.id,
+            isNotNull,
+            reason: 'un pago facturable debe traer su id',
+          );
+          expect(first.payment!.isInvoiceRequestable, isTrue);
+          expect(first.payment!.id, greaterThan(0));
+        }
       }
 
       expect(overview.subscription.commercialName, isNotEmpty);

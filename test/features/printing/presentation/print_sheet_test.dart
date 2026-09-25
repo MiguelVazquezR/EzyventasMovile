@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:ezyventas_app/core/api/api_client.dart';
+import 'package:ezyventas_app/core/api/api_exception.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
 import 'package:ezyventas_app/features/printing/application/printing_providers.dart';
 import 'package:ezyventas_app/features/printing/data/models/print_document.dart';
@@ -24,6 +25,10 @@ class _FakePrintingRepository extends PrintingRepository {
 
   /// El servidor no arma el ticket de WhatsApp (p. ej. una orden sin venta).
   bool whatsAppTicketIsEmpty = true;
+
+  /// `message` del servidor cuando el origen no tiene ticket de WhatsApp
+  /// (`422 no_whatsapp_ticket`, el caso real de un producto o un cliente).
+  String? whatsAppTicketError;
 
   @override
   Future<List<PrintTemplate>> fetchTemplates({
@@ -71,27 +76,39 @@ class _FakePrintingRepository extends PrintingRepository {
   Future<WhatsAppTicketResult> whatsappTicket({
     required PrintDataSourceType source,
     required int sourceId,
-  }) async => whatsAppTicketIsEmpty
-      ? const WhatsAppTicketResult(
-          ticket: null,
-          customerPhone: null,
-          customerId: null,
-        )
-      : const WhatsAppTicketResult(
-          ticket: <String, dynamic>{
-            'kind': 'sale',
-            'title': 'TICKET DE VENTA',
-            'businessName': 'Refaccionaria López',
-            'date': '18/09/2026 - 14:35',
-            'folio': 'V-014',
-            'customer': 'Ana Ramírez',
-            'items': <Map<String, dynamic>>[],
-            'total': '\$270.00 MXN',
-            'finalMessage': '¡Gracias por tu compra!',
-          },
-          customerPhone: '4771112233',
-          customerId: 8,
-        );
+  }) async {
+    final error = whatsAppTicketError;
+
+    if (error != null) {
+      throw ApiException(
+        message: error,
+        statusCode: 422,
+        code: 'no_whatsapp_ticket',
+      );
+    }
+
+    return whatsAppTicketIsEmpty
+        ? const WhatsAppTicketResult(
+            ticket: null,
+            customerPhone: null,
+            customerId: null,
+          )
+        : const WhatsAppTicketResult(
+            ticket: <String, dynamic>{
+              'kind': 'sale',
+              'title': 'TICKET DE VENTA',
+              'businessName': 'Refaccionaria López',
+              'date': '18/09/2026 - 14:35',
+              'folio': 'V-014',
+              'customer': 'Ana Ramírez',
+              'items': <Map<String, dynamic>>[],
+              'total': '\$270.00 MXN',
+              'finalMessage': '¡Gracias por tu compra!',
+            },
+            customerPhone: '4771112233',
+            customerId: 8,
+          );
+  }
 }
 
 PrintTemplate _template({
@@ -232,6 +249,28 @@ void main() {
 
     expect(
       find.textContaining('El servidor no generó el ticket de WhatsApp'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('WhatsApp muestra el error del servidor cuando no hay ticket', (
+    tester,
+  ) async {
+    await _pumpPrintSheet(
+      tester,
+      _FakePrintingRepository(
+        templates: <PrintTemplate>[
+          _template(id: 3, name: 'Ticket de venta', isDefault: true),
+        ],
+      )..whatsAppTicketError = 'Este documento no tiene ticket de WhatsApp.',
+    );
+
+    await tester.tap(find.text('Enviar por WhatsApp'));
+    await tester.pumpAndSettle();
+
+    // El `message` del `422` se muestra tal cual (no se inventa texto).
+    expect(
+      find.textContaining('Este documento no tiene ticket de WhatsApp.'),
       findsOneWidget,
     );
   });

@@ -1,3 +1,4 @@
+import 'package:ezyventas_app/features/printing/data/models/cash_cut_receipt.dart';
 import 'package:ezyventas_app/features/printing/data/whatsapp_message_builder.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -258,22 +259,40 @@ void main() {
   });
 
   group('WhatsAppMessageBuilder · corte de caja', () {
-    test('arma el corte con los montos que calculó el servidor', () {
-      final message = WhatsAppMessageBuilder.cashCut(cashCutDocument());
+    test('comparte el texto del comprobante del servidor', () {
+      final message = WhatsAppMessageBuilder.cashCutReceipt(cashCutReceipt());
 
       expect(message, startsWith('» *CORTE DE CAJA* «'));
-      expect(message, contains('• *Refaccionaria López*'));
-      expect(message, contains('• Sucursal: *León Centro*'));
-      expect(message, contains('• Terminal: *Caja 1*'));
-      expect(message, contains('• Fondo inicial: *\$1,500.00*'));
-      expect(message, contains('• Ventas en efectivo: *\$3,500.00*'));
-      expect(message, contains('• Total esperado: *\$5,050.00*'));
-      expect(message, contains('• Efectivo contado: *\$5,040.00*'));
-      expect(message, contains('• Diferencia: *-\$10.00*'));
-      expect(message, contains('» *Cobros por método* «'));
-      expect(message, contains('Efectivo'));
-      expect(message, contains('Tarjeta'));
-      expect(message, endsWith('» Revisa el descuadre del turno. «'));
+      expect(message, contains('• Caja: *Caja 1*'));
+      expect(message, contains('• Plantilla: *Corte de caja (incorporada)*'));
+      // El detalle es el del servidor, no una copia local de las fórmulas.
+      expect(message, contains('Esperado en caja: 5,050.00'));
+      expect(message, contains('Diferencia: -10.00'));
+      expect(message, isNot(contains('\x1B')));
+      expect(
+        message,
+        endsWith('» Revisa el descuadre del turno: -\$10.00 «'),
+      );
+    });
+
+    test('un turno sin diferencia lo dice con las cifras del servidor', () {
+      final json = cashCutReceiptFixture();
+
+      (json['summary']! as Map<String, dynamic>)['cash'] = <String, dynamic>{
+        'opening': 1500.0,
+        'cash_sales': 3500.0,
+        'inflows': 200.0,
+        'outflows': 150.0,
+        'expected_total': 5050.0,
+        'counted_total': 5050.0,
+        'difference': 0.0,
+      };
+
+      final message = WhatsAppMessageBuilder.cashCutReceipt(
+        CashCutReceipt.fromJson(json),
+      );
+
+      expect(message, endsWith('» Turno sin diferencia. «'));
     });
   });
 

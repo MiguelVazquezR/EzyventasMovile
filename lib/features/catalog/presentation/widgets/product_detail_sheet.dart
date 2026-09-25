@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
+import '../../../../core/utils/html_text.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/notice_banner.dart';
@@ -11,8 +12,6 @@ import '../../../../core/widgets/section_card.dart';
 import '../../../../core/widgets/server_image.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../pos/application/cart_controller.dart';
-import '../../../printing/data/models/print_document.dart';
-import '../../../printing/presentation/widgets/print_actions_panel.dart';
 import '../../application/catalog_providers.dart';
 import '../../data/models/product.dart';
 
@@ -50,6 +49,10 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
     final selected = _selectedCombination(product);
     final price = selected?.price ?? product.price;
     final stock = selected?.stock ?? product.stock;
+
+    // La descripción llega como texto enriquecido (`<p>…</p>`): se muestra el
+    // texto, sin etiquetas.
+    final description = HtmlText.toPlain(product.description);
 
     return DraggableScrollableSheet(
       expand: false,
@@ -100,13 +103,12 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
               ),
             ),
           ],
-          if (product.description != null &&
-              product.description!.isNotEmpty) ...<Widget>[
+          if (description.isNotEmpty) ...<Widget>[
             const SizedBox(height: 12),
             SectionCard(
               title: 'Descripción',
               child: Text(
-                product.description!,
+                description,
                 style: EzyTextStyles.body.copyWith(color: surfaces.textBody),
               ),
             ),
@@ -138,8 +140,6 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
               variant: selected,
               onAdded: () => Navigator.of(context).maybePop(),
             ),
-          const SizedBox(height: 12),
-          _ProductLabelSection(product: product),
         ],
       ),
     );
@@ -157,33 +157,6 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
     }
 
     return product.variantCombinations.first;
-  }
-}
-
-/// Impresión de la etiqueta del producto (TSPL).
-///
-/// Se usa `POST /print/payload`: el servidor devuelve la operación con el
-/// comando TSPL completo y la app la envía a la impresora de etiquetas.
-class _ProductLabelSection extends StatelessWidget {
-  const _ProductLabelSection({required this.product});
-
-  final Product product;
-
-  @override
-  Widget build(BuildContext context) {
-    return SectionCard(
-      title: 'Etiqueta',
-      child: PrintActionsPanel(
-        document: PrintDocument.productLabel(
-          productId: product.id,
-          name: product.name,
-        ),
-        buttonLabel: 'Imprimir etiqueta',
-        showPrinterStatus: false,
-        // El servidor no arma tickets de WhatsApp para un producto.
-        showWhatsApp: false,
-      ),
-    );
   }
 }
 

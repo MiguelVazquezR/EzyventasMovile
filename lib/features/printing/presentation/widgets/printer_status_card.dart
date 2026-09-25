@@ -91,7 +91,8 @@ class PrinterStatusCard extends ConsumerWidget {
           EzyButton(
             label: 'Cambiar impresora',
             icon: Icons.bluetooth_searching_outlined,
-            variant: EzyButtonVariant.outline,
+            // Azul Bluetooth: todo lo que es hablar con la impresora.
+            variant: EzyButtonVariant.info,
             isLoading: state.isBusy,
             onPressed: () => showPrinterPickerSheet(context),
           ),
@@ -106,6 +107,7 @@ class PrinterStatusCard extends ConsumerWidget {
             EzyButton(
               label: 'Conectar impresora',
               icon: Icons.bluetooth_connected_outlined,
+              variant: EzyButtonVariant.info,
               isLoading: state.isBusy,
               onPressed: state.isAdapterOn
                   ? () => controller.connectSaved()
@@ -116,9 +118,7 @@ class PrinterStatusCard extends ConsumerWidget {
           EzyButton(
             label: 'Buscar impresoras',
             icon: Icons.bluetooth_searching_outlined,
-            variant: state.hasSavedPrinter
-                ? EzyButtonVariant.outline
-                : EzyButtonVariant.primary,
+            variant: EzyButtonVariant.info,
             onPressed: state.isAdapterOn
                 ? () => showPrinterPickerSheet(context)
                 : null,

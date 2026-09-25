@@ -13,7 +13,12 @@ abstract class SessionPersistence {
 
   Future<AuthSession?> readSession();
 
-  Future<void> saveSession(AuthSession session);
+  /// Guarda [session] en el almacenamiento seguro.
+  ///
+  /// Con `persist: false` la sesión vive **solo en memoria** (el usuario no marcó
+  /// "mantener la sesión abierta"): al cerrar la app hay que volver a iniciar
+  /// sesión. `persist: null` conserva el modo de la sesión en curso.
+  Future<void> saveSession(AuthSession session, {bool? persist});
 
   Future<void> clearSession();
 }
@@ -33,6 +38,9 @@ class SessionStore implements SessionPersistence {
 
   AuthSession? _cached;
   bool _isLoaded = false;
+
+  /// `true` mientras la sesión en curso deba quedar guardada en el dispositivo.
+  bool _persist = true;
 
   /// Token en memoria (se lee del almacenamiento seguro solo la primera vez).
   @override
@@ -69,9 +77,21 @@ class SessionStore implements SessionPersistence {
   }
 
   @override
-  Future<void> saveSession(AuthSession session) async {
+  Future<void> saveSession(AuthSession session, {bool? persist}) async {
+    if (persist != null) {
+      _persist = persist;
+    }
+
     _cached = session;
     _isLoaded = true;
+
+    if (!_persist) {
+      // Sin "mantener la sesión abierta": se borra lo que hubiera guardado para
+      // que el arranque siguiente no restaure nada.
+      await _storage.delete(key: sessionKey);
+      return;
+    }
+
     await _storage.write(
       key: sessionKey,
       value: jsonEncode(session.toJson()),
@@ -82,8 +102,10 @@ class SessionStore implements SessionPersistence {
   Future<void> clearSession() async {
     _cached = null;
     _isLoaded = true;
+    _persist = true;
     await _storage.delete(key: sessionKey);
   }
+
 
   /// Preferencia local del tema (`dark` por defecto).
   Future<String?> readThemeMode() => _storage.read(key: themeModeKey);

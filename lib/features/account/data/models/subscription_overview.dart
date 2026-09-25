@@ -260,9 +260,9 @@ class SubscriptionHistoryPayment {
 
   factory SubscriptionHistoryPayment.fromJson(Map<String, dynamic> json) =>
       SubscriptionHistoryPayment(
-        // El historial real **no** incluye el id del pago (ver README,
-        // discrepancias): se lee de forma tolerante para cuando el servidor lo
-        // agregue, y la acción "Solicitar factura" solo aparece si llega.
+        // El id llega desde la corrección D1 (2026-09-20): es el que exige
+        // `POST /subscription/payments/{paymentId}/request-invoice`. Se lee de
+        // forma tolerante por si un servidor viejo no lo manda.
         id: JsonReader.integer(json['id']),
         folio: JsonReader.string(json['folio']),
         status: SubscriptionPaymentStatus.fromWire(
@@ -272,7 +272,7 @@ class SubscriptionHistoryPayment {
         canRequestInvoice: JsonReader.boolean(json['can_request_invoice']),
       );
 
-  /// Id del pago (`null` mientras el servidor no lo incluya en el historial).
+  /// Id del pago de la suscripción (`null` solo si el servidor no lo manda).
   final int? id;
 
   final String? folio;
@@ -319,8 +319,8 @@ class SubscriptionHistoryEntry {
 
   final SubscriptionHistoryPayment? payment;
 
-  /// El historial no incluye el id del pago de la suscripción: la acción
-  /// "Solicitar factura" solo se ofrece cuando el servidor la habilita.
+  /// El historial trae el id del pago (D1): la acción "Solicitar factura" se
+  /// ofrece cuando el pago está aprobado y sin factura pedida.
   bool get canRequestInvoice => payment?.canRequestInvoice ?? false;
 
   String get amountLabel => Money.format(total);

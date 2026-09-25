@@ -316,7 +316,7 @@ void main() {
     test('arma los parámetros exactos del contrato', () {
       final filters = TransactionFilters(
         search: 'V-014',
-        status: 'apartado',
+        statuses: const <String>['apartado'],
         dateStart: DateTime(2026, 9, 1),
         dateEnd: DateTime(2026, 9, 18),
         sort: TransactionSort.total,
@@ -325,7 +325,7 @@ void main() {
       final query = filters.toQuery();
 
       expect(query['search'], 'V-014');
-      expect(query['status'], 'apartado');
+      expect(query['status[]'], <String>['apartado']);
       expect(query['date_start'], '2026-09-01');
       expect(query['date_end'], '2026-09-18');
       expect(query['sortField'], 'total');
@@ -333,12 +333,23 @@ void main() {
       expect(filters.hasFilters, isTrue);
     });
 
+    test('acepta varios estatus a la vez (deudas por vencer)', () {
+      const filters = TransactionFilters(
+        statuses: <String>['apartado', 'pendiente'],
+      );
+
+      // La clave va con corchetes porque `status=a&status=b` lo lee PHP como un
+      // solo valor (se queda con el último), mientras que `status[]=` llega
+      // como arreglo (contrato §8).
+      expect(filters.toQuery()['status[]'], <String>['apartado', 'pendiente']);
+    });
+
     test('omite los filtros vacíos y respeta el orden por defecto', () {
       const filters = TransactionFilters();
       final query = filters.toQuery();
 
       expect(query['search'], isNull);
-      expect(query['status'], isNull);
+      expect(query['status[]'], isNull);
       expect(query['date_start'], isNull);
       expect(query['date_end'], isNull);
       expect(query['sortField'], 'created_at');
@@ -349,13 +360,13 @@ void main() {
     test('limpia estatus y fechas conservando el orden', () {
       final filters = TransactionFilters(
         search: 'ana',
-        status: 'pendiente',
+        statuses: const <String>['pendiente'],
         dateStart: DateTime(2026, 9, 1),
         sort: TransactionSort.folio,
       ).copyWith(clearStatus: true, clearDateStart: true);
 
       expect(filters.search, 'ana');
-      expect(filters.status, isNull);
+      expect(filters.statuses, isEmpty);
       expect(filters.dateStart, isNull);
       expect(filters.sort, TransactionSort.folio);
     });

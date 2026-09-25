@@ -5,17 +5,48 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/permissions_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../account/application/account_providers.dart';
 import '../../auth/application/auth_controller.dart';
 
 /// Cascarón de navegación: barra inferior persistente cuyas pestañas dependen de
 /// los módulos contratados y de los permisos reales del servidor (§4.1).
-class AppShell extends ConsumerWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends ConsumerState<AppShell>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Al volver la app a primer plano se vuelven a pedir los contadores de la
+  /// campana: el apartado que vence o el pedido que entra mientras el teléfono
+  /// está guardado no se verían hasta reiniciar la app.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+
+    ref.read(notificationsControllerProvider.notifier).refresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final surfaces = context.surfaces;
     final tabs = ref.watch(visibleTabsProvider);
     final location = GoRouterState.of(context).uri.path;
@@ -41,11 +72,13 @@ class AppShell extends ConsumerWidget {
 
     // Con una sola pestaña disponible la barra inferior no aporta nada.
     if (tabs.length == 1) {
-      return Scaffold(body: SafeArea(bottom: false, child: navigationShell));
+      return Scaffold(
+        body: SafeArea(bottom: false, child: widget.navigationShell),
+      );
     }
 
     return Scaffold(
-      body: SafeArea(bottom: false, child: navigationShell),
+      body: SafeArea(bottom: false, child: widget.navigationShell),
       bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(
           color: surfaces.panel,
@@ -55,7 +88,7 @@ class AppShell extends ConsumerWidget {
           selectedIndex: selectedIndex,
           onDestinationSelected: (index) {
             final tab = tabs[index];
-            navigationShell.goBranch(AppTab.values.indexOf(tab));
+            widget.navigationShell.goBranch(AppTab.values.indexOf(tab));
           },
           destinations: <Widget>[
             for (final tab in tabs)
