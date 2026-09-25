@@ -3,14 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_action_bar.dart';
 import '../../../../core/widgets/ezy_amount.dart';
 import '../../../../core/widgets/ezy_button.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../application/cart_controller.dart';
-import '../../application/cart_state.dart';
 import 'cart_sheet.dart';
+import 'cart_summary.dart';
 
 /// Barra inferior del POS con el resumen del carrito y el acceso al cobro (§8).
 ///
@@ -48,7 +47,7 @@ class CartBar extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   Text(
-                    hasSession ? _summary(cart) : 'Sin turno abierto',
+                    hasSession ? cartSummaryLabel(cart) : 'Sin turno abierto',
                     style: EzyTextStyles.caption.copyWith(
                       color: hasSession
                           ? surfaces.textMuted
@@ -73,16 +72,6 @@ class CartBar extends ConsumerWidget {
     );
   }
 
-  /// `3 productos · 5 artículos`: cuántas líneas y cuántas piezas lleva el
-  /// carrito (el conteo de piezas admite granel, así que se muestran los dos).
-  static String _summary(CartState cart) {
-    final lines = cart.lines.length;
-    final products = '$lines producto${lines == 1 ? '' : 's'}';
-    final items = Money.formatQuantity(cart.itemCount);
-    final unit = cart.itemCount == 1 ? 'artículo' : 'artículos';
-
-    return '$products · $items $unit';
-  }
 }
 
 /// Carrito en miniatura de la barra: se enciende cuando hay algo que cobrar.

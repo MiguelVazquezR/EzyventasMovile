@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/field_label.dart';
@@ -65,7 +64,6 @@ class _StoreOrderSheetState extends ConsumerState<_StoreOrderSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
     final cart = ref.watch(cartControllerProvider);
 
     return DraggableScrollableSheet(
@@ -77,18 +75,10 @@ class _StoreOrderSheetState extends ConsumerState<_StoreOrderSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            _type == StoreOrderDraft.comanda ? 'Comanda' : 'Pedido',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'El stock queda reservado; se cobra al entregar.',
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
+          EzySheetHeader(
+            title: _type == StoreOrderDraft.comanda ? 'Comanda' : 'Pedido',
+            subtitle: 'El stock queda reservado; se cobra al entregar.',
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
           SectionCard(
@@ -335,49 +325,27 @@ class _TypeSelector extends StatelessWidget {
         Row(
           children: <Widget>[
             Expanded(
-              child: _OptionChip(
+              child: EzyButton(
                 label: 'Pedido',
-                isSelected: type == StoreOrderDraft.pedido,
-                onTap: () => onChanged(StoreOrderDraft.pedido),
+                variant: type == StoreOrderDraft.pedido
+                    ? EzyButtonVariant.primary
+                    : EzyButtonVariant.outline,
+                onPressed: () => onChanged(StoreOrderDraft.pedido),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _OptionChip(
+              child: EzyButton(
                 label: 'Comanda',
-                isSelected: type == StoreOrderDraft.comanda,
-                onTap: () => onChanged(StoreOrderDraft.comanda),
+                variant: type == StoreOrderDraft.comanda
+                    ? EzyButtonVariant.primary
+                    : EzyButtonVariant.outline,
+                onPressed: () => onChanged(StoreOrderDraft.comanda),
               ),
             ),
           ],
         ),
       ],
-    );
-  }
-}
-
-class _OptionChip extends StatelessWidget {
-  const _OptionChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 48),
-        backgroundColor: isSelected
-            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12)
-            : null,
-      ),
-      child: Text(label),
     );
   }
 }

@@ -5,6 +5,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_amount.dart';
+import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/money_field.dart';
 import '../../../auth/application/auth_controller.dart';
@@ -28,16 +30,9 @@ class CartLineTile extends ConsumerWidget {
       decoration: BoxDecoration(
         color: surfaces.panelInner,
         borderRadius: BorderRadius.circular(16),
-        // Franja de la marca a la izquierda: separa cada producto del carrito.
-        border: Border(
-          top: BorderSide(color: surfaces.border),
-          right: BorderSide(color: surfaces.border),
-          bottom: BorderSide(color: surfaces.border),
-          left: BorderSide(
-            color: EzyColors.primary.withValues(alpha: 0.55),
-            width: 3,
-          ),
-        ),
+        // Mismo borde de 1 px que los pagos del cobro: las líneas del carrito no
+        // llevan franjas ni sombras propias.
+        border: Border.all(color: surfaces.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -87,12 +82,7 @@ class CartLineTile extends ConsumerWidget {
             children: <Widget>[
               _QuantityStepper(line: line),
               const Spacer(),
-              Text(
-                Money.format(line.lineTotal),
-                style: EzyTextStyles.moneyList.copyWith(
-                  color: surfaces.textPrimary,
-                ),
-              ),
+              EzyAmount(value: line.lineTotal, size: EzyAmountSize.list),
             ],
           ),
           if (line.hasDiscount) ...<Widget>[
@@ -108,20 +98,14 @@ class CartLineTile extends ConsumerWidget {
           const SizedBox(height: 4),
           Align(
             alignment: Alignment.centerLeft,
-            child: GestureDetector(
-              onTap: () => showDialog<void>(
+            child: EzyButton(
+              label: 'Editar cantidad y descuento',
+              variant: EzyButtonVariant.text,
+              expand: false,
+              onPressed: () => showDialog<void>(
                 context: context,
                 builder: (dialogContext) =>
                     _CartLineEditorDialog(line: line),
-              ),
-              behavior: HitTestBehavior.opaque,
-              child: Text(
-                'Editar cantidad y descuento',
-                style: EzyTextStyles.caption.copyWith(
-                  color: EzyColors.primary,
-                  decoration: TextDecoration.underline,
-                  decorationColor: EzyColors.primary,
-                ),
               ),
             ),
           ),

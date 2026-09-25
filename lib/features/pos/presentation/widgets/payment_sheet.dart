@@ -6,7 +6,10 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_amount.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_chip.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/field_label.dart';
 import '../../../../core/widgets/money_field.dart';
@@ -88,7 +91,13 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          _SheetHeader(isLayaway: _isLayaway, cart: cart),
+          EzySheetHeader(
+            title: _isLayaway ? 'Apartado' : 'Cobro',
+            subtitle: cart.customer == null
+                ? 'Venta de público general'
+                : 'Cliente: ${cart.customer!.displayName}',
+            padding: EdgeInsets.zero,
+          ),
           const SizedBox(height: 16),
           _AmountsCard(cart: cart),
           if (cart.customer?.hasBalanceInFavor ?? false) ...<Widget>[
@@ -191,40 +200,6 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
   }
 }
 
-/// Encabezado del cobro (tipo de operación y cliente).
-class _SheetHeader extends StatelessWidget {
-  const _SheetHeader({required this.isLayaway, required this.cart});
-
-  final bool isLayaway;
-  final CartState cart;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          isLayaway ? 'Apartado' : 'Cobro',
-          style: EzyTextStyles.screenTitle.copyWith(
-            color: surfaces.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          cart.customer == null
-              ? 'Venta de público general'
-              : 'Cliente: ${cart.customer!.displayName}',
-          style: EzyTextStyles.secondary.copyWith(
-            color: surfaces.textSecondary,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 /// Total de la venta, saldo a favor usado y restante/cambio.
 class _AmountsCard extends StatelessWidget {
   const _AmountsCard({required this.cart});
@@ -245,12 +220,7 @@ class _AmountsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Text(
-            Money.format(cart.total),
-            style: EzyTextStyles.moneyLarge.copyWith(
-              color: surfaces.textPrimary,
-            ),
-          ),
+          EzyAmount(value: cart.total, size: EzyAmountSize.hero),
           if (cart.balanceUsed > 0)
             SectionRow(
               label: 'Saldo a favor aplicado',
@@ -380,8 +350,6 @@ class _PaymentsCard extends ConsumerWidget {
     );
   }
 }
-
-
 
 /// Un pago: método, monto y cuenta destino si es tarjeta o transferencia.
 class _PaymentTile extends ConsumerWidget {
@@ -522,11 +490,13 @@ class _AddPaymentRow extends StatelessWidget {
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: <Widget>[
             for (final method in available)
-              ActionChip(
-                label: Text(method.label),
-                onPressed: () => onAdd(method),
+              EzyChip(
+                label: method.label,
+                icon: Icons.add,
+                onTap: () => onAdd(method),
               ),
           ],
         ),

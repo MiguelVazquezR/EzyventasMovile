@@ -114,7 +114,7 @@ class SaleResultView extends StatelessWidget {
           'El catálogo y el turno ya se actualizaron con el stock y los cobros '
           'de esta venta.',
           textAlign: TextAlign.center,
-          style: EzyTextStyles.caption.copyWith(color: EzyColors.gray66),
+          style: EzyTextStyles.caption.copyWith(color: surfaces.textMuted),
         ),
       ],
     );

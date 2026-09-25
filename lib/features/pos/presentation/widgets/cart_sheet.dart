@@ -7,13 +7,18 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/empty_state.dart';
+import '../../../../core/widgets/ezy_amount.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../application/cart_controller.dart';
 import '../../application/cart_state.dart';
 import 'cart_line_tile.dart';
+import 'cart_summary.dart';
 import 'customer_picker_sheet.dart';
 import 'payment_sheet.dart';
 import 'sale_result_view.dart';
@@ -58,7 +63,16 @@ class CartSheet extends ConsumerWidget {
             ),
           ] else ...<Widget>[
             const SizedBox(height: 8),
-            _CartHeader(cart: cart),
+            EzySheetHeader(
+              title: 'Carrito',
+              subtitle: cartSummaryLabel(cart),
+              trailing: EzyIconButton(
+                icon: Icons.close,
+                tooltip: 'Cerrar',
+                onTap: () => Navigator.of(context).pop(),
+              ),
+              padding: EdgeInsets.zero,
+            ),
             const SizedBox(height: 12),
             _CartTotalBand(cart: cart),
             const SizedBox(height: 16),
@@ -73,11 +87,12 @@ class CartSheet extends ConsumerWidget {
             const SizedBox(height: 12),
             for (final line in cart.lines) CartLineTile(line: line),
             if (cart.isEmpty)
-              Text(
-                'Agrega productos desde el catálogo para empezar la venta.',
-                style: EzyTextStyles.body.copyWith(
-                  color: context.surfaces.textSecondary,
-                ),
+              const EmptyState(
+                compact: true,
+                icon: Icons.shopping_cart_outlined,
+                title: 'El carrito está vacío',
+                message:
+                    'Agrega productos desde el catálogo para empezar la venta.',
               ),
             if (cart.notice != null) ...<Widget>[
               const SizedBox(height: 12),
@@ -105,41 +120,8 @@ class CartSheet extends ConsumerWidget {
   }
 }
 
-/// Encabezado del carrito con el número de productos.
-class _CartHeader extends StatelessWidget {
-  const _CartHeader({required this.cart});
-
-  final CartState cart;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-    final products = cart.lines.length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          'Carrito',
-          style: EzyTextStyles.screenTitle.copyWith(
-            color: surfaces.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '$products producto${products == 1 ? '' : 's'} · '
-          '${Money.formatQuantity(cart.itemCount)} artículos',
-          style: EzyTextStyles.secondary.copyWith(
-            color: surfaces.textSecondary,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Franja del total: el monto que se va a cobrar, arriba y en el color de la
-/// marca (para no tener que bajar hasta el final del carrito).
+/// Franja del total: el monto que se va a cobrar, arriba y en el cuerpo del
+/// panel, para no tener que bajar hasta el final del carrito.
 class _CartTotalBand extends StatelessWidget {
   const _CartTotalBand({required this.cart});
 
@@ -150,35 +132,16 @@ class _CartTotalBand extends StatelessWidget {
     final surfaces = context.surfaces;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: EzyColors.primary.withValues(alpha: 0.12),
+        color: surfaces.panelInner,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: EzyColors.primary.withValues(alpha: 0.45)),
+        border: Border.all(color: surfaces.border),
       ),
-      child: Row(
-        children: <Widget>[
-          const Icon(
-            Icons.shopping_bag_outlined,
-            size: 20,
-            color: EzyColors.primary,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Total a cobrar',
-              style: EzyTextStyles.bodyStrong.copyWith(
-                color: surfaces.textPrimary,
-              ),
-            ),
-          ),
-          Text(
-            Money.format(cart.total),
-            style: EzyTextStyles.moneyMedium.copyWith(
-              color: EzyColors.primary,
-            ),
-          ),
-        ],
+      child: EzyAmount(
+        value: cart.total,
+        label: 'Total a cobrar',
+        size: EzyAmountSize.hero,
       ),
     );
   }
@@ -194,9 +157,11 @@ class _CustomerCard extends ConsumerWidget {
 
     return SectionCard(
       title: 'Cliente',
-      trailing: TextButton(
+      trailing: EzyButton(
+        label: 'Cambiar',
+        variant: EzyButtonVariant.text,
+        expand: false,
         onPressed: () => showCustomerPickerSheet(context),
-        child: const Text('Cambiar'),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
