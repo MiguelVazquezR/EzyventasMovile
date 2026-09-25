@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:ezyventas_app/core/api/api_client.dart';
 import 'package:ezyventas_app/core/api/api_exception.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
+import 'package:ezyventas_app/core/widgets/ezy_bottom_sheet.dart';
+import 'package:ezyventas_app/core/widgets/ezy_selectable_tile.dart';
 import 'package:ezyventas_app/features/printing/application/printing_providers.dart';
 import 'package:ezyventas_app/features/printing/data/models/print_document.dart';
 import 'package:ezyventas_app/features/printing/data/models/print_payloads.dart';
@@ -292,6 +294,55 @@ void main() {
     expect(find.textContaining('» *TICKET DE VENTA* «'), findsOneWidget);
     expect(find.text('Abrir WhatsApp'), findsOneWidget);
     expect(find.text('Copiar mensaje'), findsOneWidget);
+  });
+
+  testWidgets('la cabecera une el documento con su folio y cierra la hoja', (
+    tester,
+  ) async {
+    await _pumpPrintSheet(
+      tester,
+      _FakePrintingRepository(
+        templates: <PrintTemplate>[
+          _template(id: 3, name: 'Ticket de venta', isDefault: true),
+        ],
+      ),
+    );
+
+    // Cabecera de hoja del design system: el título de siempre y el subtítulo
+    // con el documento y el folio que devolvió el servidor.
+    final header = tester.widget<EzySheetHeader>(find.byType(EzySheetHeader));
+    expect(header.title, 'Imprimir y compartir');
+    expect(header.subtitle, 'Ticket de venta · V-014');
+
+    await tester.tap(find.byTooltip('Cerrar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Imprimir y compartir'), findsNothing);
+  });
+
+  testWidgets('la plantilla se elige con la fila del design system', (
+    tester,
+  ) async {
+    await _pumpPrintSheet(
+      tester,
+      _FakePrintingRepository(
+        templates: <PrintTemplate>[
+          _template(id: 3, name: 'Ticket de venta', isDefault: true),
+          _template(id: 7, name: 'Ticket de venta A2'),
+        ],
+      ),
+    );
+
+    final tiles = find.byType(EzySelectableTile);
+    expect(tiles, findsNWidgets(2));
+    expect(tester.widget<EzySelectableTile>(tiles.at(0)).isSelected, isTrue);
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+
+    await tester.tap(find.text('Ticket de venta A2'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<EzySelectableTile>(tiles.at(0)).isSelected, isFalse);
+    expect(tester.widget<EzySelectableTile>(tiles.at(1)).isSelected, isTrue);
   });
 }
 

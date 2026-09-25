@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/printing/bluetooth_printer_service.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
+import '../../../../core/widgets/ezy_list_tile.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
@@ -40,7 +41,6 @@ class _PrinterPickerSheetState extends ConsumerState<_PrinterPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
     final state = ref.watch(printerControllerProvider);
     final controller = ref.read(printerControllerProvider.notifier);
 
@@ -53,19 +53,17 @@ class _PrinterPickerSheetState extends ConsumerState<_PrinterPickerSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            'Elegir impresora',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: 'Elegir impresora',
+            subtitle:
+                'Se listan las impresoras emparejadas en el teléfono y las '
+                'que estén encendidas cerca.',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Se listan las impresoras emparejadas en el teléfono y las que '
-            'estén encendidas cerca.',
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
           if (state.errorMessage != null) ...<Widget>[
@@ -91,11 +89,12 @@ class _PrinterPickerSheetState extends ConsumerState<_PrinterPickerSheet> {
                       ),
                     ),
                   ),
-                for (final device in state.devices)
+                for (int index = 0; index < state.devices.length; index++)
                   _PrinterTile(
-                    device: device,
+                    device: state.devices[index],
                     isConnecting: state.isBusy,
-                    onSelected: () => _connect(device),
+                    showDivider: index < state.devices.length - 1,
+                    onSelected: () => _connect(state.devices[index]),
                   ),
                 if (state.devices.isEmpty && !state.isBusy)
                   const EmptyState(
@@ -135,82 +134,43 @@ class _PrinterPickerSheetState extends ConsumerState<_PrinterPickerSheet> {
 }
 
 /// Una impresora de la lista (emparejada, guardada o encontrada al escanear).
+///
+/// Fila del design system: el cuadro del icono, el nombre, los datos del
+/// dispositivo y el chevron los pinta [EzyListTile]. Mientras hay una conexión
+/// en curso la fila no navega y su chevron se cambia por el indicador.
 class _PrinterTile extends StatelessWidget {
   const _PrinterTile({
     required this.device,
     required this.isConnecting,
+    required this.showDivider,
     required this.onSelected,
   });
 
   final PrinterDevice device;
   final bool isConnecting;
+  final bool showDivider;
   final VoidCallback onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return GestureDetector(
+    return EzyListTile(
+      icon: Icons.bluetooth,
+      title: device.label,
+      subtitle: <String>[
+        device.id,
+        if (device.isPaired) 'emparejada',
+        if (device.isSaved) 'guardada',
+        if (device.rssi != null) '${device.rssi} dBm',
+      ].join(' · '),
+      trailing: isConnecting
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : null,
+      showDivider: showDivider,
       onTap: isConnecting ? null : onSelected,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: surfaces.panelInner,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: device.isPaired || device.isSaved
-                ? EzyColors.bluetooth.withValues(alpha: 0.5)
-                : surfaces.border,
-          ),
-        ),
-        child: Row(
-          children: <Widget>[
-            Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: EzyColors.bluetooth.withValues(alpha: 0.16),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.bluetooth,
-                size: 18,
-                color: EzyColors.bluetooth,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    device.label,
-                    style: EzyTextStyles.bodyStrong.copyWith(
-                      color: surfaces.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    <String>[
-                      device.id,
-                      if (device.isPaired) 'emparejada',
-                      if (device.isSaved) 'guardada',
-                      if (device.rssi != null) '${device.rssi} dBm',
-                    ].join(' · '),
-                    style: EzyTextStyles.caption.copyWith(
-                      color: surfaces.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right, size: 18),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -13,11 +13,12 @@
 // persistente y pestanas visibles segun los modulos y permisos que devuelve el
 // servidor) y el recorrido de los flujos que MIUI no deja manejar a mano (la
 // inyeccion de `adb input` falla con `INJECT_EVENTS`): POS -> carrito -> cobro,
-// turno de caja, detalle de ventas y ordenes, e impresion (sheet + respaldo HTML
-// del ticket). El ultimo escenario si usa la impresora fisica: conecta la
-// termica del telefono (emparejada o escaneada) y le manda el ticket ESC/POS del
-// servidor. No sustituye a las corridas de `test/live/api_smoke_test.dart`:
-// complementa lo que solo se puede comprobar en el telefono.
+// turno de caja, detalle de ventas y ordenes, e impresion (hoja de impresion y
+// el estado real del Bluetooth del telefono). El ultimo escenario si usa la
+// impresora fisica: conecta la termica del telefono (emparejada o escaneada) y
+// le manda el ticket ESC/POS del servidor. No sustituye a las corridas de
+// `test/live/api_smoke_test.dart`: complementa lo que solo se puede comprobar en
+// el telefono.
 import 'package:ezyventas_app/app.dart';
 import 'package:ezyventas_app/core/auth/session_store.dart';
 import 'package:ezyventas_app/core/config/app_config.dart';
@@ -109,9 +110,6 @@ const String printTicketLabel = 'Imprimir ticket';
 const String printOrderLabel = 'Imprimir orden';
 const String printerConnectedBadge = 'CONECTADA';
 const String printerDisconnectedBadge = 'SIN CONECTAR';
-const String htmlBackupLabel = 'Ver respaldo HTML';
-const String htmlBackupTitle = 'Respaldo del ticket';
-const String copyHtmlLabel = 'Copiar HTML';
 const String closeDetailTooltip = 'Cerrar';
 
 /// Impresora térmica real de la corrida en el teléfono.
@@ -656,17 +654,24 @@ Finder _inLastSheet(Finder finder) => find.descendant(
   matching: finder,
 );
 
-/// Recorre el detalle abierto (venta u orden) hasta el respaldo HTML del ticket.
+/// Recorre el detalle abierto (venta u orden) hasta la hoja de impresion.
 ///
 /// Comprueba que el detalle llego del servidor (cabecera con folio y cierre),
-/// que el panel de impresion conoce el estado del Bluetooth del telefono y que
-/// el servidor armo el respaldo HTML (`POST /print/ticket-html`). No se envia
-/// nada a ninguna impresora: la impresora termica queda fuera del alcance.
+/// que el subtitulo de la hoja une el documento con el folio que devolvio el
+/// servidor, que el panel de impresion conoce el estado del Bluetooth del
+/// telefono y que el documento se puede imprimir (el boton queda habilitado
+/// cuando el servidor devuelve la plantilla). No se envia nada a ninguna
+/// impresora: la impresora termica queda fuera del alcance.
+///
+/// Nota: la hoja **no** ofrece respaldo HTML. El boton se retiro porque
+/// `POST /print/ticket-html` respondia `Ocurrió un error en el servidor.` en la
+/// corrida real (capa de datos y pruebas conservadas), asi que el recorrido
+/// termina en el boton de impresion.
 Future<void> _printFromDetail(
   WidgetTester tester, {
   required List<String> printButtons,
 }) async {
-  await _openPrintSheet(tester, printButtons: printButtons);
+  final printLabel = await _openPrintSheet(tester, printButtons: printButtons);
 
   // El subtítulo del sheet une el título del documento con el folio que
   // devolvió el servidor ("Ticket de venta · A-000024").
@@ -687,45 +692,37 @@ Future<void> _printFromDetail(
     reason: 'El sheet de impresión no mostró el estado del Bluetooth',
   );
 
-  // El respaldo depende de la plantilla que arma el servidor: se sondea hasta
-  // que el payload llegue y el boton quede habilitado.
-  final htmlButton = find.widgetWithText(EzyButton, htmlBackupLabel);
+  // El boton de imprimir se habilita cuando el servidor devolvio la plantilla
+  // que aplica al documento (mismo pendiente de pago que la impresora real).
+  final printButton = _inLastSheet(find.widgetWithText(EzyButton, printLabel));
   expect(
     await _waitEnabled(
       tester,
-      htmlButton,
+      printButton,
       timeout: const Duration(seconds: 25),
     ),
     isTrue,
-    reason: 'El servidor no habilitó el respaldo HTML del ticket',
+    reason: 'El servidor no habilitó la plantilla de impresión del documento',
   );
 
-  await tester.tap(htmlButton);
-  await _waitFor(
-    tester,
-    find.text(htmlBackupTitle),
-    timeout: const Duration(seconds: 30),
-    reason: 'No abrió el respaldo HTML del ticket',
-  );
-  expect(find.text(copyHtmlLabel), findsOneWidget);
-
-  // Se cierran el respaldo HTML, la hoja de impresión y el detalle con el mismo
-  // `pop` del botón atrás: el recorrido bajó por el `ListView` perezoso hasta el
-  // botón de impresión, así que el encabezado con `Cerrar` puede haber salido del
-  // árbol y su toque no es fiable.
+  // Se cierran la hoja de impresión y el detalle con el mismo `pop` del botón
+  // atrás: el recorrido bajó por el `ListView` perezoso, así que el encabezado
+  // con `Cerrar` puede haber salido del árbol y su toque no es fiable.
   await _closeSheets(tester);
   expect(
     find.byType(DraggableScrollableSheet),
     findsNothing,
-    reason: 'Quedó una hoja abierta tras revisar el respaldo del ticket',
+    reason: 'Quedó una hoja abierta tras revisar la impresión',
   );
 }
 
 /// Abre el detalle ya cargado y su hoja de impresión.
 ///
-/// Se comparte entre el recorrido de flujos (que termina en el respaldo HTML) y
-/// la corrida de impresión real (que conecta la térmica y manda el ticket).
-Future<void> _openPrintSheet(
+/// Se comparte entre el recorrido de flujos (que termina en el boton de
+/// impresion) y la corrida de impresión real (que conecta la térmica y manda el
+/// ticket). Devuelve la etiqueta del botón que abrió la hoja: el detalle de una
+/// venta puede ofrecer ticket o etiqueta según el documento.
+Future<String> _openPrintSheet(
   WidgetTester tester, {
   required List<String> printButtons,
 }) async {
@@ -758,6 +755,8 @@ Future<void> _openPrintSheet(
     timeout: const Duration(seconds: 30),
     reason: 'No abrió el sheet de impresión',
   );
+
+  return printButtons[index];
 }
 
 /// Borra la sesion guardada (la app conserva el token entre corridas) y monta

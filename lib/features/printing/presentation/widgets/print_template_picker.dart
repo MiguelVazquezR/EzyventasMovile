@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
+import '../../../../core/widgets/ezy_selectable_tile.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../data/models/print_template.dart';
 
@@ -44,8 +45,9 @@ class PrintTemplatePicker extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         for (final template in templates)
-          _TemplateTile(
-            template: template,
+          EzySelectableTile(
+            title: template.name,
+            subtitle: template.detailLabel,
             isSelected: template.id == selectedId,
             onTap: () => onSelected(template),
           ),
@@ -55,75 +57,6 @@ class PrintTemplatePicker extends StatelessWidget {
           style: EzyTextStyles.caption.copyWith(color: surfaces.textMuted),
         ),
       ],
-    );
-  }
-}
-
-/// Una plantilla del negocio (nombre, tipo, papel y predeterminada).
-class _TemplateTile extends StatelessWidget {
-  const _TemplateTile({
-    required this.template,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final PrintTemplate template;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? EzyColors.primary.withValues(alpha: 0.14)
-              : surfaces.panelInner,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? EzyColors.primary : surfaces.border,
-            width: isSelected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          children: <Widget>[
-            Icon(
-              isSelected
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_unchecked,
-              size: 18,
-              color: isSelected ? EzyColors.primary : surfaces.textMuted,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    template.name,
-                    style: EzyTextStyles.bodyStrong.copyWith(
-                      color: surfaces.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    template.detailLabel,
-                    style: EzyTextStyles.caption.copyWith(
-                      color: surfaces.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
