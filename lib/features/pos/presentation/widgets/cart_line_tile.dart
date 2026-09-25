@@ -7,6 +7,7 @@ import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_amount.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_quantity_stepper.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/money_field.dart';
 import '../../../auth/application/auth_controller.dart';
@@ -104,8 +105,7 @@ class CartLineTile extends ConsumerWidget {
               expand: false,
               onPressed: () => showDialog<void>(
                 context: context,
-                builder: (dialogContext) =>
-                    _CartLineEditorDialog(line: line),
+                builder: (dialogContext) => _CartLineEditorDialog(line: line),
               ),
             ),
           ),
@@ -116,6 +116,9 @@ class CartLineTile extends ConsumerWidget {
 }
 
 /// Cantidad con botones − / + (paso 1, o 0.5 en productos a granel).
+///
+/// El control en sí es el del design system; aquí solo se conecta con el
+/// carrito (`incrementLine` / `decrementLine`).
 class _QuantityStepper extends ConsumerWidget {
   const _QuantityStepper({required this.line});
 
@@ -124,41 +127,11 @@ class _QuantityStepper extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(cartControllerProvider.notifier);
-    final surfaces = context.surfaces;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: surfaces.panel,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: surfaces.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          IconButton(
-            onPressed: () => controller.decrementLine(line),
-            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-            tooltip: 'Quitar una unidad',
-            icon: Icon(
-              Icons.remove,
-              size: 18,
-              color: surfaces.textSecondary,
-            ),
-          ),
-          Text(
-            Money.formatQuantity(line.quantity),
-            style: EzyTextStyles.bodyStrong.copyWith(
-              color: surfaces.textPrimary,
-            ),
-          ),
-          IconButton(
-            onPressed: () => controller.incrementLine(line),
-            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-            tooltip: 'Agregar una unidad',
-            icon: const Icon(Icons.add, size: 18, color: EzyColors.primary),
-          ),
-        ],
-      ),
+    return EzyQuantityStepper(
+      quantity: line.quantity,
+      onDecrease: () => controller.decrementLine(line),
+      onIncrease: () => controller.incrementLine(line),
     );
   }
 }
@@ -201,7 +174,6 @@ class _CartLineEditorDialogState extends ConsumerState<_CartLineEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
     final controller = ref.read(cartControllerProvider.notifier);
     final canEditPrices = ref.watch(permissionsProvider).can('pos.edit_prices');
 
@@ -214,16 +186,17 @@ class _CartLineEditorDialogState extends ConsumerState<_CartLineEditorDialog> {
           children: <Widget>[
             EzyTextField(
               label: 'Cantidad',
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               textAlign: TextAlign.right,
               controller: _quantityController,
               helperText: widget.line.isBulk
                   ? 'Producto a granel: admite decimales.'
                   : 'Stock disponible: '
                         '${Money.formatQuantity(widget.line.stockLimit)}',
-              onChanged: (value) => setState(
-                () => _quantity = Money.parseInput(value),
-              ),
+              onChanged: (value) =>
+                  setState(() => _quantity = Money.parseInput(value)),
             ),
             const SizedBox(height: 16),
             MoneyField(
@@ -235,30 +208,21 @@ class _CartLineEditorDialogState extends ConsumerState<_CartLineEditorDialog> {
                   : 'Necesitas el permiso para editar precios.',
               onChanged: (value) => setState(() => _discount = value),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Total de la línea',
-              style: EzyTextStyles.microLabel.copyWith(
-                color: surfaces.textMuted,
+            EzyAmount(
+              value: Money.round2(
+                (widget.line.listPrice - _discount) * _quantity,
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              Money.format(
-                Money.round2((widget.line.listPrice - _discount) * _quantity),
-              ),
-              textAlign: TextAlign.right,
-              style: EzyTextStyles.moneyMedium.copyWith(
-                color: surfaces.textPrimary,
-              ),
+              label: 'Total de la línea',
+              size: EzyAmountSize.large,
             ),
             if (widget.line.isManualPrice)
-              TextButton(
+              EzyButton(
+                label: 'Volver al precio del catálogo',
+                variant: EzyButtonVariant.text,
                 onPressed: () {
                   controller.clearManualPrice(widget.line);
                   Navigator.of(context).pop();
                 },
-                child: const Text('Volver al precio del catálogo'),
               ),
           ],
         ),

@@ -4,12 +4,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/empty_state.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
+import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/ezy_search_field.dart';
+import '../../../../core/widgets/ezy_selectable_tile.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../customers/application/customers_providers.dart';
-import '../../../customers/data/models/customer.dart';
 import '../../application/cart_controller.dart';
 
 /// Selector de cliente del cobro (`GET /customers`).
@@ -66,19 +70,17 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            'Cliente de la venta',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: 'Cliente de la venta',
+            subtitle:
+                'Necesitas un cliente para dejar saldo pendiente o usar su '
+                'saldo a favor.',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Necesitas un cliente para dejar saldo pendiente o usar su saldo '
-            'a favor.',
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
           _GuestOption(
@@ -101,24 +103,34 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
               padding: EdgeInsets.symmetric(vertical: 24),
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
-            error: (error, stackTrace) => const ErrorNotice(
+            error: (error, stackTrace) => ErrorNotice(
               message: 'No se pudieron cargar los clientes.',
+              onRetry: () => ref.invalidate(customerSearchProvider(_search)),
             ),
             data: (page) {
               if (page.items.isEmpty) {
-                return Text(
-                  'Sin resultados.',
-                  style: EzyTextStyles.body.copyWith(
-                    color: surfaces.textSecondary,
-                  ),
+                return const EmptyState(
+                  compact: true,
+                  icon: Icons.person_search_outlined,
+                  title: 'Sin resultados',
+                  message:
+                      'No hay clientes que coincidan con la búsqueda. Prueba '
+                      'con otro nombre o teléfono.',
                 );
               }
 
               return Column(
                 children: <Widget>[
                   for (final customer in page.items)
-                    _CustomerTile(
-                      customer: customer,
+                    EzySelectableTile(
+                      title: customer.displayName,
+                      subtitle: customer.phone,
+                      caption: <String>[
+                        'Saldo ${Money.format(customer.balance)}',
+                        if (customer.hasCredit)
+                          'Crédito disponible '
+                              '${Money.format(customer.availableCredit)}',
+                      ].join(' · '),
                       isSelected: cart.customer?.id == customer.id,
                       onTap: () {
                         controller.setCustomer(customer);
@@ -140,7 +152,6 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
     );
   }
 }
-
 
 /// Venta sin cliente registrado (`guest_name`).
 class _GuestOption extends StatelessWidget {
@@ -174,78 +185,12 @@ class _GuestOption extends StatelessWidget {
             maxLength: 255,
           ),
           const SizedBox(height: 12),
-          TextButton(
+          EzyButton(
+            label: 'Vender sin cliente',
+            variant: EzyButtonVariant.text,
             onPressed: onSelected,
-            child: const Text('Vender sin cliente'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Cliente de la lista con su saldo y crédito disponible.
-class _CustomerTile extends StatelessWidget {
-  const _CustomerTile({
-    required this.customer,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final Customer customer;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? EzyColors.primary.withValues(alpha: 0.12)
-              : surfaces.panel,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected
-                ? EzyColors.primary.withValues(alpha: 0.5)
-                : surfaces.border,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              customer.displayName,
-              style: EzyTextStyles.bodyStrong.copyWith(
-                color: surfaces.textPrimary,
-              ),
-            ),
-            if (customer.phone != null) ...<Widget>[
-              const SizedBox(height: 2),
-              Text(
-                customer.phone!,
-                style: EzyTextStyles.secondary.copyWith(
-                  color: surfaces.textSecondary,
-                ),
-              ),
-            ],
-            const SizedBox(height: 4),
-            Text(
-              <String>[
-                'Saldo ${Money.format(customer.balance)}',
-                if (customer.hasCredit)
-                  'Crédito disponible ${Money.format(customer.availableCredit)}',
-              ].join(' · '),
-              style: EzyTextStyles.caption.copyWith(color: surfaces.textMuted),
-            ),
-          ],
-        ),
       ),
     );
   }

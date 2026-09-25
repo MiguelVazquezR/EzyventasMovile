@@ -6,7 +6,12 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/html_text.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_amount.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
+import '../../../../core/widgets/ezy_quantity_stepper.dart';
+import '../../../../core/widgets/ezy_selectable_tile.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../../core/widgets/server_image.dart';
@@ -62,27 +67,19 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
         controller: scrollController,
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
-          ProductImage(product: product),
+          const SizedBox(height: 8),
+          EzySheetHeader(
+            title: product.name,
+            subtitle: _subtitle(product),
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).maybePop(),
+            ),
+            padding: EdgeInsets.zero,
+          ),
           const SizedBox(height: 16),
-          Text(
-            product.name,
-            style: EzyTextStyles.bodyStrong.copyWith(
-              fontSize: 18,
-              color: surfaces.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            <String>[
-              if (product.sku != null && product.sku!.isNotEmpty)
-                'SKU ${product.sku}',
-              if (product.category != null && product.category!.isNotEmpty)
-                product.category!,
-            ].join(' · '),
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
-          ),
+          ProductImage(product: product),
           const SizedBox(height: 16),
           ProductPriceBlock(product: product, price: price, stock: stock),
           if (product.hasVariants) ...<Widget>[
@@ -92,8 +89,16 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
               child: Column(
                 children: <Widget>[
                   for (final combination in product.variantCombinations)
-                    ProductVariantTile(
-                      combination: combination,
+                    EzySelectableTile(
+                      title: combination.label,
+                      subtitle: combination.isOutOfStock
+                          ? 'Sin stock'
+                          : '${Money.formatQuantity(combination.stock)} '
+                                'disponibles',
+                      subtitleColor: combination.isOutOfStock
+                          ? StatusPalette.text(context, EzySeverity.danger)
+                          : null,
+                      value: Money.format(combination.price),
                       isSelected: combination.id == selected?.id,
                       onTap: () => setState(
                         () => _selectedCombinationId = combination.id,
@@ -143,6 +148,19 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
         ],
       ),
     );
+  }
+
+  /// `SKU FIL-001 · Filtros` bajo el nombre; `null` si el producto no trae ni SKU
+  /// ni categoría. La hoja completa los datos con `GET /catalog/products/{id}`, así
+  /// que la línea puede cambiar después de abrir el sheet.
+  String? _subtitle(Product product) {
+    final parts = <String>[
+      if (product.sku != null && product.sku!.isNotEmpty) 'SKU ${product.sku}',
+      if (product.category != null && product.category!.isNotEmpty)
+        product.category!,
+    ];
+
+    return parts.isEmpty ? null : parts.join(' · ');
   }
 
   VariantCombination? _selectedCombination(Product product) {
@@ -211,7 +229,7 @@ class _AddToCartSectionState extends ConsumerState<_AddToCartSection> {
                 ),
               ),
               const Spacer(),
-              _QuantityControl(
+              EzyQuantityStepper(
                 quantity: _quantity,
                 measureUnit: widget.product.measureUnit,
                 onDecrease: _quantity > step
@@ -223,13 +241,11 @@ class _AddToCartSectionState extends ConsumerState<_AddToCartSection> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            'Total de la línea: '
-            '${Money.format(_lineTotal())}',
-            style: EzyTextStyles.moneyMedium.copyWith(
-              color: surfaces.textPrimary,
-            ),
+          const SizedBox(height: 16),
+          EzyAmount(
+            value: _lineTotal(),
+            label: 'Total de la línea',
+            size: EzyAmountSize.large,
           ),
           const SizedBox(height: 12),
           EzyButton(
@@ -275,49 +291,6 @@ class _AddToCartSectionState extends ConsumerState<_AddToCartSection> {
   }
 }
 
-/// Control de cantidad con botones − / +.
-class _QuantityControl extends StatelessWidget {
-  const _QuantityControl({
-    required this.quantity,
-    required this.measureUnit,
-    required this.onDecrease,
-    required this.onIncrease,
-  });
-
-  final double quantity;
-  final String measureUnit;
-  final VoidCallback? onDecrease;
-  final VoidCallback? onIncrease;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-    final unit = measureUnit.isEmpty ? '' : ' $measureUnit';
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        IconButton(
-          onPressed: onDecrease,
-          tooltip: 'Quitar una unidad',
-          icon: const Icon(Icons.remove, size: 18),
-        ),
-        Text(
-          '${Money.formatQuantity(quantity)}$unit',
-          style: EzyTextStyles.bodyStrong.copyWith(
-            color: surfaces.textPrimary,
-          ),
-        ),
-        IconButton(
-          onPressed: onIncrease,
-          tooltip: 'Agregar una unidad',
-          icon: const Icon(Icons.add, size: 18),
-        ),
-      ],
-    );
-  }
-}
-
 /// Imagen del producto con respaldo cuando no hay foto.
 class ProductImage extends StatelessWidget {
   const ProductImage({
@@ -356,13 +329,15 @@ class ImagePlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const ColoredBox(
-      color: EzyColors.surfaceDarkInner,
+    final surfaces = context.surfaces;
+
+    return ColoredBox(
+      color: surfaces.panelInner,
       child: Center(
         child: Icon(
           Icons.image_not_supported_outlined,
           size: 32,
-          color: EzyColors.gray66,
+          color: surfaces.textMuted,
         ),
       ),
     );
@@ -395,12 +370,7 @@ class ProductPriceBlock extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            Money.format(price),
-            style: EzyTextStyles.moneyLarge.copyWith(
-              color: surfaces.textPrimary,
-            ),
-          ),
+          EzyAmount(value: price, size: EzyAmountSize.hero),
           if (product.hasPromotion) ...<Widget>[
             const SizedBox(height: 2),
             Text(
@@ -466,79 +436,6 @@ class ProductPriceBlock extends StatelessWidget {
               ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-/// Combinación de variante seleccionable (`product_attribute_id`).
-class ProductVariantTile extends StatelessWidget {
-  const ProductVariantTile({
-    super.key,
-    required this.combination,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final VariantCombination combination;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? EzyColors.primary.withValues(alpha: 0.12)
-              : surfaces.panelInner,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected
-                ? EzyColors.primary.withValues(alpha: 0.5)
-                : surfaces.border,
-          ),
-        ),
-        child: Row(
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    combination.label,
-                    style: EzyTextStyles.bodyStrong.copyWith(
-                      color: surfaces.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    combination.isOutOfStock
-                        ? 'Sin stock'
-                        : '${Money.formatQuantity(combination.stock)} disponibles',
-                    style: EzyTextStyles.secondary.copyWith(
-                      color: combination.isOutOfStock
-                          ? StatusPalette.text(context, EzySeverity.danger)
-                          : surfaces.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Text(
-              Money.format(combination.price),
-              style: EzyTextStyles.moneyList.copyWith(
-                color: surfaces.textPrimary,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
