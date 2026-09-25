@@ -54,6 +54,11 @@ class _PointOfSaleScreenState extends ConsumerState<PointOfSaleScreen>
   Widget build(BuildContext context) {
     final session = ref.watch(activeCashSessionProvider);
     final permissions = ref.watch(permissionsProvider);
+    // El subtítulo de la cabecera es el conteo real del catálogo (§9). Se aísla
+    // con `select` para que la pantalla solo se repinte cuando cambie el texto.
+    final catalogSubtitle = ref.watch(
+      productsControllerProvider.select(ProductCatalogView.subtitle),
+    );
 
     if (!permissions.can('pos.access')) {
       return Scaffold(
@@ -81,7 +86,10 @@ class _PointOfSaleScreenState extends ConsumerState<PointOfSaleScreen>
         bottom: false,
         child: Column(
           children: <Widget>[
-            const AppScreenHeader(title: 'Punto de venta'),
+            AppScreenHeader(
+              title: 'Punto de venta',
+              subtitle: catalogSubtitle,
+            ),
             if (session == null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),

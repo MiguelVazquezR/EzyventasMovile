@@ -4,11 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/money.dart';
-import '../../../../core/utils/search_debouncer.dart';
+import '../../../../core/widgets/ezy_search_field.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
-import '../../../catalog/presentation/widgets/catalog_controls.dart';
 import '../../../customers/application/customers_providers.dart';
 import '../../../customers/data/models/customer.dart';
 import '../../application/cart_controller.dart';
@@ -35,9 +34,7 @@ class _CustomerPickerSheet extends ConsumerStatefulWidget {
 }
 
 class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
-  final TextEditingController _searchController = TextEditingController();
   final TextEditingController _guestController = TextEditingController();
-  final SearchDebouncer _debouncer = SearchDebouncer();
 
   String _search = '';
 
@@ -49,8 +46,6 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
 
   @override
   void dispose() {
-    _debouncer.cancel();
-    _searchController.dispose();
     _guestController.dispose();
     super.dispose();
   }
@@ -96,16 +91,9 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
             },
           ),
           const SizedBox(height: 12),
-          CatalogSearchField(
-            controller: _searchController,
+          EzySearchField(
             hint: 'Buscar cliente por nombre o teléfono…',
-            onChanged: (value) => _debouncer.run(
-              () => setState(() => _search = value.trim()),
-            ),
-            onClear: () {
-              _searchController.clear();
-              setState(() => _search = '');
-            },
+            onChanged: (value) => setState(() => _search = value.trim()),
           ),
           const SizedBox(height: 12),
           customers.when(

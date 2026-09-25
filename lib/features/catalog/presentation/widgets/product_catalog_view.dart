@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/utils/search_debouncer.dart';
 import '../../../../core/widgets/empty_state.dart';
+import '../../../../core/widgets/ezy_search_field.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../pos/application/cart_controller.dart';
@@ -21,14 +21,32 @@ import 'product_detail_sheet.dart';
 class ProductCatalogView extends ConsumerStatefulWidget {
   const ProductCatalogView({super.key});
 
+  /// Cuántos productos está mostrando el catálogo (§9).
+  ///
+  /// Lo usan el pie de la reja y el subtítulo de la cabecera del POS, para que
+  /// los dos digan exactamente lo mismo.
+  static String countLabel(ProductsState state) {
+    if (state.hasMore) {
+      return 'Mostrando ${state.items.length} de ${state.total} productos';
+    }
+
+    final unit = state.total == 1 ? 'producto' : 'productos';
+
+    return '${state.total} $unit en esta sucursal';
+  }
+
+  /// Subtítulo de la cabecera del POS (§9). Mientras no haya nada que contar
+  /// (carga inicial o error) devuelve `null`: de eso ya avisan el esqueleto y el
+  /// aviso de error, y un `0 productos` ahí sería mentira.
+  static String? subtitle(ProductsState state) =>
+      state.items.isEmpty ? null : countLabel(state);
+
   @override
   ConsumerState<ProductCatalogView> createState() => _ProductCatalogViewState();
 }
 
 class _ProductCatalogViewState extends ConsumerState<ProductCatalogView> {
-  final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final SearchDebouncer _debouncer = SearchDebouncer();
 
   @override
   void initState() {
@@ -38,8 +56,6 @@ class _ProductCatalogViewState extends ConsumerState<ProductCatalogView> {
 
   @override
   void dispose() {
-    _debouncer.cancel();
-    _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -69,15 +85,11 @@ class _ProductCatalogViewState extends ConsumerState<ProductCatalogView> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: CatalogSearchField(
-                controller: _searchController,
-                onChanged: (value) => _debouncer.run(
-                  () => controller.setSearch(value),
-                ),
-                onClear: () {
-                  _searchController.clear();
-                  controller.setSearch('');
-                },
+              // El buscador del design system trae su propio retardo: no se pide
+              // una página por tecla (§9, §12).
+              child: EzySearchField(
+                hint: 'Buscar por nombre o SKU…',
+                onChanged: controller.setSearch,
               ),
             ),
           ),
@@ -143,9 +155,7 @@ class _ProductCatalogViewState extends ConsumerState<ProductCatalogView> {
                       ),
                     )
                   : Text(
-                      state.hasMore
-                          ? 'Mostrando ${state.items.length} de ${state.total} productos'
-                          : '${state.total} producto${state.total == 1 ? '' : 's'} en esta sucursal',
+                      ProductCatalogView.countLabel(state),
                       textAlign: TextAlign.center,
                       style: EzyTextStyles.secondary.copyWith(
                         color: context.surfaces.textMuted,
