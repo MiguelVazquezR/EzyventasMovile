@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
+import '../../../../core/widgets/ezy_selectable_tile.dart';
 
 /// Opción de variante del catálogo (servicio o combinación de producto).
 class VariantOption {
@@ -34,10 +35,8 @@ Future<VariantOption?> showServiceOrderVariantPicker(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (sheetContext) => _VariantPickerSheet(
-      title: title,
-      options: options,
-    ),
+    builder: (sheetContext) =>
+        _VariantPickerSheet(title: title, options: options),
   );
 }
 
@@ -49,8 +48,6 @@ class _VariantPickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.7,
@@ -60,52 +57,23 @@ class _VariantPickerSheet extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            'Elegir variante',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: 'Elegir variante',
+            subtitle: title,
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
           for (final option in options)
-            GestureDetector(
+            EzySelectableTile(
+              title: option.label,
+              value: Money.format(option.price),
+              isSelected: false,
               onTap: () => Navigator.of(context).pop(option),
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: surfaces.panel,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: surfaces.border),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        option.label,
-                        style: EzyTextStyles.bodyStrong.copyWith(
-                          color: surfaces.textPrimary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      Money.format(option.price),
-                      style: EzyTextStyles.moneyList.copyWith(
-                        color: surfaces.textPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
         ],
       ),

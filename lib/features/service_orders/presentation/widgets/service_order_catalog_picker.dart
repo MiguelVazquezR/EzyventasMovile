@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/paginated.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
-import '../../../../core/utils/search_debouncer.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
+import '../../../../core/widgets/ezy_list_tile.dart';
+import '../../../../core/widgets/ezy_search_field.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../catalog/application/catalog_pickers.dart';
 import '../../../catalog/application/catalog_providers.dart';
@@ -46,22 +47,11 @@ class _CatalogPickerSheet extends ConsumerStatefulWidget {
 }
 
 class _CatalogPickerSheetState extends ConsumerState<_CatalogPickerSheet> {
-  final TextEditingController _searchController = TextEditingController();
-  final SearchDebouncer _debouncer = SearchDebouncer();
-
   ServiceOrderCatalogKind _kind = ServiceOrderCatalogKind.service;
   String _search = '';
 
   @override
-  void dispose() {
-    _debouncer.cancel();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
     final services = ref.watch(
       servicesProvider(_search.isEmpty ? null : _search),
     );
@@ -76,11 +66,15 @@ class _CatalogPickerSheetState extends ConsumerState<_CatalogPickerSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            'Agregar concepto',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: 'Agregar concepto',
+            subtitle: 'Elige del catálogo o captura un concepto libre.',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 12),
           ServiceOrderSegmentedControl<ServiceOrderCatalogKind>(
@@ -95,17 +89,9 @@ class _CatalogPickerSheetState extends ConsumerState<_CatalogPickerSheet> {
             onSelected: (kind) => setState(() => _kind = kind),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _searchController,
-            onChanged: (value) =>
-                _debouncer.run(() => setState(() => _search = value.trim())),
-            style: EzyTextStyles.fieldValue.copyWith(
-              color: surfaces.textPrimary,
-            ),
-            decoration: const InputDecoration(
-              hintText: 'Buscar en el catálogo…',
-              prefixIcon: Icon(Icons.search),
-            ),
+          EzySearchField(
+            hint: 'Buscar en el catálogo…',
+            onChanged: (value) => setState(() => _search = value.trim()),
           ),
           const SizedBox(height: 16),
           if (_kind == ServiceOrderCatalogKind.service)
@@ -305,6 +291,7 @@ class _ProductsList extends StatelessWidget {
   }
 }
 
+/// Concepto del catálogo (servicio o refacción) como fila del design system.
 class _CatalogTile extends StatelessWidget {
   const _CatalogTile({
     required this.title,
@@ -320,51 +307,11 @@ class _CatalogTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return GestureDetector(
+    return EzyListTile(
+      title: title,
+      subtitle: subtitle,
+      value: price,
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: surfaces.panel,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: surfaces.border),
-        ),
-        child: Row(
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    title,
-                    style: EzyTextStyles.bodyStrong.copyWith(
-                      color: surfaces.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: EzyTextStyles.caption.copyWith(
-                      color: surfaces.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              price,
-              style: EzyTextStyles.moneyList.copyWith(
-                color: surfaces.textPrimary,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

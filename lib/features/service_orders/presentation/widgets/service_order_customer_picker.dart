@@ -5,7 +5,11 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
-import '../../../../core/utils/search_debouncer.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
+import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
+import '../../../../core/widgets/ezy_search_field.dart';
+import '../../../../core/widgets/ezy_selectable_tile.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/money_field.dart';
 import '../../../../core/widgets/notice_banner.dart';
@@ -73,9 +77,6 @@ class _CustomerPickerSheet extends ConsumerStatefulWidget {
 }
 
 class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
-  final TextEditingController _searchController = TextEditingController();
-  final SearchDebouncer _debouncer = SearchDebouncer();
-
   late final TextEditingController _nameController = TextEditingController(
     text: widget.initialName,
   );
@@ -95,8 +96,6 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
 
   @override
   void dispose() {
-    _debouncer.cancel();
-    _searchController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
@@ -106,7 +105,6 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
     final customers = ref.watch(customerSearchProvider(_search));
 
     return DraggableScrollableSheet(
@@ -118,31 +116,22 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            'Cliente de la orden',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: 'Cliente de la orden',
+            subtitle:
+                'Puedes elegir un cliente registrado o capturar los datos a '
+                'mano.',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Puedes elegir un cliente registrado o capturar los datos a mano.',
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
-          TextField(
-            controller: _searchController,
-            onChanged: (value) =>
-                _debouncer.run(() => setState(() => _search = value.trim())),
-            style: EzyTextStyles.fieldValue.copyWith(
-              color: surfaces.textPrimary,
-            ),
-            decoration: const InputDecoration(
-              hintText: 'Buscar cliente por nombre, correo o teléfono…',
-              prefixIcon: Icon(Icons.search),
-            ),
+          EzySearchField(
+            hint: 'Buscar cliente por nombre, correo o teléfono…',
+            onChanged: (value) => setState(() => _search = value.trim()),
           ),
           const SizedBox(height: 12),
           customers.when(
@@ -186,6 +175,9 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
             createCustomer: _createCustomer,
             onToggleCreate: (value) => setState(() => _createCustomer = value),
             onCreditChanged: (value) => setState(() => _creditLimit = value),
+            // El nombre habilita «Usar estos datos»: sin reconstruir la tarjeta
+            // el botón seguiría deshabilitado después de escribirlo.
+            onNameChanged: (value) => setState(() {}),
             onApply: _nameController.text.trim().isEmpty
                 ? null
                 : () => Navigator.of(context).pop(
@@ -213,49 +205,16 @@ class _CustomerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return GestureDetector(
+    return EzySelectableTile(
+      title: customer.displayName,
+      subtitle: customer.phone,
+      caption: <String>[
+        'Saldo ${Money.format(customer.balance)}',
+        if (customer.hasCredit)
+          'Crédito disponible ${Money.format(customer.availableCredit)}',
+      ].join(' · '),
+      isSelected: false,
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: surfaces.panel,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: surfaces.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              customer.displayName,
-              style: EzyTextStyles.bodyStrong.copyWith(
-                color: surfaces.textPrimary,
-              ),
-            ),
-            if (customer.phone != null) ...<Widget>[
-              const SizedBox(height: 2),
-              Text(
-                customer.phone!,
-                style: EzyTextStyles.secondary.copyWith(
-                  color: surfaces.textSecondary,
-                ),
-              ),
-            ],
-            const SizedBox(height: 4),
-            Text(
-              <String>[
-                'Saldo ${Money.format(customer.balance)}',
-                if (customer.hasCredit)
-                  'Crédito disponible ${Money.format(customer.availableCredit)}',
-              ].join(' · '),
-              style: EzyTextStyles.caption.copyWith(color: surfaces.textMuted),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -271,6 +230,7 @@ class _ManualCustomerCard extends StatelessWidget {
     required this.createCustomer,
     required this.onToggleCreate,
     required this.onCreditChanged,
+    required this.onNameChanged,
     required this.onApply,
   });
 
@@ -281,6 +241,7 @@ class _ManualCustomerCard extends StatelessWidget {
   final bool createCustomer;
   final ValueChanged<bool> onToggleCreate;
   final ValueChanged<double> onCreditChanged;
+  final ValueChanged<String> onNameChanged;
   final VoidCallback? onApply;
 
   @override
@@ -292,14 +253,24 @@ class _ManualCustomerCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _Field(label: 'Nombre', controller: nameController),
+          EzyTextField(
+            label: 'Nombre',
+            controller: nameController,
+            maxLength: 255,
+            onChanged: onNameChanged,
+          ),
           const SizedBox(height: 12),
-          _Field(label: 'Teléfono', controller: phoneController),
+          EzyTextField(
+            label: 'Teléfono',
+            controller: phoneController,
+            maxLength: 255,
+          ),
           const SizedBox(height: 12),
-          _Field(
+          EzyTextField(
             label: 'Correo electrónico',
             controller: emailController,
             keyboardType: TextInputType.emailAddress,
+            maxLength: 255,
           ),
           const SizedBox(height: 8),
           // `Material` transparente: el `SectionCard` pinta su propio fondo y sin
@@ -335,34 +306,13 @@ class _ManualCustomerCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 12),
-          TextButton(
+          EzyButton(
+            label: 'Usar estos datos',
+            variant: EzyButtonVariant.text,
             onPressed: onApply,
-            child: const Text('Usar estos datos'),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _Field extends StatelessWidget {
-  const _Field({
-    required this.label,
-    required this.controller,
-    this.keyboardType,
-  });
-
-  final String label;
-  final TextEditingController controller;
-  final TextInputType? keyboardType;
-
-  @override
-  Widget build(BuildContext context) {
-    return EzyTextField(
-      label: label,
-      controller: controller,
-      keyboardType: keyboardType,
-      maxLength: 255,
     );
   }
 }

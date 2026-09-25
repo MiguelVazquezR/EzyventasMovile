@@ -5,7 +5,9 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/money_field.dart';
 import '../../../../core/widgets/notice_banner.dart';
@@ -95,18 +97,15 @@ class _ServiceOrderItemsSheetState extends State<_ServiceOrderItemsSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            'Conceptos de la orden',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: 'Conceptos de la orden',
+            subtitle: 'Las refacciones descuentan stock al guardar la orden.',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Las refacciones descuentan stock al guardar la orden.',
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
           SectionCard(
@@ -228,11 +227,12 @@ class _ItemRow extends StatelessWidget {
               color: surfaces.textPrimary,
             ),
           ),
-          IconButton(
+          EzyIconButton(
+            icon: Icons.close,
+            size: 36,
+            iconSize: 18,
             tooltip: 'Quitar concepto',
-            visualDensity: VisualDensity.compact,
-            onPressed: onRemove,
-            icon: Icon(Icons.close, size: 18, color: surfaces.textMuted),
+            onTap: onRemove,
           ),
         ],
       ),
@@ -317,8 +317,6 @@ class _ItemEditorSheetState extends State<_ItemEditorSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.68,
@@ -328,11 +326,14 @@ class _ItemEditorSheetState extends State<_ItemEditorSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            _isCustom ? 'Concepto libre' : 'Editar concepto',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: _isCustom ? 'Concepto libre' : 'Editar concepto',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
           if (_isCustom)
@@ -378,7 +379,8 @@ class _ItemEditorSheetState extends State<_ItemEditorSheet> {
           if (_quantity <= 0 || _unitPrice <= 0) ...<Widget>[
             const SizedBox(height: 8),
             const NoticeBanner(
-              message: 'La cantidad y el precio unitario deben ser mayores a 0.',
+              message:
+                  'La cantidad y el precio unitario deben ser mayores a 0.',
               tone: EzySeverity.warn,
             ),
           ],

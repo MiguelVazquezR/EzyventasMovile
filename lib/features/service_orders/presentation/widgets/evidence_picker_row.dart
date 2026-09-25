@@ -6,6 +6,7 @@ import '../../../../core/config/app_config.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/evidence_image.dart';
+import '../../../../core/widgets/ezy_chip.dart';
 import 'service_order_labels.dart';
 
 /// Captura fotos (cámara o galería), las comprime y avisa lo que se descartó.
@@ -85,20 +86,24 @@ class EvidencePickerRow extends StatelessWidget {
             ),
           )
         else
-          Row(
+          // `Wrap`: los dos chips y el contador caben en una línea en un
+          // teléfono normal y saltan de línea con texto grande (`textScale`),
+          // sin desbordar como hacía la `Row` fija.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              _Action(
+              EzyChip(
                 icon: Icons.photo_camera_outlined,
                 label: 'Tomar foto',
                 onTap: isBusy ? null : onCamera,
               ),
-              const SizedBox(width: 8),
-              _Action(
+              EzyChip(
                 icon: Icons.photo_library_outlined,
                 label: 'Elegir de galería',
                 onTap: isBusy ? null : onGallery,
               ),
-              const Spacer(),
               Text(
                 'Quedan $remaining',
                 style: EzyTextStyles.caption.copyWith(
@@ -108,44 +113,6 @@ class EvidencePickerRow extends StatelessWidget {
             ],
           ),
       ],
-    );
-  }
-}
-
-class _Action extends StatelessWidget {
-  const _Action({required this.icon, required this.label, this.onTap});
-
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-    final color = onTap == null ? surfaces.textMuted : EzyColors.primary;
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: surfaces.panelInner,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: surfaces.border),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: EzyTextStyles.caption.copyWith(color: color),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

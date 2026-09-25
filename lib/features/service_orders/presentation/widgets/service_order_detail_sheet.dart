@@ -5,6 +5,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/app_formatters.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../../core/widgets/status_badge.dart';
@@ -119,10 +121,8 @@ class _ServiceOrderDetailSheetState
               diagnosis: detail.technicianDiagnosis,
               onEdit:
                   permissions.can('services.orders.edit') && detail.isEditable
-                  ? () => showServiceOrderDiagnosisSheet(
-                      context,
-                      detail: detail,
-                    )
+                  ? () =>
+                        showServiceOrderDiagnosisSheet(context, detail: detail)
                   : null,
             ),
             const SizedBox(height: 12),
@@ -177,7 +177,11 @@ class _ServiceOrderDetailSheetState
   }
 }
 
-/// Cabecera del detalle: folio, estatus, equipo y acciones de refresco.
+/// Cabecera del detalle: folio, equipo, estatus y acciones de refresco.
+///
+/// El folio va como título de hoja (el mismo `EzySheetHeader` que las demás
+/// hojas del design system), el equipo debajo, el estatus con `StatusBadge` y
+/// las dos acciones (`Actualizar` y `Cerrar`) como `EzyIconButton`.
 class _SheetHeader extends StatelessWidget {
   const _SheetHeader({
     required this.detail,
@@ -191,51 +195,35 @@ class _SheetHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         const SizedBox(height: 8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    detail.folio,
-                    style: EzyTextStyles.moneyLarge.copyWith(
-                      color: surfaces.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  StatusBadge.serviceOrder(
-                    detail.status,
-                    showDot: detail.status == 'en_progreso',
-                  ),
-                ],
+        EzySheetHeader(
+          title: detail.folio,
+          subtitle: detail.itemDescription,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              EzyIconButton(
+                icon: Icons.refresh,
+                tooltip: 'Actualizar',
+                onTap: onRefresh,
               ),
-            ),
-            IconButton(
-              tooltip: 'Actualizar',
-              onPressed: onRefresh,
-              icon: Icon(Icons.refresh, size: 20, color: surfaces.textMuted),
-            ),
-            IconButton(
-              tooltip: 'Cerrar',
-              onPressed: onClose,
-              icon: Icon(Icons.close, size: 20, color: surfaces.textMuted),
-            ),
-          ],
+              const SizedBox(width: 8),
+              EzyIconButton(
+                icon: Icons.close,
+                tooltip: 'Cerrar',
+                onTap: onClose,
+              ),
+            ],
+          ),
+          padding: EdgeInsets.zero,
         ),
         const SizedBox(height: 8),
-        Text(
-          detail.itemDescription,
-          style: EzyTextStyles.bodyStrong.copyWith(
-            color: surfaces.textPrimary,
-          ),
+        StatusBadge.serviceOrder(
+          detail.status,
+          showDot: detail.status == 'en_progreso',
         ),
       ],
     );

@@ -5,7 +5,10 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_chip.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/field_label.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
@@ -38,9 +41,8 @@ Future<void> confirmServiceOrderPayment(
       final error = ref.read(serviceOrderDetailControllerProvider).errorMessage;
 
       if (error != null && context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error)));
       }
 
       return;
@@ -94,8 +96,9 @@ class _ServiceOrderPaymentSheetState
 
     // Un ticket de un anticipo anterior no debe confundirse con el nuevo.
     Future<void>.microtask(
-      () =>
-          ref.read(serviceOrderDetailControllerProvider.notifier).consumeReceipt(),
+      () => ref
+          .read(serviceOrderDetailControllerProvider.notifier)
+          .consumeReceipt(),
     );
   }
 
@@ -157,7 +160,9 @@ class _ServiceOrderPaymentSheetState
   void _removePayment(int index) => setState(() => _payments.removeAt(index));
 
   void _setAmount(int index, double amount) {
-    setState(() => _payments[index] = _payments[index].copyWith(amount: amount));
+    setState(
+      () => _payments[index] = _payments[index].copyWith(amount: amount),
+    );
   }
 
   void _setBankAccount(int index, {required int id, required String name}) {
@@ -248,18 +253,17 @@ class _ServiceOrderPaymentSheetState
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            'Cobrar orden',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: 'Cobrar orden',
+            subtitle:
+                'Folio ${widget.detail.folio} · '
+                '${widget.detail.customerLabel}',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Folio ${widget.detail.folio} · ${widget.detail.customerLabel}',
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
           if (state.errorMessage != null) ...<Widget>[
@@ -347,7 +351,8 @@ class _ServiceOrderPaymentSheetState
                   const Padding(
                     padding: EdgeInsets.only(top: 8),
                     child: NoticeBanner(
-                      message: 'El monto excede el saldo pendiente de la orden.',
+                      message:
+                          'El monto excede el saldo pendiente de la orden.',
                       tone: EzySeverity.warn,
                     ),
                   ),
@@ -418,11 +423,8 @@ class _PaymentsCard extends StatelessWidget {
                 banks: banks,
                 onRemove: () => onRemove(index),
                 onAmountChanged: (amount) => onAmountChanged(index, amount),
-                onBankAccount: (account) => onBankAccount(
-                  index,
-                  id: account.id,
-                  name: account.label,
-                ),
+                onBankAccount: (account) =>
+                    onBankAccount(index, id: account.id, name: account.label),
               ),
             ),
           if (available.isNotEmpty) ...<Widget>[
@@ -431,12 +433,10 @@ class _PaymentsCard extends StatelessWidget {
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: <Widget>[
                 for (final method in available)
-                  ActionChip(
-                    label: Text(method.label),
-                    onPressed: () => onAdd(method),
-                  ),
+                  EzyChip(label: method.label, onTap: () => onAdd(method)),
               ],
             ),
           ],
@@ -479,11 +479,12 @@ class _PaymentRow extends StatelessWidget {
                 ),
               ),
             ),
-            IconButton(
+            EzyIconButton(
+              icon: Icons.close,
+              size: 36,
+              iconSize: 18,
               tooltip: 'Quitar método',
-              visualDensity: VisualDensity.compact,
-              onPressed: onRemove,
-              icon: Icon(Icons.close, size: 18, color: surfaces.textMuted),
+              onTap: onRemove,
             ),
           ],
         ),

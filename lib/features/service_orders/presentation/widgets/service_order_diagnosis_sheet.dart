@@ -6,7 +6,9 @@ import '../../../../core/config/app_config.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/evidence_image.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
@@ -119,18 +121,17 @@ class _ServiceOrderDiagnosisSheetState
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            'Diagnóstico',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: 'Diagnóstico',
+            subtitle:
+                'Folio ${widget.detail.folio} · '
+                '${widget.detail.itemDescription}',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Folio ${widget.detail.folio} · ${widget.detail.itemDescription}',
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
           if (state.errorMessage != null) ...<Widget>[
@@ -182,7 +183,8 @@ class _ServiceOrderDiagnosisSheetState
                 if (_photos.isNotEmpty) ...<Widget>[
                   DraftEvidenceStrip(
                     images: _photos,
-                    onRemove: (index) => setState(() => _photos.removeAt(index)),
+                    onRemove: (index) =>
+                        setState(() => _photos.removeAt(index)),
                   ),
                   const SizedBox(height: 16),
                 ],
