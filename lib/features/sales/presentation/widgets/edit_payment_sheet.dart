@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/field_label.dart';
 import '../../../../core/widgets/money_field.dart';
@@ -68,7 +70,6 @@ class _EditPaymentSheetState extends ConsumerState<_EditPaymentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
     final state = ref.watch(transactionDetailControllerProvider);
     final banks = ref.watch(bankAccountsProvider);
 
@@ -81,21 +82,19 @@ class _EditPaymentSheetState extends ConsumerState<_EditPaymentSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            'Editar pago',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: 'Editar pago',
+            subtitle:
+                'El servidor concilia la cuenta bancaria y el saldo del cliente '
+                'con el nuevo monto.',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 4),
-          Text(
-            'El servidor concilia la cuenta bancaria y el saldo del cliente con '
-            'el nuevo monto.',
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 16),
           MoneyField(
             label: 'Monto',
             isRequired: true,

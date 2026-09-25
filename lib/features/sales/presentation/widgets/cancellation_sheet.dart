@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
+import '../../../../core/widgets/ezy_selectable_tile.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../cash/application/cash_register_controller.dart';
@@ -54,9 +56,7 @@ class _CancellationSheetState extends ConsumerState<_CancellationSheet> {
   void initState() {
     super.initState();
 
-    final canRefund = ref
-        .read(permissionsProvider)
-        .can('transactions.refund');
+    final canRefund = ref.read(permissionsProvider).can('transactions.refund');
     final session = ref.read(activeCashSessionProvider);
     final hasCustomer = widget.detail.customer != null;
 
@@ -73,7 +73,6 @@ class _CancellationSheetState extends ConsumerState<_CancellationSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
     final state = ref.watch(transactionDetailControllerProvider);
     final permissions = ref.watch(permissionsProvider);
     final session = ref.watch(activeCashSessionProvider);
@@ -97,20 +96,17 @@ class _CancellationSheetState extends ConsumerState<_CancellationSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            'Anular transacción',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: 'Anular transacción',
+            subtitle: 'Cancelación o reembolso',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 4),
-          Text(
-            'Cancelación o reembolso',
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 16),
           NoticeBanner(
             message: widget.detail.paidAmount > 0.01
                 ? 'Esta venta (folio ${widget.detail.folio}) tiene pagos '
@@ -120,19 +116,19 @@ class _CancellationSheetState extends ConsumerState<_CancellationSheet> {
           ),
           const SizedBox(height: 16),
           if (canRefund)
-            _OptionCard(
+            EzySelectableTile(
               isSelected: _action == _CancellationAction.refund,
               title: 'Devolver al cliente (reembolso)',
-              onTap: () =>
-                  setState(() => _action = _CancellationAction.refund),
+              onTap: () => setState(() => _action = _CancellationAction.refund),
               child: _action == _CancellationAction.refund
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
                         if (session != null)
-                          _MethodOption(
+                          EzySelectableTile(
+                            compact: true,
                             isSelected: _refundMethod == RefundMethod.cash,
-                            label: RefundMethod.cash.label,
+                            title: RefundMethod.cash.label,
                             onTap: () => setState(
                               () => _refundMethod = RefundMethod.cash,
                             ),
@@ -143,9 +139,10 @@ class _CancellationSheetState extends ConsumerState<_CancellationSheet> {
                                 'No hay caja abierta para devolver efectivo.',
                             tone: EzySeverity.warn,
                           ),
-                        _MethodOption(
+                        EzySelectableTile(
+                          compact: true,
                           isSelected: _refundMethod == RefundMethod.transfer,
-                          label: RefundMethod.transfer.label,
+                          title: RefundMethod.transfer.label,
                           onTap: () => setState(
                             () => _refundMethod = RefundMethod.transfer,
                           ),
@@ -158,15 +155,15 @@ class _CancellationSheetState extends ConsumerState<_CancellationSheet> {
                             errorText: _bankAccountId == null
                                 ? 'Selecciona la cuenta bancaria para el reembolso por transferencia.'
                                 : null,
-                            onSelected: (account) => setState(
-                              () => _bankAccountId = account.id,
-                            ),
+                            onSelected: (account) =>
+                                setState(() => _bankAccountId = account.id),
                           ),
                         ],
                         if (customer != null)
-                          _MethodOption(
+                          EzySelectableTile(
+                            compact: true,
                             isSelected: _refundMethod == RefundMethod.balance,
-                            label: RefundMethod.balance.label,
+                            title: RefundMethod.balance.label,
                             onTap: () => setState(
                               () => _refundMethod = RefundMethod.balance,
                             ),
@@ -175,8 +172,7 @@ class _CancellationSheetState extends ConsumerState<_CancellationSheet> {
                           const Padding(
                             padding: EdgeInsets.only(top: 8),
                             child: NoticeBanner(
-                              message:
-                                  'No se puede abonar a saldo (venta sin cliente).',
+                              message: 'No se puede abonar a saldo (venta sin cliente).',
                               tone: EzySeverity.warn,
                             ),
                           ),
@@ -186,11 +182,11 @@ class _CancellationSheetState extends ConsumerState<_CancellationSheet> {
             ),
           if (canRefund && canCancel) const SizedBox(height: 12),
           if (canCancel)
-            _OptionCard(
+            EzySelectableTile(
               isSelected: _action == _CancellationAction.penalty,
-              isDanger: true,
+              accent: EzyColors.danger,
               title: 'Cobrar como penalización',
-              description:
+              subtitle:
                   'El dinero no se devuelve. Se cancela la venta pero el negocio '
                   'retiene el monto pagado.',
               onTap: () =>
@@ -258,135 +254,5 @@ class _CancellationSheetState extends ConsumerState<_CancellationSheet> {
     if (result != null && mounted) {
       Navigator.of(context).pop();
     }
-  }
-}
-
-/// Tarjeta seleccionable de una opción de anulación.
-class _OptionCard extends StatelessWidget {
-  const _OptionCard({
-    required this.isSelected,
-    required this.title,
-    required this.onTap,
-    this.description,
-    this.child,
-    this.isDanger = false,
-  });
-
-  final bool isSelected;
-  final String title;
-  final VoidCallback onTap;
-  final String? description;
-  final Widget? child;
-  final bool isDanger;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-    final accent = isDanger ? EzyColors.danger : EzyColors.primary;
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? accent.withValues(alpha: 0.12)
-              : surfaces.panelInner,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? accent.withValues(alpha: 0.6) : surfaces.border,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Icon(
-                  isSelected
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_unchecked,
-                  size: 20,
-                  color: isSelected ? accent : surfaces.textMuted,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: EzyTextStyles.bodyStrong.copyWith(
-                      color: isDanger && isSelected
-                          ? StatusPalette.text(context, EzySeverity.danger)
-                          : surfaces.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (description != null) ...<Widget>[
-              const SizedBox(height: 8),
-              Text(
-                description!,
-                style: EzyTextStyles.caption.copyWith(
-                  color: surfaces.textSecondary,
-                ),
-              ),
-            ],
-            if (child != null) ...<Widget>[
-              const SizedBox(height: 12),
-              child!,
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Opción de reembolso (efectivo de caja, transferencia o saldo a favor).
-class _MethodOption extends StatelessWidget {
-  const _MethodOption({
-    required this.isSelected,
-    required this.label,
-    required this.onTap,
-  });
-
-  final bool isSelected;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: <Widget>[
-            Icon(
-              isSelected
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_unchecked,
-              size: 18,
-              color: isSelected ? EzyColors.primary : surfaces.textMuted,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                label,
-                style: EzyTextStyles.body.copyWith(
-                  color: isSelected
-                      ? surfaces.textPrimary
-                      : surfaces.textSecondary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

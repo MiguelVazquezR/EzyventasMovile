@@ -6,6 +6,8 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../../core/widgets/status_badge.dart';
@@ -121,13 +123,6 @@ class _TransactionDetailSheetState
             ],
             const SizedBox(height: 12),
             _InfoCard(detail: detail),
-            const SizedBox(height: 12),
-            const NoticeBanner(
-              message:
-                  'El ticket de esta venta se podrá imprimir o enviar por '
-                  'WhatsApp cuando se habilite la impresión.',
-              tone: EzySeverity.info,
-            ),
           ],
         ],
       ),
@@ -157,6 +152,9 @@ class _TransactionDetailSheetState
 }
 
 /// Cabecera del detalle: folio, estatus, fecha y canal.
+///
+/// El folio va como título de hoja (mismo `EzySheetHeader` que las demás), el
+/// estatus debajo y las dos acciones (`Actualizar` y `Cerrar`) a la derecha.
 class _DetailHeader extends StatelessWidget {
   const _DetailHeader({
     required this.detail,
@@ -170,53 +168,33 @@ class _DetailHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const SizedBox(height: 8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    detail.folio,
-                    style: EzyTextStyles.moneyLarge.copyWith(
-                      color: surfaces.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  StatusBadge.transaction(
-                    detail.status,
-                    showDot: !detail.isCancelled,
-                  ),
-                ],
+        EzySheetHeader(
+          title: detail.folio,
+          subtitle:
+              '${AppFormatters.dateTime(detail.createdAt)} · '
+              '${SalesLabels.channel(detail.channel)}',
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              EzyIconButton(
+                icon: Icons.refresh,
+                tooltip: 'Actualizar',
+                onTap: onRefresh,
               ),
-            ),
-            IconButton(
-              tooltip: 'Actualizar',
-              onPressed: onRefresh,
-              icon: Icon(Icons.refresh, size: 20, color: surfaces.textMuted),
-            ),
-            IconButton(
-              tooltip: 'Cerrar',
-              onPressed: onClose,
-              icon: Icon(Icons.close, size: 20, color: surfaces.textMuted),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '${AppFormatters.dateTime(detail.createdAt)} · '
-          '${SalesLabels.channel(detail.channel)}',
-          style: EzyTextStyles.secondary.copyWith(
-            color: surfaces.textSecondary,
+              const SizedBox(width: 8),
+              EzyIconButton(
+                icon: Icons.close,
+                tooltip: 'Cerrar',
+                onTap: onClose,
+              ),
+            ],
           ),
+          padding: EdgeInsets.zero,
         ),
+        StatusBadge.transaction(detail.status, showDot: !detail.isCancelled),
       ],
     );
   }
@@ -327,9 +305,7 @@ class _ItemRow extends StatelessWidget {
             Expanded(
               child: Text(
                 item.description,
-                style: EzyTextStyles.body.copyWith(
-                  color: surfaces.textPrimary,
-                ),
+                style: EzyTextStyles.body.copyWith(color: surfaces.textPrimary),
               ),
             ),
             const SizedBox(width: 12),
@@ -391,32 +367,26 @@ class TransactionAmountsCard extends StatelessWidget {
       ),
       child: Column(
         children: <Widget>[
-          SectionRow(
-            label: 'Subtotal',
-            value: Money.format(detail.subtotal),
-          ),
+          SectionRow(label: 'Subtotal', value: Money.format(detail.subtotal)),
           if (detail.totalDiscount != 0)
             SectionRow(
               label: 'Descuento',
               value: '-${Money.format(detail.totalDiscount)}',
             ),
           if (detail.shippingCost != 0)
-            SectionRow(label: 'Envío', value: Money.format(detail.shippingCost)),
-          if (detail.totalTax != 0)
             SectionRow(
-              label: 'Impuesto',
-              value: Money.format(detail.totalTax),
+              label: 'Envío',
+              value: Money.format(detail.shippingCost),
             ),
+          if (detail.totalTax != 0)
+            SectionRow(label: 'Impuesto', value: Money.format(detail.totalTax)),
           const Divider(height: 20),
           SectionRow(
             label: 'Total',
             value: Money.format(detail.total),
             emphasized: true,
           ),
-          SectionRow(
-            label: 'Pagado',
-            value: Money.format(detail.paidAmount),
-          ),
+          SectionRow(label: 'Pagado', value: Money.format(detail.paidAmount)),
           if (!isPaid)
             SectionRow(
               label: 'Saldo pendiente',
@@ -450,7 +420,10 @@ class _InfoCard extends StatelessWidget {
             SectionRow(label: 'Sucursal', value: detail.branch!.name),
           if (summary.user != null)
             SectionRow(label: 'Registró', value: summary.user!.name),
-          SectionRow(label: 'Canal', value: SalesLabels.channel(detail.channel)),
+          SectionRow(
+            label: 'Canal',
+            value: SalesLabels.channel(detail.channel),
+          ),
           if (detail.cashRegisterSessionId != null)
             SectionRow(
               label: 'Sesión de caja',
@@ -485,13 +458,13 @@ class _InfoCard extends StatelessWidget {
               ),
           ],
           if (detail.shippingAddress != null)
-            SectionRow(label: 'Dirección de entrega', value: detail.shippingAddress!),
+            SectionRow(
+              label: 'Dirección de entrega',
+              value: detail.shippingAddress!,
+            ),
           if (detail.notes != null)
             SectionRow(label: 'Notas', value: detail.notes!),
-          SectionRow(
-            label: 'Facturada',
-            value: summary.invoiced ? 'Sí' : 'No',
-          ),
+          SectionRow(label: 'Facturada', value: summary.invoiced ? 'Sí' : 'No'),
         ],
       ),
     );

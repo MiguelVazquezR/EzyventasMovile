@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/app_formatters.dart';
-import '../../../../core/utils/search_debouncer.dart';
+import '../../../../core/widgets/ezy_chip.dart';
+import '../../../../core/widgets/ezy_search_field.dart';
 import '../../application/sales_controller.dart';
 import '../../data/models/transaction_filters.dart';
 import 'sales_labels.dart';
@@ -12,29 +12,13 @@ import 'sales_labels.dart';
 /// Filtros del historial: búsqueda, estatus, rango de fechas y orden.
 ///
 /// Todo viaja al servidor (la app no filtra localmente) y cada cambio vuelve a
-/// la primera página.
-class TransactionFiltersBar extends ConsumerStatefulWidget {
+/// la primera página. La búsqueda la resuelve `EzySearchField`, que ya trae el
+/// *debounce* y el botón de limpiar del design system.
+class TransactionFiltersBar extends ConsumerWidget {
   const TransactionFiltersBar({super.key});
 
   @override
-  ConsumerState<TransactionFiltersBar> createState() =>
-      _TransactionFiltersBarState();
-}
-
-class _TransactionFiltersBarState extends ConsumerState<TransactionFiltersBar> {
-  final TextEditingController _searchController = TextEditingController();
-  final SearchDebouncer _debouncer = SearchDebouncer();
-
-  @override
-  void dispose() {
-    _debouncer.cancel();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
+  Widget build(BuildContext context, WidgetRef ref) {
     final filters = ref.watch(
       transactionsControllerProvider.select((state) => state.filters),
     );
@@ -45,39 +29,9 @@ class _TransactionFiltersBarState extends ConsumerState<TransactionFiltersBar> {
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: TextField(
-            controller: _searchController,
-            textInputAction: TextInputAction.search,
-            onChanged: (value) =>
-                _debouncer.run(() => controller.setSearch(value)),
-            style: EzyTextStyles.fieldValue.copyWith(
-              color: surfaces.textPrimary,
-            ),
-            decoration: InputDecoration(
-              hintText: 'Buscar por folio o cliente…',
-              prefixIcon: Icon(
-                Icons.search,
-                size: 20,
-                color: surfaces.textMuted,
-              ),
-              suffixIcon: ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _searchController,
-                builder: (context, value, child) => value.text.isEmpty
-                    ? const SizedBox.shrink()
-                    : IconButton(
-                        tooltip: 'Limpiar búsqueda',
-                        onPressed: () {
-                          _searchController.clear();
-                          controller.setSearch('');
-                        },
-                        icon: Icon(
-                          Icons.close,
-                          size: 18,
-                          color: surfaces.textMuted,
-                        ),
-                      ),
-              ),
-            ),
+          child: EzySearchField(
+            hint: 'Buscar por folio o cliente…',
+            onChanged: controller.setSearch,
           ),
         ),
         _StatusChips(
@@ -113,9 +67,9 @@ class _StatusChips extends ConsumerWidget {
         separatorBuilder: (context, index) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           if (index == 0) {
-            return _FilterChip(
+            return EzyChip(
               label: 'Todas',
-              isSelected: selected.isEmpty,
+              selected: selected.isEmpty,
               onTap: () => onSelected(null),
             );
           }
@@ -123,9 +77,9 @@ class _StatusChips extends ConsumerWidget {
           final status = SalesLabels.statusFilters[index - 1];
           final isSelected = selected.contains(status);
 
-          return _FilterChip(
+          return EzyChip(
             label: SalesLabels.status(status),
-            isSelected: isSelected,
+            selected: isSelected,
             onTap: () => onSelected(
               isSelected
                   ? selected.where((item) => item != status).toList()
@@ -154,21 +108,21 @@ class _FilterActions extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: <Widget>[
-          _FilterChip(
+          EzyChip(
             label: filters.dateStart == null
                 ? 'Desde'
                 : AppFormatters.date(filters.dateStart),
             icon: Icons.event_outlined,
-            isSelected: filters.dateStart != null,
+            selected: filters.dateStart != null,
             onTap: () => _pickDate(context, ref, isStart: true),
           ),
           const SizedBox(width: 8),
-          _FilterChip(
+          EzyChip(
             label: filters.dateEnd == null
                 ? 'Hasta'
                 : AppFormatters.date(filters.dateEnd),
             icon: Icons.event_available_outlined,
-            isSelected: filters.dateEnd != null,
+            selected: filters.dateEnd != null,
             onTap: () => _pickDate(context, ref, isStart: false),
           ),
           const SizedBox(width: 8),
@@ -192,18 +146,13 @@ class _FilterActions extends ConsumerWidget {
                   ),
                 ),
             ],
-            child: _FilterChip(
-              label: filters.sort.label,
-              icon: Icons.sort,
-              isSelected: false,
-            ),
+            child: EzyChip(label: filters.sort.label, icon: Icons.sort),
           ),
           if (hasFilters) ...<Widget>[
             const SizedBox(width: 8),
-            _FilterChip(
+            EzyChip(
               label: 'Limpiar filtros',
               icon: Icons.filter_alt_off_outlined,
-              isSelected: false,
               onTap: () => controller.clearFilters(),
             ),
           ],
@@ -239,62 +188,5 @@ class _FilterActions extends ConsumerWidget {
     }
 
     return controller.setDateRange(start: filters.dateStart, end: picked);
-  }
-}
-
-/// Chip pill de filtro.
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.isSelected,
-    this.onTap,
-    this.icon,
-  });
-
-  final String label;
-  final bool isSelected;
-  final VoidCallback? onTap;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-    final color = isSelected ? EzyColors.primary : surfaces.textSecondary;
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? EzyColors.primary.withValues(alpha: 0.16)
-              : surfaces.panel,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: isSelected
-                ? EzyColors.primary.withValues(alpha: 0.5)
-                : surfaces.border,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            if (icon != null) ...<Widget>[
-              Icon(icon, size: 15, color: color),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: EzyTextStyles.caption.copyWith(
-                color: color,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

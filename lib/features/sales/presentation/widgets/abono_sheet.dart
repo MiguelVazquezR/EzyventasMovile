@@ -5,7 +5,10 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
+import '../../../../core/widgets/ezy_chip.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/field_label.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
@@ -61,8 +64,9 @@ class _AbonoSheetState extends ConsumerState<_AbonoSheet> {
 
     // Un ticket de un abono anterior no debe confundirse con el nuevo.
     Future<void>.microtask(
-      () =>
-          ref.read(transactionDetailControllerProvider.notifier).consumeReceipt(),
+      () => ref
+          .read(transactionDetailControllerProvider.notifier)
+          .consumeReceipt(),
     );
   }
 
@@ -120,6 +124,17 @@ class _AbonoSheetState extends ConsumerState<_AbonoSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
+          EzySheetHeader(
+            title: 'Abono registrado',
+            subtitle: 'Folio ${receipt.ticket.folio}',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
+            ),
+            padding: EdgeInsets.zero,
+          ),
+          const SizedBox(height: 4),
           AbonoTicketView(
             receipt: receipt,
             onDone: () {
@@ -142,20 +157,18 @@ class _AbonoSheetState extends ConsumerState<_AbonoSheet> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
           const SizedBox(height: 8),
-          Text(
-            'Registrar abono',
-            style: EzyTextStyles.screenTitle.copyWith(
-              color: surfaces.textPrimary,
+          EzySheetHeader(
+            title: 'Registrar abono',
+            subtitle:
+                'Folio ${widget.detail.folio} · ${widget.detail.customerLabel}',
+            trailing: EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              onTap: () => Navigator.of(context).pop(),
             ),
+            padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 4),
-          Text(
-            'Folio ${widget.detail.folio} · ${widget.detail.customerLabel}',
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 16),
           SectionCard(
             title: 'Resumen de la venta',
             child: Column(
@@ -374,9 +387,11 @@ class _PaymentsCard extends ConsumerWidget {
     return SectionCard(
       title: 'Pago',
       trailing: leftToPay > 0.005
-          ? TextButton(
+          ? EzyButton(
+              label: 'Liquidar saldo',
+              variant: EzyButtonVariant.text,
+              expand: false,
               onPressed: onFillRemaining,
-              child: const Text('Liquidar saldo'),
             )
           : null,
       child: Column(
@@ -384,24 +399,21 @@ class _PaymentsCard extends ConsumerWidget {
         children: <Widget>[
           for (var index = 0; index < payments.length; index++)
             Padding(
-              padding: EdgeInsets.only(bottom: index == payments.length - 1 ? 0 : 16),
+              padding: EdgeInsets.only(
+                bottom: index == payments.length - 1 ? 0 : 16,
+              ),
               child: _AbonoPaymentRow(
                 payment: payments[index],
                 banks: banks,
                 onRemove: () => onRemove(index),
                 onAmountChanged: (amount) => onAmountChanged(index, amount),
-                onBankAccount: (account) => onBankAccount(
-                  index,
-                  id: account.id,
-                  name: account.label,
-                ),
+                onBankAccount: (account) =>
+                    onBankAccount(index, id: account.id, name: account.label),
               ),
             ),
           const SizedBox(height: 16),
           _AddPaymentRow(
-            used: payments
-                .map((payment) => payment.method)
-                .toSet(),
+            used: payments.map((payment) => payment.method).toSet(),
             onAdd: onAdd,
           ),
         ],
@@ -443,11 +455,12 @@ class _AbonoPaymentRow extends StatelessWidget {
                 ),
               ),
             ),
-            IconButton(
+            EzyIconButton(
+              icon: Icons.close,
+              size: 36,
+              iconSize: 18,
               tooltip: 'Quitar método',
-              visualDensity: VisualDensity.compact,
-              onPressed: onRemove,
-              icon: Icon(Icons.close, size: 18, color: surfaces.textMuted),
+              onTap: onRemove,
             ),
           ],
         ),
@@ -492,11 +505,13 @@ class _AddPaymentRow extends StatelessWidget {
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: <Widget>[
             for (final method in available)
-              ActionChip(
-                label: Text(method.label),
-                onPressed: () => onAdd(method),
+              EzyChip(
+                label: method.label,
+                icon: Icons.add,
+                onTap: () => onAdd(method),
               ),
           ],
         ),

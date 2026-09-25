@@ -6,6 +6,7 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../auth/application/auth_controller.dart';
@@ -130,26 +131,21 @@ class TransactionPaymentRow extends ConsumerWidget {
             const SizedBox(height: 4),
             Row(
               children: <Widget>[
-                IconButton(
+                EzyIconButton(
+                  icon: Icons.edit_outlined,
+                  size: 36,
+                  iconSize: 18,
                   tooltip: 'Editar pago',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () =>
-                      showEditPaymentSheet(context, payment: payment),
-                  icon: Icon(
-                    Icons.edit_outlined,
-                    size: 18,
-                    color: surfaces.textMuted,
-                  ),
+                  onTap: () => showEditPaymentSheet(context, payment: payment),
                 ),
-                IconButton(
+                const SizedBox(width: 8),
+                EzyIconButton(
+                  icon: Icons.delete_outline,
+                  size: 36,
+                  iconSize: 18,
                   tooltip: 'Eliminar pago',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => _confirmDelete(context, ref),
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    size: 18,
-                    color: EzyColors.danger,
-                  ),
+                  color: EzyColors.danger,
+                  onTap: () => _confirmDelete(context, ref),
                 ),
               ],
             ),
