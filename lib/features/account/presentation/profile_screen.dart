@@ -7,6 +7,8 @@ import '../../../core/api/api_exception.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/status_palette.dart';
 import '../../../core/utils/evidence_image.dart';
+import '../../../core/widgets/ezy_bottom_sheet.dart';
+import '../../../core/widgets/ezy_list_tile.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../application/profile_controller.dart';
 import '../data/models/user_profile.dart';
@@ -188,24 +190,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   /// Cámara o galería para la foto de perfil (máx. 1 MB, contrato §11b.4).
   Future<void> _choosePhotoSource() async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Tomar foto'),
-              onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Elegir de galería'),
-              onTap: () => Navigator.of(sheetContext).pop(ImageSource.gallery),
-            ),
-          ],
-        ),
+    final source = await EzyBottomSheet.show<ImageSource>(
+      context,
+      title: 'Foto de perfil',
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          EzyListTile(
+            icon: Icons.photo_camera_outlined,
+            title: 'Tomar foto',
+            onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
+          ),
+          EzyListTile(
+            icon: Icons.photo_library_outlined,
+            title: 'Elegir de galería',
+            showDivider: false,
+            onTap: () => Navigator.of(sheetContext).pop(ImageSource.gallery),
+          ),
+        ],
       ),
     );
 

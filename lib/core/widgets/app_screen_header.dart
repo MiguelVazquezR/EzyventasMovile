@@ -7,6 +7,7 @@ import '../../features/auth/application/auth_controller.dart';
 import '../router/app_router.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import 'ezy_icon_button.dart';
 
 /// Cabecera de pantalla: título sin margen (`h1`), botón de sucursal activa y
 /// campana de notificaciones (§4.1).
@@ -59,52 +60,53 @@ class AppScreenHeader extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      title,
-                      style: EzyTextStyles.screenTitle.copyWith(
-                        color: surfaces.textPrimary,
-                      ),
+          if (hasBranchChip || showBell || actions.isNotEmpty) ...<Widget>[
+            Row(
+              children: <Widget>[
+                if (hasBranchChip)
+                  Flexible(
+                    child: _BranchChip(
+                      businessName: accessContext.businessName,
+                      branchName:
+                          accessContext.currentBranch?.label ??
+                          accessContext.user.branch?.name ??
+                          'Sucursal',
+                      onTap: () => context.push(branchSwitchPath),
                     ),
-                    if (subtitle != null) ...<Widget>[
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle!,
-                        style: EzyTextStyles.secondary.copyWith(
-                          color: surfaces.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (showBell) ...<Widget>[
-                const SizedBox(width: 8),
-                _NotificationBell(
-                  count: count,
-                  onTap:
-                      onNotificationsTap ??
-                      () => context.push(notificationsPath),
-                ),
+                  )
+                else
+                  const Spacer(),
+                for (final action in actions) ...<Widget>[
+                  const SizedBox(width: 8),
+                  action,
+                ],
+                if (showBell) ...<Widget>[
+                  const SizedBox(width: 8),
+                  EzyIconButton(
+                    icon: Icons.notifications_none,
+                    badgeCount: count,
+                    onTap:
+                        onNotificationsTap ??
+                        () => context.push(notificationsPath),
+                  ),
+                ],
               ],
-              ...actions,
-            ],
-          ),
-          if (hasBranchChip) ...<Widget>[
+            ),
             const SizedBox(height: 12),
-            _BranchChip(
-              businessName: accessContext.businessName,
-              branchName:
-                  accessContext.currentBranch?.label ??
-                  accessContext.user.branch?.name ??
-                  'Sucursal',
-              onTap: () => context.push(branchSwitchPath),
+          ],
+          Text(
+            title,
+            style: EzyTextStyles.screenTitle.copyWith(
+              color: surfaces.textPrimary,
+            ),
+          ),
+          if (subtitle != null) ...<Widget>[
+            const SizedBox(height: 4),
+            Text(
+              subtitle!,
+              style: EzyTextStyles.secondary.copyWith(
+                color: surfaces.textSecondary,
+              ),
             ),
           ],
         ],
@@ -132,7 +134,7 @@ class _BranchChip extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: surfaces.panel,
           borderRadius: BorderRadius.circular(999),
@@ -143,10 +145,10 @@ class _BranchChip extends StatelessWidget {
           children: <Widget>[
             const Icon(
               Icons.storefront_outlined,
-              size: 16,
+              size: 14,
               color: EzyColors.primary,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             Flexible(
               child: Text(
                 '$businessName · $branchName',
@@ -163,61 +165,4 @@ class _BranchChip extends StatelessWidget {
   }
 }
 
-class _NotificationBell extends StatelessWidget {
-  const _NotificationBell({required this.onTap, this.count});
 
-  final VoidCallback onTap;
-  final int? count;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-    final total = count ?? 0;
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: surfaces.panel,
-          shape: BoxShape.circle,
-          border: Border.all(color: surfaces.border),
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: <Widget>[
-            Icon(
-              Icons.notifications_none,
-              size: 20,
-              color: surfaces.textSecondary,
-            ),
-            if (total > 0)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 5,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: EzyColors.danger,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    total > 9 ? '9+' : '$total',
-                    style: EzyTextStyles.badge.copyWith(
-                      color: EzyColors.white,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}

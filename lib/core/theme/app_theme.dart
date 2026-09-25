@@ -6,6 +6,20 @@ import 'app_text_styles.dart';
 /// Tema "Tesla UI": superficies matte, **sin sombras** (la jerarquía se resuelve
 /// con color de superficie + borde de 1 px) y radios grandes (24 contenedores,
 /// 16 cards/inputs, pill botones).
+///
+/// **Mapa de nombres de la propuesta §22 → widgets reales.** La propuesta nombra
+/// los componentes con prefijo `Ezy`; estos ya existían con otro nombre y **no se
+/// renombran** para no romper llamadas ni pruebas:
+/// `EzyCard` = `SectionCard`, `EzyStatus` = `StatusBadge`,
+/// `EzyHeader` = `AppScreenHeader`, `EzyEmptyState` = `EmptyState`,
+/// `EzyFormField` = `EzyTextField` + `FieldLabel` + `MoneyField`,
+/// `EzyButton` = `EzyButton`, `EzyBottomNavigation` = este `navigationBarTheme`.
+///
+/// Los componentes que la propuesta pedía y no existían viven en `core/widgets`:
+/// `ezy_bottom_sheet.dart` (+ `EzySheetHeader`/`EzySheetActions`),
+/// `ezy_list_tile.dart`, `ezy_section.dart`, `ezy_amount.dart`, `ezy_chip.dart`,
+/// `ezy_search_field.dart`, `ezy_stepper.dart`, `ezy_action_bar.dart` y
+/// `ezy_icon_button.dart`.
 class EzyTheme {
   const EzyTheme._();
 
@@ -195,20 +209,25 @@ class EzyTheme {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: surfaces.panel,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: EzyColors.primary.withValues(alpha: 0.14),
+        // §3: la pestaña activa se distingue solo por color. Sin píldora de
+        // fondo, la barra queda limpia y el naranja aparece una sola vez.
+        indicatorColor: Colors.transparent,
         elevation: 0,
         height: 68,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
-            size: 24,
+            size: 22,
             color: selected ? EzyColors.primary : surfaces.textMuted,
           );
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return EzyTextStyles.badge.copyWith(
+            fontSize: 11,
+            letterSpacing: 0.2,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             color: selected ? EzyColors.primary : surfaces.textMuted,
           );
         }),
