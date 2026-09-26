@@ -41,7 +41,7 @@ flutter build apk --release --dart-define=API_BASE_URL=https://app.ezyventas.com
 
 ```bash
 flutter analyze     # debe quedar sin issues
-flutter test        # 282 tests (9 omitidas: las live sin credenciales): dinero, errores, sesion,
+flutter test        # 441 tests (9 omitidas: las live sin credenciales): dinero, errores, sesion,
                     # permisos, catalogo, caja, cobro, ventas, ordenes, impresion (las
                     # `operations` del servidor -> bytes ESC/POS/TSPL, el comprobante del corte,
                     # plantillas y su filtro por contexto, la hoja de impresion, el controlador de
@@ -213,8 +213,9 @@ flutter test integration_test/qa_device_test.dart -d <serial> \
 
 `ofelia@stilos.com` tiene `pos.*`, `cash_registers.*` y `transactions.*` (incluye `add_payment`,
 `edit_payment`, `cancel`, `refund`), pero **no** `services.orders.access` ni
-`system.branches.switch`: sus pestañas son **Vender, Caja, Ventas y Cuenta** (sin Órdenes y sin
-selector de sucursal), y `GET /service-orders` responde `403`.
+`system.branches.switch`: **Vender** (POS) y **Caja** los abre desde el menú lateral —que lista Inicio,
+Vender, Caja, Ventas y Cuenta, sin Órdenes— y tampoco tiene selector de sucursal, y `GET /service-orders`
+responde `403`.
 
 `daniel@apontephone.com` **no** sirve para validar el `403` de las órdenes (tiene
 `services.orders.access`): sirve para verificar que un usuario sin `system.branches.switch` no ve el
@@ -269,13 +270,14 @@ metodo, turnos a los que unirse/retomar, terminales libres y cuentas bancarias c
   del ultimo corte) y `POST /{id}/leave`.
 - **Corte** (`GET /{id}/summary` → `PUT /{id}`): tres pasos como el modal web (resumen → aviso si
   hay mas de un usuario en la sesion → arqueo). La **diferencia en vivo** se calcula como
-  `contado - esperado` (verde sin diferencia, naranja con descuadre); el boton "Finalizar turno"
+  `contado - esperado` (sin diferencia cuando coincide, descuadre en caso contrario); el boton
+  "Finalizar turno"
   se habilita al capturar el efectivo contado. La app **no** crea ingresos/egresos de efectivo
   (eso es web) y no edita el corte.
 - Al abrir, unir o cortar, la sesion se sincroniza con `AuthController.setActiveSession(...)` sin
-  volver a pedir `/auth/me`: el POS queda habilitado de inmediato y el punto verde de la pestana
-  Caja se actualiza. `current` se refresca en segundo plano y al volver la app a primer plano
-  (cierre remoto desde la web).
+  volver a pedir `/auth/me`: el POS queda habilitado de inmediato y la pestana Caja se actualiza.
+  `current` se refresca en segundo plano y al volver la app a primer plano (cierre remoto desde la
+  web).
 
 ### Cobro (POS, etapa 3)
 El carrito replica **exactamente** las formulas del POS web (`ShoppingCart.vue`), nunca las
@@ -306,6 +308,53 @@ inventa la app:
 - `client_uuid` idempotente por operacion: reintentar el mismo cobro no duplica la venta.
 - Tras cobrar se refrescan el catalogo (stock) y el turno (cobros por metodo) y se muestra el
   **folio real** con el cambio; la impresion y el WhatsApp llegan en la etapa 6.
+
+### Escáner de códigos (buscador del POS)
+El botón QR de la barra de búsqueda abre el **escáner a pantalla completa** y devuelve el primer
+código leído:
+
+- Paquete `mobile_scanner ^7.4.2` (CameraX + MLKit en Android). El permiso `CAMERA` ya lo declaraba
+  `AndroidManifest.xml` para las evidencias de las órdenes, así que no se añadió ninguno nuevo; el
+  sistema pide el permiso la primera vez que se abre la cámara.
+- La lectura **no** se interpreta en la app: el texto entra por la misma búsqueda del catálogo
+  (`search`, que el servidor resuelve por nombre o SKU), así que un código que no exista cae en el
+  «sin resultados» con «Limpiar filtros», no en un error inventado. La confirmación (`Código
+  escaneado: …`) se pinta en el POS, no en una pantalla intermedia.
+- Permiso denegado o cámara no disponible: `NoticeBanner` con lo que hay que hacer y «Reintentar»;
+  nunca una pantalla negra.
+- `scannerLauncherProvider` es el punto por el que el POS abre el escáner: en las pruebas se sustituye
+  por un doble sin cámara, y la pantalla del escáner tiene su propia costura
+  (`BarcodeScannerScreen.previewBuilder`) para probarse sola.
+
+### Interfaz del POS y navegación (menú lateral)
+La navegación dejó de ser una barra inferior con FAB central: ahora el cascarón monta un **menú lateral**
+(`EzyAppDrawer`) que se abre con la hamburguesa de la cabecera o deslizando desde el borde izquierdo, y las
+pestañas visibles del servidor (`AppTab.values` + permisos/módulos) se listan en él —`Inicio`, `Vender`,
+`Órdenes`, `Caja`, `Ventas`, `Cuenta`— junto con las acciones («Nueva venta», «Nueva orden de servicio») y
+los accesos de Cuenta (perfil, sucursal, suscripción, notificaciones, soporte), las preferencias y el cierre
+de sesión. El contenido gana el alto que ocupaban la barra y el FAB, y **no hay dos sitios para lo mismo**:
+lo que estaba en el menú del FAB vive ahora en el panel. «Inventario» no aparece porque el alta y el ajuste
+de productos siguen siendo solo de la web: la app no ofrece accesos que el servidor vaya a rechazar.
+
+El POS (`features/pos/`, `features/catalog/`) quedó así:
+
+- **Cabecera curva** (`EzyHeaderBand`): degradado de marca (`primary400 → primary700`), esquinas inferiores
+  redondeadas y ondas tenues pintadas al vuelo (nada de assets), con el avatar y el **nombre del vendedor**
+  arriba y, debajo, el **negocio · sucursal** (`ApontePhone · Melchor Ocampo`, con `…` si no cabe) y la
+  hamburguesa del menú a la derecha.
+- **Buscador flotante** con el campo como card claro con sombra (`EzySearchField(fillColor, elevated)`), el
+  borde normal y 52 px de alto, y al lado el **botón redondo del escáner** (blanco con el icono naranja:
+  sobre el degradado un botón naranja desaparecería). El campo no se va con el scroll.
+- **Carrusel de categorías** (`CatalogCategoryChips`): teja con icono y etiqueta debajo; la activa se rellena
+  con el naranja de marca. La API no manda imágenes por categoría (`name` y `products_count`), así que el
+  icono sale de una palabra clave del nombre y, si no hay pista, del icono genérico.
+- **Reja de dos columnas** (`ProductCard`): foto con `BoxFit.contain`, borde naranja si hay promoción,
+  pastilla de «Sin stock» y, al pie, el **contador `[-] n [+]`** (con el carrito a cero el botón es «+»). La
+  celda del catálogo escucha **solo** la cantidad de su producto (`select`), así que sumar en una tarjeta no
+  repinta las demás.
+- **Barra del carrito flotante** (`CartBar`): card oscura en los dos temas con el contador, la vista previa
+  de los artículos, el total (19 px y en un solo renglón: si no cabe, encoge) y el **chevron** del acceso.
+  Toda la barra es un solo blanco táctil que abre la hoja del carrito.
 
 ### Ventas (etapa 4)
 `features/sales/` cubre el historial, el detalle y el dinero de una venta ya registrada.
@@ -392,17 +441,19 @@ el documento ya codificado.
   La elegida se recuerda por tipo en el dispositivo, y cuando el cobro ya manda `print.template_ids`
   la app respeta esos ids (`PrintDocument.posCheckout`).
 - **Hoja de impresión** (una sola, reutilizada en todos los flujos): estado de la impresora +
-  conectar/cambiar/olvidar (botones en **azul Bluetooth**), selector de plantilla, interruptor de
-  **abrir cajón**, `Imprimir ticket`/`Imprimir etiqueta` (según el documento) y `Enviar por WhatsApp`
-  (**verde**). La hoja **no** ofrece respaldo HTML: el botón se quitó porque el endpoint devolvía
-  error en el servidor real y la operación se hace a mano desde la web.
+  conectar/cambiar/olvidar, selector de plantilla, interruptor de **abrir cajón**,
+  `Imprimir ticket`/`Imprimir etiqueta` (según el documento) y `Enviar por WhatsApp`. La hoja **no**
+  ofrece respaldo HTML (ver la viñeta siguiente): la operación se hace a mano desde la web.
 - **Ticket** (`POST /print/bluetooth-payload`): `commands_base64` → `Uint8List` → bloques de 20 bytes.
   Si la impresora se desconecta a media impresión se avisa y se permite reimprimir; el ticket **no**
   se marca como impreso (no hay reimpresión automática).
 - **Etiquetas** (`POST /print/payload`): se envía el comando TSPL completo de la operación
   `EscribirTexto`; si la plantilla trae imágenes que el teléfono no puede rasterizar, se avisa.
 - **Respaldo HTML** (`POST /print/ticket-html`): sigue en la capa de datos (lo cubren las pruebas de
-  parser y el escenario live de impresión), pero la **UI ya no lo ofrece**.
+  parser y el escenario live de impresión), pero la **UI ya no lo ofrece**: en la corrida real el
+  endpoint respondía `Ocurrió un error en el servidor.`, así que el botón se quitó de la hoja y se
+  borró el widget `ticket_html_sheet.dart`. Si el backend lo arregla, solo hay que volver a pintar
+  el botón.
 - **WhatsApp** (`POST /print/whatsapp-ticket`): el ticket lo arma el servidor y la app lo convierte al
   **mismo texto que la web** (`WhatsAppMessageBuilder`, réplica de `useWhatsAppTicket.js` para
   `sale`, `abono`, `order` y `order_payment`), abre una vista previa y lanza
@@ -425,7 +476,7 @@ Contra `https://ezyventas2.test/api/v1`, con las dos cuentas.
 | Prueba | Resultado |
 |---|---|
 | Login + `/auth/me` | `owner=true`, **85 permisos**, 9 modulos |
-| Pestanas visibles | `Vender · Ordenes · Caja · Ventas · Cuenta` (las 5) |
+| Pestanas visibles | menu lateral: `Inicio · Vender · Ordenes · Caja · Ventas · Cuenta` |
 | Catalogo (`GET /catalog/products`) | 2 productos: `Funda iphone` ($35, stock 35, **2 variantes**) e `Iphone 20` ($12,000, stock 5) |
 | Categorias y servicios | 2 categorias de producto + 1 de servicio, 1 servicio |
 | Clientes | `Juanito babanas` (saldo $0.00, credito $20,000.00, disponible $20,000.00) + ficha con apartados/movimientos |
@@ -439,7 +490,7 @@ Contra `https://ezyventas2.test/api/v1`, con las dos cuentas.
 | Prueba | Resultado |
 |---|---|
 | Login + `/auth/me` + permisos | 26 permisos, 8 modulos, sucursal `Tizapan` |
-| Pestanas visibles | `Vender · Caja · Ventas · Cuenta` (sin Ordenes: no tiene `module_services`) |
+| Pestanas visibles | menu lateral: `Inicio · Vender · Caja · Ventas · Cuenta` (sin Ordenes: no tiene `module_services`) |
 | `GET /service-orders` | `403` → "Tu usuario no tiene permiso para esta acción." |
 | Historial | `GET /transactions` paginado (7 ventas, `last_page=2`), filtros por estatus y fechas |
 | Detalle | `GET /transactions/{id}` con items, pagos y desglose (`is_paid`, `pending_balance`) |
@@ -575,9 +626,14 @@ flutter test integration_test/qa_device_test.dart -d EE95QSVKORE6WCL7 \
 
 | Escenario | Qué comprueba en el dispositivo real | Resultado |
 |---|---|---|
-| Propietario (`jean@apontephone.com`) | Login real contra la API, las cinco pestañas del cascarón, el catálogo real de la sucursal (`ProductCard`) y la pestaña Cuenta | Pasa: aparecen **Vender, Órdenes, Caja, Ventas, Cuenta**; Vender lista productos sin `RenderFlex overflowed`; en Cuenta ve `SUCURSAL ACTIVA` → «Melchor Ocampo», «Tu negocio tiene 2 sucursales», «Cambiar de sucursal» y «Mi suscripción»; «Cerrar sesión» (con su diálogo) vuelve al login |
-| Empleado (`daniel@apontephone.com`) | Mismas pestañas permitidas y lo que **no** le toca | Pasa: las cinco pestañas siguen ahí, pero **sin** «Mi suscripción» ni «Cambiar de sucursal»; su tarjeta de sucursal muestra «Tu usuario no puede cambiar de sucursal.» |
+| Propietario (`jean@apontephone.com`) | Login real contra la API, el menú lateral del cascarón (Inicio · Vender · Órdenes · Caja · Ventas · Cuenta), el POS por la acción «Nueva venta», el catálogo real de la sucursal (`ProductCard`) y la pestaña Cuenta | Pasa: tras el login aparece **Inicio** con la bienvenida; el menú lateral lista las seis pestañas y ofrece «Nueva venta» y «Nueva orden de servicio»; Vender lista productos sin `RenderFlex overflowed`; en Cuenta ve `SUCURSAL ACTIVA` → «Melchor Ocampo», «Tu negocio tiene 2 sucursales», «Cambiar de sucursal» y «Mi suscripción»; «Cerrar sesión» (con su diálogo) vuelve al login |
+| Empleado (`daniel@apontephone.com`) | Mismas entradas permitidas y lo que **no** le toca | Pasa: sus entradas siguen ahí (Inicio · Vender · Caja · Ventas · Cuenta), pero **sin** «Mi suscripción» ni «Cambiar de sucursal»; su tarjeta de sucursal muestra «Tu usuario no puede cambiar de sucursal.» |
 | Peticiones reales observadas en la corrida | Que la app habla con la API por el túnel | `POST /auth/login`, `GET /catalog/categories?type=product`, `GET /catalog/products?page=1&per_page=20`, `GET /notifications` y (solo el propietario) `GET /subscription`, todas por `https://127.0.0.1:8443/api/v1` |
+
+> La navegación cambió de la barra inferior al **menú lateral** después de esa corrida: el recorrido
+> (`qa_device_test.dart`) ya abre el panel con la hamburguesa de la cabecera y entra por sus filas, y el
+> cambio está cubierto por `test/features/shell/presentation/app_drawer_test.dart`; la corrida completa en
+> el teléfono queda por repetir.
 
 Nota de la prueba (no es un fallo de la app): el ancla de «ya cargó la pestaña Cuenta» se busca como
 `SUCURSAL ACTIVA`, no como `Sucursal activa`, porque `SectionCard` pinta los títulos en micro-mayúsculas
@@ -671,7 +727,7 @@ flutter test test/live/api_smoke_test.dart --dart-define=LIVE_API_EMAIL=daniel@a
 | **D3** módulos contratados | `[live] notificaciones: total=0 deudas=0 entregas=0 novedades=0 pedidos=0 tiendaEnLinea=false` |
 | **D4** varios estatus | `[live] deudas por vencer tras crear el apartado: total=1 estatus=apartado incluyeElApartado=true` (+ `422 claves=status.0` con un estatus inventado) |
 | **D5** campos personalizados | `[live] campos personalizados del módulo=0` (200 con lista vacía; el dibujado con definiciones está cubierto por `service_order_form_screen_test.dart`) |
-| **Permisos** | Super admin: `␣permisos=85␣pestanas=Vender | Órdenes | Caja | Ventas | Cuenta`. Empleado: `permisos=53`, mismas pestañas y `403 en /subscription: Tu usuario no tiene permiso para esta acción.` |
+| **Permisos** | Super admin: `␣permisos=85␣pestanas=Inicio | Vender | Órdenes | Caja | Ventas | Cuenta` (acceso completo; esas seis son justo las filas del menú lateral). Empleado: `permisos=53`, mismas pestañas y `403 en /subscription: Tu usuario no tiene permiso para esta acción.` |
 | **A6** borrar una orden devuelve el stock | Se comprueba con `LIVE_SERVICE_ORDERS_STOCK=true` (la prueba agrega una refacción, borra la orden y exige el stock previo) |
 
 > Nota de la corrida: había un **turno abierto** (#16, de una sesión anterior) que bloqueaba todas las
@@ -701,28 +757,18 @@ flutter test integration_test/qa_device_test.dart -d EE95QSVKORE6WCL7 \
 > el texto real de la app (`El Bluetooth está apagado`), que no es ninguno de los dos estados que la
 > prueba acepta: es un fallo del entorno, no de la app (queda documentado aquí para no confundirlo).
 
-### Revisión de UI/UX de la prueba manual (21 sep 2026)
+### Decisiones de producto de la prueba manual (21 sep 2026)
 
-Cambios pedidos en la revisión manual, pantalla por pantalla. Se mantiene la identidad de marca
-(**naranja primario** y superficies oscuras); fuera de eso, esta pasada se tomó la libertad de
-reacomodar tamaños, formas y colores para que cada acción se reconozca de un golpe.
+La revisión manual del 21 sep 2026 dejó, además de los ajustes de presentación (que **no** se
+documentan aquí: el diseño de las pantallas se define fuera de este repositorio), estas decisiones de
+comportamiento:
 
-| Pantalla | Cambio |
+| Tema | Decisión |
 |---|---|
 | **Login** | Check **«Mantener la sesión abierta»** (marcado por defecto): sin marcarlo, `POST /auth/login` guarda el token **solo en memoria** (`SessionStore.saveSession(persist: false)`) y al cerrar la app se vuelve a pedir la contraseña. Se quitó la URL base de la API que se imprimía en modo debug y en su lugar hay un enlace directo a `https://ezyventas.com/login` (`url_launcher` → navegador del teléfono). |
-| **Vender** | Buscador en pastilla con el icono de la marca, chips de categoría rellenos de naranja al estar activos, tarjetas con borde naranja y precio en naranja cuando hay promoción, stock en **verde**/**rojo**, y barra del carrito con filete y contador (`3 productos · 5 artículos`). |
 | **Detalle de producto** | Descripción en **texto plano** (`HtmlText.toPlain`: el servidor la guarda como texto enriquecido, `<p>dsfg</p>`). Se quitó la sección `Etiqueta` / `Imprimir etiqueta`. |
-| **Carrito** | Total destacado arriba en una franja de la marca, sección `PRODUCTOS`, franja de color por producto, stepper con el `+` en naranja, `Cobrar` más alto (56 px), `Apartar` en azul y `Pedido` con borde. Se dejó de llamar «línea» al producto. |
-| **Impresión** | Fuera `Ver respaldo HTML` (devolvía error del servidor; ver más abajo). Botón principal `Imprimir ticket`/`Imprimir etiqueta` según el documento y más alto, **Buscar/Conectar/Cambiar impresora en azul Bluetooth** y **Enviar por WhatsApp en verde**. |
 | **Orden de servicio** | Las evidencias ya se ven: era el certificado autofirmado (ver §4.1). Además, si la miniatura del servidor no existe se cae a la **foto original** y tocar una evidencia la abre a pantalla completa con zoom. |
 | **Notificaciones** | **Sí estaba desarrollada**: la campana lee `GET /notifications` (`expiring_debts`, `upcoming_deliveries`, `unread_updates`, `pending_orders`) y `Cuenta → Notificaciones` las explica y navega. Lo que faltaba era **refrescar**: ahora el cascarón vuelve a pedir los contadores cada vez que la app pasa a primer plano (`AppShell` con `WidgetsBindingObserver`), así que un apartado que vence o un pedido que entra mientras el teléfono está guardado se ve sin reiniciar la app. Comprobado contra la API real con la cuenta del propietario: `{"expiring_debts":1,…,"total":1}` (el mismo aviso que muestra la web). |
-
-**Respaldo HTML.** `POST /print/ticket-html` respondía `Ocurrió un error en el servidor.` en la
-corrida real, así que el botón se quitó de la hoja (y se borró el widget `ticket_html_sheet.dart`).
-La capa de datos y sus pruebas se conservan: si el backend lo arregla, solo hay que volver a pintar
-el botón.
-
-
 
 32. **El plugin de Bluetooth solo pide los permisos al escanear, y la hoja pedía primero las
     emparejadas (app, corregido).** `flutter_blue_plus` resuelve `BLUETOOTH_SCAN` /
@@ -781,7 +827,7 @@ el botón.
     responde `has_photo: false` y aun así `profile_photo_url: "https://ui-avatars.com/api/?name=J+A&…"`
     (accesor de Jetstream `HasProfilePhoto`). El contrato §11b.4 lo describe como «URL de la foto», así que
     la app decide con **`has_photo`** y `UserProfile.realPhotoUrl` devuelve `null` cuando es `false`; el
-    avatar generado no se pinta (la app ya dibuja iniciales con `UserAvatar`, respetando la paleta Tesla).
+    avatar generado no se pinta (la app ya dibuja iniciales con `UserAvatar`).
 23. **El estado de la suscripción llega en masculino.** El contrato §11b.5 documenta `activa` / `expirada` /
     `suspendida` y las reglas de color hablan de esos textos, pero el enum real
     (`App\Enums\SubscriptionStatus`) usa `activo` / `expirado` / `suspendido`; la respuesta real es
@@ -841,13 +887,21 @@ el botón.
 ("Tu sesion expiro. Inicia sesion de nuevo.").
 
 ### Tema
-"Tesla UI" en `lib/core/theme/`: modo oscuro por defecto (`#232323` paneles, `#1A1A1A` fondo e
-inputs, bordes de 1 px sin sombras, radios 24/16/pill, micro-etiquetas de 10 px en mayusculas).
-La tipografia es **Figtree** (fuente variable empaquetada en `assets/fonts`), asi Flutter aplica
-el eje `wght` con `FontWeight`. El cambio a claro se guarda en el almacenamiento seguro
-(`theme_mode`). La marca la pinta `BrandLogo` con los logotipos de `assets/images/` (blanco sobre
-el tema oscuro, negro sobre el claro) y el ícono del lanzador se genera con `tool/app_icons.ps1`
+Los **tokens** del tema viven en `lib/core/theme/` (colores, tipografía, severidades) y los widgets
+del sistema los leen de ahí, así que una pantalla no fija colores ni medidas propias. El modo
+claro/oscuro se guarda en el almacenamiento seguro (`theme_mode`). La marca la pinta `BrandLogo` con
+los logotipos de `assets/images/` y el ícono del lanzador se genera con `tool/app_icons.ps1`
 (ver §4.3).
+
+El **lienzo** del modo claro es un gris (`EzyColors.surfaceLightCanvas`, `#E9EBF0`) y no el
+`panelInner` blanco de antes: cards, filtros y campos son blancos, y con el fondo casi blanco se
+despegaban poco. En el modo oscuro no hubo cambio porque el lienzo ya era más oscuro que los paneles
+(`surfaceDarkInner`).
+
+El avatar sin foto (`UserAvatar(onBrand: true)`, cabecera del POS y del menú lateral) va sobre un
+**degradado blanco → gris** con las iniciales oscuras: sobre el naranja de la banda, el naranja sobre
+naranja no se leía. El dato importa porque el servidor manda un `profile_photo_url` de *ui-avatars*
+aunque el usuario no tenga foto (hallazgo 22), así que lo normal es ver las iniciales.
 
 ### Impresora termica (etapa 6)
 `lib/core/printing/`:
@@ -1291,10 +1345,10 @@ paso es mantener visible el splash nativo hasta el primer frame (`io.flutter.emb
 BackgroundMode = transparent` en el manifiesto), que no se aplicó para no cambiar el rendimiento del
 arranque sin medirlo.
 
-La pantalla ya cargada se verificó igual (histograma de la captura, sin subir imágenes): el login ocupa
-la pantalla completa con el fondo y los paneles del tema — **59.2 % `#232323`, 29.7 % `#1A1A1A` y
-1.9 % del naranja de marca `#F68C0F`** — y **0 %** de negro puro; el `#1A1A1A` coincide con el
-`launch_background`, así que el paso del splash nativo al de Flutter no cambia de color.
+La pantalla ya cargada se verificó igual (histograma de la captura, sin subir imágenes): el fondo y
+los paneles del tema cubren la pantalla completa, con **0 %** de negro puro y el `#1A1A1A` del
+`launch_background` coincidiendo con el fondo del tema, así que el paso del splash nativo al de
+Flutter no cambia de color.
 
 ---
 
@@ -1308,14 +1362,17 @@ lib/
   - auth/        SessionStore, PermissionsService, AppTab
   - config/      AppConfig (API_BASE_URL, timeouts, locale)
   - printing/    BluetoothPrinterService, EscPosBuilder + Cp850, PrinterPreferences (etapa 6)
+  - scanner/     escáner de códigos de barras y QR a pantalla completa + lanzador
   - router/      go_router + StatefulShellRoute
-  - theme/       Tesla UI: colores, tipografia, tema, severidades
+  - theme/       tokens del tema (colores, tipografia, severidades); el modo claro/oscuro se guarda
+                 en el almacenamiento seguro (`theme_mode`)
   - utils/       Money, AppFormatters, JsonReader, SearchDebouncer, StatusCatalog, Uuid,
                  ExternalLinks (abre enlaces del sistema)
   - storage/     LocalCache (último valor cacheado de notificaciones)
   - widgets/     FieldLabel, EzyTextField, MoneyField, EzyButton, SectionCard, ...
 - features/
   - auth/        login, splash, modelos de sesion, repositorio, controlador
+  - home/        pestana Inicio: bienvenida y pistas (el resumen del negocio, pendiente)
   - account/     pestana Cuenta y sus pantallas (etapa 7): perfil, sucursal,
                  notificaciones, soporte y suscripcion + repositorio,
                  controladores y modelos
@@ -1330,7 +1387,7 @@ lib/
                  y borrado (etapa 5)
   - printing/    plantillas, impresion ESC/POS y TSPL, respaldo HTML, WhatsApp y
                  el corte de caja en el dispositivo (etapa 6)
-  - shell/       cascaron de 5 pestanas
+  - shell/       cascaron de pestanas (menu lateral con la navegacion y las acciones)
 ```
 
 ---

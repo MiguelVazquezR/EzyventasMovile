@@ -10,7 +10,6 @@ import '../../../core/theme/theme_mode_controller.dart';
 import '../../../core/widgets/app_screen_header.dart';
 import '../../../core/widgets/ezy_button.dart';
 import '../../../core/widgets/ezy_chip.dart';
-import '../../../core/widgets/ezy_dialog.dart';
 import '../../../core/widgets/ezy_list_tile.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../../../core/widgets/section_card.dart';
@@ -20,6 +19,7 @@ import '../../auth/data/models/auth_user.dart';
 import '../application/account_providers.dart';
 import '../application/subscription_controller.dart';
 import 'account_labels.dart';
+import 'logout_flow.dart';
 
 /// Pestaña "Cuenta": equivalente móvil del menú de usuario del topbar web (§9b).
 ///
@@ -111,21 +111,9 @@ class AccountScreen extends ConsumerWidget {
   String? _subscriptionWarning(WidgetRef ref) =>
       ref.watch(subscriptionProvider).value?.statusData.warning;
 
-  Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showEzyConfirmDialog(
-      context,
-      title: AccountLabels.logoutTitle,
-      message: AccountLabels.logoutMessage,
-      confirmLabel: AccountLabels.logout,
-      isDestructive: true,
-    );
-
-    if (confirmed) {
-      // La caché local (contadores de notificaciones) se limpia antes de salir.
-      await ref.read(notificationsControllerProvider.notifier).clear();
-      await ref.read(authControllerProvider.notifier).logout();
-    }
-  }
+  /// Confirmación + cierre de sesión: el mismo recorrido que el menú lateral.
+  Future<void> _confirmLogout(BuildContext context, WidgetRef ref) =>
+      confirmAndLogout(context, ref);
 }
 
 /// Opciones del menú de cuenta (§14.2).

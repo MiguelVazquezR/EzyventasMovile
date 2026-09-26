@@ -46,6 +46,42 @@ class CartController extends Notifier<CartState> {
     ProductLineBuilder.build(product, variant: variant, quantity: quantity),
   );
 
+  /// Línea del carrito de un producto **sin variantes**, si está en el carrito.
+  ///
+  /// Es la que usan el `+` y el `-` de la tarjeta del catálogo: la rejilla solo
+  /// agrega productos simples (los que tienen variantes se resuelven en el
+  /// detalle), así que la línea que busca es la de `variant_id` nulo.
+  CartLine? simpleLineOf(int productId) {
+    for (final line in state.lines) {
+      if (line.productId == productId && line.variantId == null) {
+        return line;
+      }
+    }
+
+    return null;
+  }
+
+  /// Suma una unidad del producto sin variantes (crea la línea si no existe).
+  void incrementProduct(Product product) {
+    final line = simpleLineOf(product.id);
+
+    if (line == null) {
+      addProduct(product);
+      return;
+    }
+
+    incrementLine(line);
+  }
+
+  /// Resta una unidad del producto sin variantes; en cero lo quita del carrito.
+  void decrementProduct(int productId) {
+    final line = simpleLineOf(productId);
+
+    if (line != null) {
+      decrementLine(line);
+    }
+  }
+
   /// Agrega una línea; si ya existe la misma variante del mismo producto, suma
   /// la cantidad (sin tocar un precio capturado a mano).
   void addLine(CartLine line) {

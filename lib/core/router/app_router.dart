@@ -13,6 +13,7 @@ import '../../features/auth/application/auth_state.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
 import '../../features/cash/presentation/cash_register_screen.dart';
+import '../../features/home/presentation/home_screen.dart';
 import '../../features/pos/presentation/point_of_sale_screen.dart';
 import '../../features/sales/presentation/sales_screen.dart';
 import '../../features/service_orders/presentation/service_order_form_screen.dart';
@@ -105,6 +106,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state, navigationShell) =>
             AppShell(navigationShell: navigationShell),
         branches: <StatefulShellBranch>[
+          // El orden tiene que ser el de `AppTab.values`: el cascarón cambia de
+          // pestaña con `goBranch(AppTab.values.indexOf(tab))`.
+          _branch(AppTab.home, const HomeScreen()),
           _branch(AppTab.sell, const PointOfSaleScreen()),
           _branch(AppTab.serviceOrders, const ServiceOrdersScreen()),
           _branch(AppTab.cashRegister, const CashRegisterScreen()),

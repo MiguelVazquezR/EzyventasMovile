@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_action_bar.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
@@ -20,10 +21,9 @@ import '../../data/models/store_order_draft.dart';
 /// Devuelve `true` cuando el pedido quedó registrado (el folio lo muestra la
 /// hoja del carrito).
 Future<bool> showStoreOrderSheet(BuildContext context) async {
-  final result = await showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
+  final result = await EzyBottomSheet.show<bool>(
+    context,
+    maxHeightFactor: 0.96,
     builder: (sheetContext) => const _StoreOrderSheet(),
   );
 
@@ -66,91 +66,99 @@ class _StoreOrderSheetState extends ConsumerState<_StoreOrderSheet> {
   Widget build(BuildContext context) {
     final cart = ref.watch(cartControllerProvider);
 
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.92,
-      maxChildSize: 0.96,
-      builder: (context, scrollController) => ListView(
-        controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-        children: <Widget>[
-          const SizedBox(height: 8),
-          EzySheetHeader(
-            title: _type == StoreOrderDraft.comanda ? 'Comanda' : 'Pedido',
-            subtitle: 'El stock queda reservado; se cobra al entregar.',
-            padding: EdgeInsets.zero,
-          ),
-          const SizedBox(height: 16),
-          SectionCard(
-            title: 'Datos de contacto',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                _TypeSelector(
-                  type: _type,
-                  onChanged: (value) => setState(() => _type = value),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        EzySheetHeader(
+          title: _type == StoreOrderDraft.comanda ? 'Comanda' : 'Pedido',
+          subtitle: 'El stock queda reservado; se cobra al entregar.',
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        ),
+        Flexible(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: <Widget>[
+              SectionCard(
+                title: 'Datos de contacto',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    _TypeSelector(
+                      type: _type,
+                      onChanged: (value) => setState(() => _type = value),
+                    ),
+                    const SizedBox(height: 16),
+                    EzyTextField(
+                      label: 'Nombre de quien recibe',
+                      isRequired: true,
+                      controller: _nameController,
+                      errorText: _nameError(cart),
+                      maxLength: 255,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 16),
+                    EzyTextField(
+                      label: 'Teléfono',
+                      hint: 'Opcional',
+                      keyboardType: TextInputType.phone,
+                      controller: _phoneController,
+                      errorText: cart.errorFor('contact_info.phone'),
+                      maxLength: 20,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                EzyTextField(
-                  label: 'Nombre de quien recibe',
-                  isRequired: true,
-                  controller: _nameController,
-                  errorText: _nameError(cart),
-                  maxLength: 255,
-                  onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 12),
+              _DeliveryCard(
+                cart: cart,
+                deliveryController: _deliveryController,
+                addressController: _addressController,
+                shippingController: _shippingController,
+                notesController: _notesController,
+                onPickDate: _pickDeliveryDate,
+                onShippingChanged: (value) =>
+                    setState(() => _shippingCost = value),
+              ),
+              const SizedBox(height: 12),
+              SectionCard(
+                title: 'Totales',
+                child: Column(
+                  children: <Widget>[
+                    SectionRow(
+                      label: 'Productos',
+                      value: Money.format(cart.total),
+                    ),
+                    SectionRow(
+                      label: 'Envío',
+                      value: Money.format(_shippingCost),
+                    ),
+                    const Divider(height: 24),
+                    SectionRow(
+                      label: 'Total del pedido',
+                      value: Money.format(cart.total + _shippingCost),
+                      emphasized: true,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                EzyTextField(
-                  label: 'Teléfono',
-                  hint: 'Opcional',
-                  keyboardType: TextInputType.phone,
-                  controller: _phoneController,
-                  errorText: cart.errorFor('contact_info.phone'),
-                  maxLength: 20,
-                ),
+              ),
+              if (cart.errorMessage != null) ...<Widget>[
+                const SizedBox(height: 12),
+                NoticeBanner(message: cart.errorMessage!),
               ],
-            ),
+            ],
           ),
-          const SizedBox(height: 12),
-          _DeliveryCard(
-            cart: cart,
-            deliveryController: _deliveryController,
-            addressController: _addressController,
-            shippingController: _shippingController,
-            notesController: _notesController,
-            onPickDate: _pickDeliveryDate,
-            onShippingChanged: (value) =>
-                setState(() => _shippingCost = value),
-          ),
-          const SizedBox(height: 12),
-          SectionCard(
-            title: 'Totales',
-            child: Column(
-              children: <Widget>[
-                SectionRow(label: 'Productos', value: Money.format(cart.total)),
-                SectionRow(label: 'Envío', value: Money.format(_shippingCost)),
-                const Divider(height: 24),
-                SectionRow(
-                  label: 'Total del pedido',
-                  value: Money.format(cart.total + _shippingCost),
-                  emphasized: true,
-                ),
-              ],
-            ),
-          ),
-          if (cart.errorMessage != null) ...<Widget>[
-            const SizedBox(height: 12),
-            NoticeBanner(message: cart.errorMessage!),
-          ],
-          const SizedBox(height: 16),
-          EzyButton(
+        ),
+        // El alta del pedido es la acción principal de la hoja: 56 al pie.
+        EzyActionBar(
+          child: EzyButton(
             label: 'Registrar pedido',
             icon: Icons.check_outlined,
+            height: 56,
             isLoading: cart.isSubmitting,
             onPressed: _canSubmit ? _submit : null,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -349,4 +357,3 @@ class _TypeSelector extends StatelessWidget {
     );
   }
 }
-

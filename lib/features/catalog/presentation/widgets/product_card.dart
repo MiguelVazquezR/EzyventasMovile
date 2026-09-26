@@ -7,14 +7,26 @@ import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/server_image.dart';
 import '../../data/models/product.dart';
 
-/// Tarjeta de producto del catálogo: imagen, nombre, precio con promoción y
-/// stock de la sucursal (Tesla UI: panel `#232323`, radio 24, borde de 1 px).
+/// Tarjeta de producto del catálogo: imagen, nombre, precio con promoción,
+/// stock de la sucursal y el contador `[-] n [+]` (§9).
+///
+/// **El contador.** Con el producto fuera del carrito la tarjeta ofrece «+»; con
+/// unidades dentro, ese mismo hueco se convierte en el contador `[-] 2 [+]`, así
+/// que el cajero ve y corrige la cantidad sin abrir nada. Es compacto (30 px por
+/// extremo) porque el del design system (`EzyQuantityStepper`, 40 px) no cabe en
+/// una tarjeta de 174 px de ancho; los textos de ayuda son los mismos.
+///
+/// La tarjeta es **presentacional**: quién está en el carrito y qué se hace al
+/// pulsar lo decide quien la usa (la celda del catálogo del POS), no ella.
 class ProductCard extends StatelessWidget {
   const ProductCard({
     super.key,
     required this.product,
     this.onTap,
     this.onAdd,
+    this.quantity = 0,
+    this.onIncrement,
+    this.onDecrement,
   });
 
   final Product product;
@@ -22,6 +34,12 @@ class ProductCard extends StatelessWidget {
 
   /// Agregado rápido de una unidad (solo productos sin variantes y con stock).
   final VoidCallback? onAdd;
+
+  /// Unidades de este producto en el carrito (`0` = sin agregar).
+  final double quantity;
+
+  final VoidCallback? onIncrement;
+  final VoidCallback? onDecrement;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +69,7 @@ class ProductCard extends StatelessWidget {
               // dos columnas del teléfono (174.4 x 256.4 px) un nombre de dos
               // líneas desbordaba el `Column` por 1.1 px
               // (`RenderFlex overflowed by 1.1 pixels on the bottom`).
-              Expanded(child: _Thumbnail(product: product, onAdd: onAdd)),
+              Expanded(child: _Thumbnail(product: product)),
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
                 child: Column(
@@ -69,6 +87,15 @@ class ProductCard extends StatelessWidget {
                     _PriceLine(product: product),
                     const SizedBox(height: 8),
                     _StockLine(product: product),
+                    if (onAdd != null || quantity > 0) ...<Widget>[
+                      const SizedBox(height: 10),
+                      _QuantityControl(
+                        quantity: quantity,
+                        onAdd: onAdd,
+                        onIncrement: onIncrement,
+                        onDecrement: onDecrement,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -80,76 +107,59 @@ class ProductCard extends StatelessWidget {
   }
 }
 
+/// Marco de la foto: fondo interior del panel, `BoxFit.contain` y las pastillas
+/// de promoción y de stock encima.
+///
+/// `cardImage` en lugar de `displayImage`: el producto que solo tiene fotos por
+/// variante muestra la de su primera combinación en lugar del marcador del
+/// servidor.
 class _Thumbnail extends StatelessWidget {
-  const _Thumbnail({required this.product, this.onAdd});
+  const _Thumbnail({required this.product});
 
   final Product product;
-
-  /// Botón de agregado rápido (una unidad) para productos simples.
-  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
-    final image = product.displayImage;
+    final image = product.cardImage;
 
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      // `SizedBox.expand` en lugar de `AspectRatio`: la imagen ocupa el alto que
-      // le deja el texto y nunca empuja al `Column` fuera de su tarjeta.
-      child: SizedBox.expand(
+      child: ColoredBox(
+        color: surfaces.panelInner,
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            if (image != null)
-              ServerImage(
-                image,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _placeholder(),
-              )
-            else
-              _placeholder(),
-            if (product.hasPromotion)
-              Positioned(
-                top: 10,
-                left: 10,
-                child: _Badge(
-                  label: 'Promoción',
-                  background: EzyColors.primary,
-                  foreground: EzyColors.black1,
-                ),
-              ),
-            if (product.hasVariants)
-              Positioned(
-                top: 10,
-                right: 10,
-                child: _Badge(
-                  label: 'Variantes',
-                  background: surfaces.panel,
-                  foreground: surfaces.textSecondary,
-                  border: surfaces.border,
-                ),
-              ),
-            if (onAdd != null && !product.isOutOfStock)
-              Positioned(
-                bottom: 10,
-                right: 10,
-                child: Material(
-                  color: EzyColors.primary,
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    onTap: onAdd,
-                    customBorder: const CircleBorder(),
-                    child: const SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: Icon(
-                        Icons.add,
-                        size: 20,
-                        color: EzyColors.black1,
-                      ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: image == null || image.isEmpty
+                  ? _placeholder(context)
+                  : ServerImage(
+                      image,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) =>
+                          _placeholder(context),
                     ),
-                  ),
+            ),
+            if (product.hasPromotion)
+              const Positioned(
+                top: 8,
+                left: 8,
+                child: _Badge(
+                  label: 'Promo',
+                  background: EzyColors.primary,
+                  foreground: EzyColors.white,
+                ),
+              ),
+            if (product.isOutOfStock)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: _Badge(
+                  label: 'Sin stock',
+                  background: StatusPalette.soft(EzySeverity.danger),
+                  foreground: StatusPalette.text(context, EzySeverity.danger),
+                  border: StatusPalette.border(EzySeverity.danger),
                 ),
               ),
           ],
@@ -158,26 +168,143 @@ class _Thumbnail extends StatelessWidget {
     );
   }
 
-  Widget _placeholder() {
-    return const DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[EzyColors.surfaceDark, EzyColors.surfaceDarkDeep],
+  /// Marcador cuando el producto no tiene foto: el icono en el tono mínimo, sin
+  /// inventar una imagen que no existe.
+  Widget _placeholder(BuildContext context) => Center(
+    child: Icon(
+      Icons.image_outlined,
+      size: 32,
+      color: context.surfaces.textMuted,
+    ),
+  );
+}
+
+
+/// Control de cantidad de la tarjeta, alineado a la derecha del pie.
+///
+/// Sin permiso de venta (`onAdd` nulo) no se pinta nada: la tarjeta no ofrece una
+/// acción que el servidor vaya a rechazar. Con el carrito a cero muestra el «+»;
+/// con unidades, el contador `[-] n [+]`.
+class _QuantityControl extends StatelessWidget {
+  const _QuantityControl({
+    required this.quantity,
+    this.onAdd,
+    this.onIncrement,
+    this.onDecrement,
+  });
+
+  final double quantity;
+  final VoidCallback? onAdd;
+  final VoidCallback? onIncrement;
+  final VoidCallback? onDecrement;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
+    if (onAdd == null) {
+      return const SizedBox.shrink();
+    }
+
+    if (quantity <= 0) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Tooltip(
+          message: 'Agregar al carrito',
+          child: GestureDetector(
+            onTap: onAdd,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: const BoxDecoration(
+                color: EzyColors.primary,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.add, size: 20, color: EzyColors.white),
+            ),
+          ),
         ),
-      ),
-      child: Center(
-        child: Icon(
-          Icons.image_outlined,
-          size: 30,
-          color: EzyColors.primary300,
+      );
+    }
+
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        decoration: BoxDecoration(
+          color: surfaces.panelInner,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: surfaces.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _StepButton(
+              icon: Icons.remove,
+              tooltip: 'Quitar una unidad',
+              color: surfaces.textSecondary,
+              onTap: onDecrement,
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                Money.formatQuantity(quantity),
+                style: EzyTextStyles.bodyStrong.copyWith(
+                  color: surfaces.textPrimary,
+                ),
+              ),
+            ),
+            _StepButton(
+              icon: Icons.add,
+              tooltip: 'Agregar una unidad',
+              color: EzyColors.primary,
+              onTap: onIncrement,
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
+/// Extremo del contador: 30 px de lado, icono de 16 y tono mínimo si la acción
+/// está desactivada (así el control no cambia de tamaño entre estados).
+class _StepButton extends StatelessWidget {
+  const _StepButton({
+    required this.icon,
+    required this.tooltip,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final Color color;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: 30,
+          height: 30,
+          child: Icon(
+            icon,
+            size: 16,
+            color: onTap == null ? context.surfaces.textMuted : color,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Precio de venta y, si hay promoción, el de lista tachado al lado.
 class _PriceLine extends StatelessWidget {
   const _PriceLine({required this.product});
 
@@ -227,6 +354,10 @@ class _PriceLine extends StatelessWidget {
   }
 }
 
+/// Stock de la sucursal: verde con existencias, rojo agotado.
+///
+/// El color del stock es el semáforo de la tarjeta (el resto del texto ya es
+/// alto/medio/bajo) y la unidad sale del catálogo (`pz`, `kg`).
 class _StockLine extends StatelessWidget {
   const _StockLine({required this.product});
 
@@ -234,8 +365,6 @@ class _StockLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Con stock, verde; agotado, rojo. El color del stock es el semáforo de la
-    // tarjeta (el resto del texto ya es alto/medio/bajo).
     final severity = product.isOutOfStock
         ? EzySeverity.danger
         : EzySeverity.success;
@@ -269,6 +398,7 @@ class _StockLine extends StatelessWidget {
   }
 }
 
+/// Pastilla de estado sobre la foto (promoción, agotado).
 class _Badge extends StatelessWidget {
   const _Badge({
     required this.label,
@@ -298,3 +428,4 @@ class _Badge extends StatelessWidget {
     );
   }
 }
+

@@ -23,6 +23,7 @@ class EzyListTile extends StatelessWidget {
     this.enabled = true,
     this.badgeCount,
     this.badgeColor = EzyColors.danger,
+    this.isSelected = false,
   });
 
   final String title;
@@ -51,13 +52,20 @@ class EzyListTile extends StatelessWidget {
   final int? badgeCount;
   final Color badgeColor;
 
+  /// Pestaña activa (menú lateral): el cuadro del icono y el título toman el
+  /// naranja de marca. Es el mismo lenguaje que la pestaña activa de la barra
+  /// inferior: el estado se lee por color, sin pastillas de fondo.
+  final bool isSelected;
+
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
     final accent = isDestructive ? EzyColors.danger : surfaces.textSecondary;
     final foreground = !enabled
         ? surfaces.textMuted
-        : (isDestructive ? EzyColors.danger : surfaces.textPrimary);
+        : (isDestructive
+              ? EzyColors.danger
+              : (isSelected ? EzyColors.primary : surfaces.textPrimary));
     final canTap = enabled ? onTap : null;
 
     return Column(
@@ -77,15 +85,23 @@ class EzyListTile extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: isDestructive
                           ? EzyColors.danger.withValues(alpha: 0.10)
-                          : surfaces.panelInner,
+                          : (isSelected
+                                ? EzyColors.primary.withValues(alpha: 0.14)
+                                : surfaces.panelInner),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: isDestructive
                             ? EzyColors.danger.withValues(alpha: 0.3)
-                            : surfaces.border,
+                            : (isSelected
+                                  ? EzyColors.primary.withValues(alpha: 0.45)
+                                  : surfaces.border),
                       ),
                     ),
-                    child: Icon(icon, size: 20, color: accent),
+                    child: Icon(
+                      icon,
+                      size: 20,
+                      color: isSelected ? EzyColors.primary : accent,
+                    ),
                   ),
                   const SizedBox(width: 14),
                 ],

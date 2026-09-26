@@ -64,6 +64,17 @@ class CartState {
   double get itemCount =>
       Money.round2(lines.fold<double>(0, (sum, line) => sum + line.quantity));
 
+  /// Cantidad de un producto **sin variantes** en el carrito.
+  ///
+  /// La usa la rejilla del catálogo para el contador `[-] n [+]` de la tarjeta.
+  /// Las líneas con variante no cuentan: cada combinación es una línea aparte y
+  /// el `+` de la tarjeta nunca las crea (esas pasan por el detalle).
+  double quantityOf(int productId) => Money.round2(
+    lines
+        .where((line) => line.productId == productId && line.variantId == null)
+        .fold<double>(0, (sum, line) => sum + line.quantity),
+  );
+
   /// `Σ(precio de lista × cantidad)`.
   double get subtotal => Money.round2(
     lines.fold<double>(0, (sum, line) => sum + line.lineSubtotal),

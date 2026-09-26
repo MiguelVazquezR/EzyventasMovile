@@ -8,10 +8,12 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/empty_state.dart';
+import '../../../../core/widgets/ezy_action_bar.dart';
 import '../../../../core/widgets/ezy_amount.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
+import '../../../../core/widgets/ezy_list_tile.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../auth/application/auth_controller.dart';
@@ -26,15 +28,15 @@ import 'store_order_sheet.dart';
 
 /// Abre el carrito del POS (líneas, cliente, totales y acciones de cobro).
 Future<void> showCartSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
+  return EzyBottomSheet.show<void>(
+    context,
+    maxHeightFactor: 0.96,
     builder: (sheetContext) => const CartSheet(),
   );
 }
 
-/// Carrito a pantalla completa dentro de un bottom sheet.
+/// Carrito dentro de la hoja estándar: cabecera, líneas con scroll y el CTA de
+/// cobro **fijo** al pie (§7.6).
 class CartSheet extends ConsumerWidget {
   const CartSheet({super.key});
 
@@ -44,78 +46,82 @@ class CartSheet extends ConsumerWidget {
     final controller = ref.read(cartControllerProvider.notifier);
     final result = cart.result;
 
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.92,
-      maxChildSize: 0.96,
-      builder: (context, scrollController) => ListView(
-        controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+    if (result != null) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         children: <Widget>[
-          if (result != null) ...<Widget>[
-            const SizedBox(height: 8),
-            SaleResultView(
-              result: result,
-              onDone: () {
-                controller.consumeResult();
-                Navigator.of(context).pop();
-              },
-            ),
-          ] else ...<Widget>[
-            const SizedBox(height: 8),
-            EzySheetHeader(
-              title: 'Carrito',
-              subtitle: cartSummaryLabel(cart),
-              trailing: EzyIconButton(
-                icon: Icons.close,
-                tooltip: 'Cerrar',
-                onTap: () => Navigator.of(context).pop(),
-              ),
-              padding: EdgeInsets.zero,
-            ),
-            const SizedBox(height: 12),
-            _CartTotalBand(cart: cart),
-            const SizedBox(height: 16),
-            const _CustomerCard(),
-            const SizedBox(height: 8),
-            Text(
-              'PRODUCTOS',
-              style: EzyTextStyles.cardTitle.copyWith(
-                color: context.surfaces.textBody,
-              ),
-            ),
-            const SizedBox(height: 12),
-            for (final line in cart.lines) CartLineTile(line: line),
-            if (cart.isEmpty)
-              const EmptyState(
-                compact: true,
-                icon: Icons.shopping_cart_outlined,
-                title: 'El carrito está vacío',
-                message:
-                    'Agrega productos desde el catálogo para empezar la venta.',
-              ),
-            if (cart.notice != null) ...<Widget>[
+          SaleResultView(
+            result: result,
+            onDone: () {
+              controller.consumeResult();
+              Navigator.of(context).pop();
+            },
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        EzySheetHeader(
+          title: 'Carrito',
+          subtitle: cartSummaryLabel(cart),
+          trailing: EzyIconButton(
+            icon: Icons.close,
+            tooltip: 'Cerrar',
+            onTap: () => Navigator.of(context).pop(),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        ),
+        Flexible(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: <Widget>[
+              _CartTotalBand(cart: cart),
               const SizedBox(height: 12),
-              NoticeBanner(
-                message: cart.notice!,
-                tone: EzySeverity.warn,
-                actionLabel: 'Ocultar',
-                onAction: controller.consumeNotice,
+              const _CustomerRow(),
+              const SizedBox(height: 16),
+              Text(
+                'PRODUCTOS',
+                style: EzyTextStyles.cardTitle.copyWith(
+                  color: context.surfaces.textBody,
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (final line in cart.lines) CartLineTile(line: line),
+              if (cart.isEmpty)
+                const EmptyState(
+                  compact: true,
+                  icon: Icons.shopping_cart_outlined,
+                  title: 'El carrito está vacío',
+                  message:
+                      'Agrega productos desde el catálogo para empezar la '
+                      'venta.',
+                ),
+              if (cart.notice != null) ...<Widget>[
+                const SizedBox(height: 12),
+                NoticeBanner(
+                  message: cart.notice!,
+                  tone: EzySeverity.warn,
+                  actionLabel: 'Ocultar',
+                  onAction: controller.consumeNotice,
+                ),
+              ],
+              const SizedBox(height: 12),
+              _TotalsCard(cart: cart),
+              const SizedBox(height: 8),
+              EzyButton(
+                label: 'Vaciar carrito',
+                variant: EzyButtonVariant.text,
+                onPressed: cart.isEmpty ? null : () => controller.clear(),
               ),
             ],
-            const SizedBox(height: 12),
-            _TotalsCard(cart: cart),
-            const SizedBox(height: 16),
-            const _CheckoutSection(),
-            const SizedBox(height: 8),
-            EzyButton(
-              label: 'Vaciar carrito',
-              variant: EzyButtonVariant.text,
-              onPressed: cart.isEmpty ? null : () => controller.clear(),
-            ),
-          ],
-        ],
-      ),
+          ),
+        ),
+        // El cobro no se busca bajando: vive fijo al pie de la hoja.
+        EzyActionBar(child: const _CheckoutSection()),
+      ],
     );
   }
 }
@@ -148,48 +154,37 @@ class _CartTotalBand extends StatelessWidget {
 }
 
 /// Cliente de la venta (o público general con nombre opcional).
-class _CustomerCard extends ConsumerWidget {
-  const _CustomerCard();
+///
+/// Es una **fila** del design system (`EzyListTile`) y no una card con título y
+/// botón «Cambiar»: la fila entera abre el selector, que es una hoja inferior
+/// que se arrastra hacia abajo para cerrarla —el gesto de las secciones de
+/// Mercado Pago—, así que el chevron ya dice que se abre (§10).
+class _CustomerRow extends ConsumerWidget {
+  const _CustomerRow();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cart = ref.watch(cartControllerProvider);
+    final customer = cart.customer;
+    final guestName = cart.guestName.trim();
 
-    return SectionCard(
-      title: 'Cliente',
-      trailing: EzyButton(
-        label: 'Cambiar',
-        variant: EzyButtonVariant.text,
-        expand: false,
-        onPressed: () => showCustomerPickerSheet(context),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            cart.customer?.displayName ??
-                (cart.guestName.trim().isEmpty
-                    ? 'Público general'
-                    : cart.guestName.trim()),
-            style: EzyTextStyles.bodyStrong.copyWith(
-              color: context.surfaces.textPrimary,
-            ),
-          ),
-          if (cart.customer != null) ...<Widget>[
-            const SizedBox(height: 4),
-            Text(
-              <String>[
-                'Saldo ${Money.format(cart.customer!.balance)}',
-                if (cart.customer!.hasCredit)
-                  'Crédito ${Money.format(cart.customer!.availableCredit)}',
-              ].join(' · '),
-              style: EzyTextStyles.caption.copyWith(
-                color: context.surfaces.textMuted,
-              ),
-            ),
-          ],
-        ],
-      ),
+    final subtitle = customer != null
+        ? <String>[
+            'Saldo ${Money.format(customer.balance)}',
+            if (customer.hasCredit)
+              'Crédito ${Money.format(customer.availableCredit)}',
+          ].join(' · ')
+        : (guestName.isEmpty
+              ? 'Toca para elegir un cliente.'
+              : 'Público general · Toca para cambiar.');
+
+    return EzyListTile(
+      icon: Icons.person_outline,
+      title: customer?.displayName ??
+          (guestName.isEmpty ? 'Público general' : guestName),
+      subtitle: subtitle,
+      showDivider: false,
+      onTap: () => showCustomerPickerSheet(context),
     );
   }
 }
@@ -231,6 +226,10 @@ class _TotalsCard extends StatelessWidget {
 ///
 /// Sin sesión de caja abierta el servidor responde `session_required`, así que
 /// la app bloquea los botones y lleva al flujo de apertura.
+///
+/// Las tres comparten una fila de 48 px y ninguna lleva icono (§8: `Cobrar` se
+/// distingue por el naranja de la marca, no por el alto), para que el carrito
+/// tenga el máximo de alto útil.
 class _CheckoutSection extends ConsumerWidget {
   const _CheckoutSection();
 
@@ -253,7 +252,8 @@ class _CheckoutSection extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           NoticeBanner(
-            message: 'Necesitas una sesión de caja abierta para registrar ventas.',
+            message:
+                'Necesitas una sesión de caja abierta para registrar ventas.',
             tone: EzySeverity.warn,
             actionLabel: 'Ir a Caja',
             onAction: () {
@@ -264,8 +264,6 @@ class _CheckoutSection extends ConsumerWidget {
           const SizedBox(height: 12),
           EzyButton(
             label: 'Cobrar',
-            icon: Icons.payments_outlined,
-            height: 56,
             onPressed: null,
           ),
         ],
@@ -274,46 +272,38 @@ class _CheckoutSection extends ConsumerWidget {
 
     final enabled = !cart.isEmpty && !cart.isSubmitting;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    // Las tres acciones caben en **una sola fila** de 48 px (sin icono): el pie
+    // de la hoja le deja así unos 64 px más de alto al contenido del carrito.
+    // `Cobrar` sigue siendo la acción primaria, pero por color (§1.1).
+    return Row(
       children: <Widget>[
-        EzyButton(
-          label: 'Cobrar',
-          icon: Icons.payments_outlined,
-          isLoading: cart.isSubmitting,
-          // El cobro es la acción principal: botón más alto y en el naranja de
-          // la marca.
-          height: 56,
-          onPressed: enabled
-              ? () => showPaymentSheet(context, mode: PaymentMode.checkout)
-              : null,
+        Expanded(
+          child: EzyButton(
+            label: 'Cobrar',
+            isLoading: cart.isSubmitting,
+            onPressed: enabled
+                ? () => showPaymentSheet(context, mode: PaymentMode.checkout)
+                : null,
+          ),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: EzyButton(
-                label: 'Apartar',
-                icon: Icons.bookmark_add_outlined,
-                // Azul: deja el producto reservado sin cobrarlo.
-                variant: EzyButtonVariant.info,
-                onPressed: enabled
-                    ? () => showPaymentSheet(context, mode: PaymentMode.layaway)
-                    : null,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: EzyButton(
-                label: 'Pedido',
-                icon: Icons.local_shipping_outlined,
-                variant: EzyButtonVariant.outline,
-                onPressed: enabled
-                    ? () => showStoreOrderSheet(context)
-                    : null,
-              ),
-            ),
-          ],
+        const SizedBox(width: 8),
+        Expanded(
+          child: EzyButton(
+            label: 'Apartar',
+            // Azul: deja el producto reservado sin cobrarlo.
+            variant: EzyButtonVariant.info,
+            onPressed: enabled
+                ? () => showPaymentSheet(context, mode: PaymentMode.layaway)
+                : null,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: EzyButton(
+            label: 'Pedido',
+            variant: EzyButtonVariant.outline,
+            onPressed: enabled ? () => showStoreOrderSheet(context) : null,
+          ),
         ),
       ],
     );

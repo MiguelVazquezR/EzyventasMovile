@@ -61,15 +61,32 @@ if (-not $devices) {
     Write-Warning 'No hay ningun dispositivo Android conectado (USB + depuracion USB activada).'
 }
 
+# `adb reverse --remove` escribe en stderr cuando no habia un listener previo
+# ("error: listener 'tcp:<puerto>' not found"). Con $ErrorActionPreference = 'Stop'
+# esa salida de un comando nativo aborta el script, justo en el caso mas comun
+# (primer tunel, o tunel que ya se habia caido). Alrededor de los --remove se
+# relaja la preferencia para que sea de verdad idempotente.
+function Remove-ReverseTunnel {
+    param([int]$RemovePort)
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $adb reverse --remove "tcp:$RemovePort" 2>&1 | Out-Null
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
 if ($Remove) {
-    & $adb reverse --remove "tcp:$Port"
+    Remove-ReverseTunnel -RemovePort $Port
     Write-Host "Tunel tcp:$Port eliminado."
 } elseif (-not $Status) {
     # Se quita primero: si el telefono se reconecto (o el servidor adb se
     # reinicio), el registro puede quedar "vivo" en la lista pero muerto en la
     # practica (el telefono no llega a Herd). Volver a crearlo sin quitarlo deja
     # ese estado pegado; quitarlo y volver a crearlo siempre funciona.
-    & $adb reverse --remove "tcp:$Port" 2>$null | Out-Null
+    Remove-ReverseTunnel -RemovePort $Port
     & $adb reverse "tcp:$Port" 'tcp:443'
     Write-Host "Tunel listo: en el telefono, https://127.0.0.1:$Port -> https://127.0.0.1:443 (Herd)."
     Write-Host ''

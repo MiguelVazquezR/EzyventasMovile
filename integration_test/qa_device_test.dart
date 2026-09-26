@@ -23,13 +23,16 @@ import 'package:ezyventas_app/app.dart';
 import 'package:ezyventas_app/core/auth/session_store.dart';
 import 'package:ezyventas_app/core/config/app_config.dart';
 import 'package:ezyventas_app/core/printing/bluetooth_printer_service.dart';
+import 'package:ezyventas_app/core/widgets/app_drawer_scope.dart';
 import 'package:ezyventas_app/core/widgets/ezy_button.dart';
 import 'package:ezyventas_app/features/account/presentation/account_screen.dart';
 import 'package:ezyventas_app/features/cash/presentation/cash_register_screen.dart';
 import 'package:ezyventas_app/features/catalog/presentation/widgets/product_card.dart';
+import 'package:ezyventas_app/features/pos/presentation/widgets/cart_bar.dart';
 import 'package:ezyventas_app/features/printing/application/printer_controller.dart';
 import 'package:ezyventas_app/features/sales/presentation/widgets/transaction_tile.dart';
 import 'package:ezyventas_app/features/service_orders/presentation/widgets/service_order_tile.dart';
+import 'package:ezyventas_app/features/shell/presentation/widgets/app_drawer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,16 +43,32 @@ import 'package:intl/intl.dart';
 const String ownerEmail = String.fromEnvironment('LIVE_API_EMAIL');
 const String ownerPassword = String.fromEnvironment('LIVE_API_PASSWORD');
 const String employeeEmail = String.fromEnvironment('LIVE_EMPLOYEE_EMAIL');
-const String employeePassword = String.fromEnvironment('LIVE_EMPLOYEE_PASSWORD');
+const String employeePassword = String.fromEnvironment(
+  'LIVE_EMPLOYEE_PASSWORD',
+);
 
-/// Las cinco pestanas del cascaron (§4.1 del documento maestro).
-const List<String> shellTabs = <String>[
+/// Entradas que el menú lateral ofrece al usuario con todos los módulos
+/// contratados (`AppTab.values` en orden, más las acciones).
+///
+/// Vender y Caja **sí** están: desde que la navegación vive en el menú lateral no
+/// hay barra inferior que reparta huecos, así que todas las pestañas se listan
+/// igual.
+const List<String> shellMenu = <String>[
+  'Inicio',
   'Vender',
   'Órdenes',
   'Caja',
   'Ventas',
   'Cuenta',
 ];
+
+/// Acciones del menú lateral que el recorrido usa para empezar una venta o
+/// entrar a Caja.
+const String newSaleAction = 'Nueva venta';
+const String cashAction = 'Caja';
+
+/// Primer texto de la pestaña Inicio (destino por defecto tras el login).
+const String welcomeTitle = '¡Bienvenido!';
 
 /// Textos de `AccountLabels` que dependen del usuario (§14.2).
 ///
@@ -86,7 +105,15 @@ const String noStockNotice = 'El producto ya no tiene stock suficiente.';
 const String noPermissionNotice =
     'Tu usuario no tiene permiso para esta acción.';
 const String cartBarEmpty = 'Carrito vacío';
-const String cartBarFull = 'Ver carrito';
+
+/// El acceso al carrito con algo dentro: desde que el chevron sustituyó a la
+/// pastilla «Ver carrito» (le robaba al total el ancho de un renglón), el ancla
+/// de la barra es la flecha, dentro de la barra y no en cualquier lista.
+final Finder cartBarChevron = find.descendant(
+  of: find.byType(CartBar),
+  matching: find.byIcon(Icons.chevron_right),
+);
+
 const String cartTitle = 'Carrito';
 const String cartTotalsCard = 'TOTALES';
 const String clearCartLabel = 'Vaciar carrito';
@@ -145,12 +172,21 @@ Future<void> main() async {
     // 1) Login real contra la API.
     await _login(tester, ownerEmail, ownerPassword);
 
-    // 2) Pestanas reales del propietario (permisos + modulos del login).
-    _expectTabs(tester, shellTabs);
+    // 2) Entradas reales del menú lateral (permisos + módulos del login).
+    await _expectMenu(tester, shellMenu);
 
-    // 3) La pestana Vender (destino por defecto) carga el catalogo real: si una
-    // tarjeta desbordara su reja, el `RenderFlex overflowed` fallaria aqui (fue
-    // el caso real del telefono antes del arreglo de `product_card.dart`).
+    // 3) La pestaña por defecto es Inicio: la bienvenida.
+    await _waitFor(
+      tester,
+      find.text(welcomeTitle),
+      reason: 'Tras el login no apareció la pestaña Inicio',
+    );
+
+    // 4) El POS se abre desde el menú del FAB («Nueva venta»): su catálogo real
+    // tiene que cargar. Si una tarjeta desbordara su reja, el
+    // `RenderFlex overflowed` fallaría aquí (fue el caso real del teléfono antes
+    // del arreglo de `product_card.dart`).
+    await _openMenuAction(tester, newSaleAction);
     await _waitFor(tester, find.text('Buscar por nombre o SKU…'));
     await _waitFor(
       tester,
@@ -159,7 +195,7 @@ Future<void> main() async {
       reason: 'El catálogo no mostró productos de la sucursal',
     );
 
-    // 4) Cuenta de propietario: suscripcion y cambio de sucursal.
+    // 5) Cuenta de propietario: suscripcion y cambio de sucursal.
     await _openAccount(tester);
 
     // El propietario si ve la suscripcion. Se exige "al menos una" porque el
@@ -179,8 +215,8 @@ Future<void> main() async {
     await _startClean(tester);
     await _login(tester, employeeEmail, employeePassword);
 
-    // El empleado limitado conserva las pestanas de su trabajo...
-    _expectTabs(tester, shellTabs);
+    // El empleado limitado conserva las entradas de su trabajo...
+    await _expectMenu(tester, shellMenu);
 
     // ...pero no ve la suscripcion (no es propietario) ni puede cambiar de
     // sucursal (sin `system.branches.switch`).
@@ -201,8 +237,9 @@ Future<void> main() async {
 
     // 1) Caja: estado real del turno. No se abre ni se cierra ninguno: si hay
     // turno se entra al corte, se comprueba que el resumen llego del servidor y
-    // se descarta tocando el velo (el `POST` de cierre nunca se envia).
-    await tester.tap(_tabFinder('Caja'));
+    // se descarta tocando el velo (el `POST` de cierre nunca se envia). Caja vive
+    // en el menú del FAB porque la barra pinta Inicio · Órdenes · Ventas · Cuenta.
+    await _openMenuAction(tester, cashAction);
     await _waitFor(tester, find.byType(CashRegisterScreen));
 
     final shiftState = await _waitForAny(tester, <Finder>[
@@ -249,7 +286,7 @@ Future<void> main() async {
     }
 
     // 2) POS: catalogo real -> detalle -> carrito -> cobro.
-    await tester.tap(_tabFinder('Vender'));
+    await _openMenuAction(tester, newSaleAction);
     await _waitFor(
       tester,
       find.byType(ProductCard),
@@ -290,11 +327,11 @@ Future<void> main() async {
         isTrue,
         reason: 'El detalle del producto no se cerró al agregar al carrito',
       );
-      await _waitFor(tester, find.text(cartBarFull));
+      await _waitFor(tester, cartBarChevron);
       // Hallazgo de la corrida en teléfono: el aviso «... agregado al carrito
       // (1).» es un `SnackBar` pegado al borde inferior que tapa la barra del
-      // carrito mientras está visible (~4 s), así que un toque inmediato en
-      // «Ver carrito» no llega a la barra. Se espera a que se retire.
+      // carrito mientras está visible (~4 s), así que un toque inmediato en el
+      // acceso no llega a la barra. Se espera a que se retire.
       expect(
         await _waitForGone(tester, find.byType(SnackBar)),
         isTrue,
@@ -306,7 +343,7 @@ Future<void> main() async {
     }
 
     // Carrito: lineas, totales y el candado de la sesión de caja.
-    await tester.tap(find.text(added ? cartBarFull : cartBarEmpty));
+    await tester.tap(added ? cartBarChevron : find.text(cartBarEmpty));
     await _waitFor(tester, find.text(cartTitle), reason: 'El carrito no abrió');
     expect(find.text(cartTotalsCard), findsOneWidget);
 
@@ -362,7 +399,7 @@ Future<void> main() async {
     await _dismissSheet(tester);
 
     // 3) Ventas: detalle real (folio, cliente, articulos) e impresion.
-    await tester.tap(_tabFinder('Ventas'));
+    await _openMenuAction(tester, 'Ventas');
     final salesState = await _waitForAny(tester, <Finder>[
       find.byType(TransactionTile),
       find.text(salesEmptyTitle),
@@ -384,7 +421,7 @@ Future<void> main() async {
     }
 
     // 4) Órdenes de servicio: mismo recorrido de detalle e impresion.
-    await tester.tap(_tabFinder('Órdenes'));
+    await _openMenuAction(tester, 'Órdenes');
     final ordersState = await _waitForAny(tester, <Finder>[
       find.byType(ServiceOrderTile),
       find.text(ordersEmptyTitle),
@@ -410,7 +447,7 @@ Future<void> main() async {
     await _login(tester, ownerEmail, ownerPassword);
 
     // 1) Una venta real: su detalle trae el panel de impresión.
-    await tester.tap(_tabFinder('Ventas'));
+    await _openMenuAction(tester, 'Ventas');
     final salesState = await _waitForAny(tester, <Finder>[
       find.byType(TransactionTile),
       find.text(salesEmptyTitle),
@@ -479,7 +516,8 @@ Future<void> main() async {
       tester,
       find.text(ticketSentNotice),
       timeout: const Duration(seconds: 45),
-      reason: 'El ticket no se envió a la impresora (revisa el aviso del sheet)',
+      reason:
+          'El ticket no se envió a la impresora (revisa el aviso del sheet)',
     );
 
     // 4) La app queda utilizable: se cierran las hojas abiertas (imprimir y el
@@ -648,11 +686,11 @@ Future<bool> _waitPrinterTile(
 ///
 /// El detalle de la venta sigue montado detrás de la hoja de impresión y comparte
 /// etiquetas con ella (`Imprimir ticket`), así que las acciones del documento se
-/// buscan siempre dentro del sheet de arriba.
-Finder _inLastSheet(Finder finder) => find.descendant(
-  of: find.byType(DraggableScrollableSheet).last,
-  matching: finder,
-);
+/// buscan siempre dentro del sheet de arriba. El marcador es el `BottomSheet` de
+/// Material, que sirve tanto para las hojas con `DraggableScrollableSheet` como
+/// para las que monta `EzyBottomSheet.show`.
+Finder _inLastSheet(Finder finder) =>
+    find.descendant(of: find.byType(BottomSheet).last, matching: finder);
 
 /// Recorre el detalle abierto (venta u orden) hasta la hoja de impresion.
 ///
@@ -710,7 +748,7 @@ Future<void> _printFromDetail(
   // con `Cerrar` puede haber salido del árbol y su toque no es fiable.
   await _closeSheets(tester);
   expect(
-    find.byType(DraggableScrollableSheet),
+    find.byType(BottomSheet),
     findsNothing,
     reason: 'Quedó una hoja abierta tras revisar la impresión',
   );
@@ -777,17 +815,18 @@ Future<void> _login(WidgetTester tester, String email, String password) async {
   await _waitFor(tester, find.text(loginAction));
   await tester.tap(find.text(loginAction));
 
-  // El login real tarda: se espera a la barra de pestanas del cascaron.
+  // El login real tarda: se espera a la cabecera del cascarón (Inicio es el
+  // destino por defecto), que es la que lleva la hamburguesa del menú.
   await _waitFor(
     tester,
-    _tabFinder('Cuenta'),
+    find.byTooltip(appDrawerOpenTooltip),
     timeout: const Duration(seconds: 45),
     reason: 'No apareció el cascarón tras iniciar sesión con $email',
   );
 }
 
 Future<void> _openAccount(WidgetTester tester) async {
-  await tester.tap(_tabFinder('Cuenta'));
+  await _openMenuAction(tester, 'Cuenta');
   await _waitFor(tester, find.byType(AccountScreen));
 
   // Tarjeta de sucursal: sirve de ancla de "ya cargó". Se busca el texto en
@@ -845,18 +884,66 @@ Future<void> _scrollTo(
   await tester.pump(const Duration(milliseconds: 100));
 }
 
-void _expectTabs(WidgetTester tester, List<String> expected) {
+/// Comprueba que el menú lateral ofrece todas estas entradas.
+///
+/// El panel se cierra al terminar: las pestañas no viven en la pantalla, así que
+/// dejarlo abierto taparía el resto del recorrido.
+Future<void> _expectMenu(WidgetTester tester, List<String> expected) async {
+  await _openDrawer(tester);
+
   for (final label in expected) {
     expect(
-      _tabFinder(label),
+      _drawerRow(label),
       findsOneWidget,
-      reason: 'La pestaña $label no está visible para este usuario',
+      reason: 'El menú no ofreció «$label» para este usuario',
     );
   }
+
+  await _closeDrawer(tester);
 }
 
-Finder _tabFinder(String label) =>
-    find.widgetWithText(NavigationDestination, label);
+/// Fila del menú lateral por su etiqueta.
+///
+/// Se busca **dentro** del `Drawer`: la misma etiqueta puede existir en la
+/// pantalla que queda detrás (la tarjeta «Vender» de Inicio, por ejemplo).
+Finder _drawerRow(String label) => find.descendant(
+  of: find.byType(Drawer),
+  matching: find.text(label),
+);
+
+/// Abre el menú lateral con la hamburguesa de la cabecera.
+Future<void> _openDrawer(WidgetTester tester) async {
+  final trigger = find.byTooltip(appDrawerOpenTooltip);
+
+  await _waitFor(tester, trigger, reason: 'La cabecera no ofreció el menú');
+  await tester.tap(trigger);
+  await _waitFor(tester, find.byType(Drawer));
+}
+
+/// Cierra el menú lateral con su botón de cerrar.
+Future<void> _closeDrawer(WidgetTester tester) async {
+  final close = find.byTooltip(EzyAppDrawer.closeTooltip);
+
+  await _waitFor(tester, close);
+  await tester.tap(close);
+  await _waitForGone(tester, find.byType(Drawer));
+}
+
+/// Entra a una pantalla desde el menú lateral.
+///
+/// Es como se navega desde que no hay barra inferior: se abre el panel, se toca
+/// la fila y se espera a que el panel se retire antes de seguir.
+Future<void> _openMenuAction(WidgetTester tester, String label) async {
+  await _openDrawer(tester);
+
+  final row = _drawerRow(label);
+
+  await _waitFor(tester, row, reason: 'El menú no ofreció «$label»');
+  await tester.tap(row);
+
+  // El panel se cierra antes de lanzar la acción: se espera a que desaparezca.
+  await _waitForGone(tester, find.byType(Drawer));
+}
 
 /// `pumpAndSettle` no sirve con peticiones reales: se sondea hasta que el widget
 /// esperado aparece o se agota el tiempo.
@@ -1003,7 +1090,7 @@ Future<bool> _waitForGone(
 /// sigue montado, el detalle) sin disparar ninguna acción de negocio.
 Future<void> _closeSheets(WidgetTester tester) async {
   for (var guard = 0; guard < 4; guard++) {
-    if (find.byType(DraggableScrollableSheet).evaluate().isEmpty) {
+    if (find.byType(BottomSheet).evaluate().isEmpty) {
       return;
     }
 
@@ -1017,12 +1104,16 @@ Future<void> _closeSheets(WidgetTester tester) async {
 /// sigue montado detras del sheet de impresion, asi que no basta con que no
 /// quede ninguno. No dispara ninguna accion del sheet (ni el corte ni el cobro).
 ///
+/// El marcador es el `BottomSheet` del propio Material (el que monta
+/// `showModalBottomSheet`), no `DraggableScrollableSheet`: las hojas del POS ya
+/// no arrastran ese envoltorio, lo pinta `EzyBottomSheet.show`.
+///
 /// Nota de la corrida en telefono: tocar el velo (scrim) con `tapAt` arriba a la
 /// izquierda no cerro el sheet en el dispositivo, asi que el cierre se hace con
 /// el mismo `pop` que dispara el boton atras (MIUI bloquea `adb input`, no se
 /// pudo comprobar a mano si el velo responde al dedo).
 Future<void> _dismissSheet(WidgetTester tester) async {
-  final sheets = find.byType(DraggableScrollableSheet);
+  final sheets = find.byType(BottomSheet);
   final before = sheets.evaluate().length;
 
   expect(before, greaterThan(0), reason: 'No había ningún sheet modal abierto');

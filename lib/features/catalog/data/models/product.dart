@@ -136,13 +136,81 @@ class Product {
     return result;
   }
 
-  /// Imagen a mostrar: la del producto o la primera de la galería.
-  String? get displayImage {
-    if (image != null && image!.isNotEmpty) {
-      return image;
+  /// Host del marcador que el servidor pone en `image` cuando el producto no
+  /// tiene fotos propias (`ProductCatalogService::payload` → `placehold.co`).
+  ///
+  /// Se trata como «sin imagen»: así el producto que solo trae fotos por
+  /// variante (`product-variant-images`) no pinta el cuadro gris del servicio y
+  /// puede caer a la imagen de su variante (como hace la tarjeta de la web).
+  static const String placeholderHost = 'placehold.co';
+
+  /// URL utilizable de un medio (`null` si viene vacía o es el marcador del
+  /// servidor).
+  static String? cleanImage(String? url) {
+    final value = url?.trim() ?? '';
+
+    if (value.isEmpty || value.contains(placeholderHost)) {
+      return null;
     }
 
-    return generalImages.isEmpty ? null : generalImages.first;
+    return value;
+  }
+
+  /// Imagen a mostrar: la del producto o la primera de la galería.
+  String? get displayImage {
+    final own = cleanImage(image);
+
+    if (own != null) {
+      return own;
+    }
+
+    for (final url in generalImages) {
+      final value = cleanImage(url);
+
+      if (value != null) {
+        return value;
+      }
+    }
+
+    return null;
+  }
+
+  /// Imágenes propias del producto para la galería del detalle, **sin repetir**:
+  /// el servidor manda la portada también dentro de `general_images`, así que
+  /// ese producto de dos fotos se recorre con dos páginas, no con tres.
+  List<String> get galleryImages {
+    final result = <String>[];
+
+    for (final url in <String?>[image, ...generalImages]) {
+      final value = cleanImage(url);
+
+      if (value != null && !result.contains(value)) {
+        result.add(value);
+      }
+    }
+
+    return result;
+  }
+
+  /// Imagen de la tarjeta del catálogo: las fotos propias o, cuando el producto
+  /// solo tiene imágenes por variante, la de la primera combinación con foto
+  /// (la web hace lo mismo en su tarjeta).
+  String? get cardImage {
+    final own = displayImage;
+
+    if (own != null) {
+      return own;
+    }
+
+    for (final combination in variantCombinations) {
+      final value = cleanImage(combination.imageUrl);
+
+      if (value != null) {
+        return value;
+      }
+    }
+
+    return null;
   }
 }
 

@@ -254,6 +254,8 @@ void main() {
       final visibleTabs = permissions.visibleTabs;
 
       expect(visibleTabs, contains(AppTab.account));
+      // Inicio es la primera pestaña y el destino por defecto.
+      expect(visibleTabs, contains(AppTab.home));
       expect(
         visibleTabs.contains(AppTab.sell),
         permissions.can('pos.access') && permissions.hasModule('module_pos'),
@@ -269,8 +271,9 @@ void main() {
       );
 
       if (permissions.permissions.isEmpty) {
-        // Sin ningún permiso efectivo la app solo deja entrar a "Cuenta".
-        expect(visibleTabs, <AppTab>[AppTab.account]);
+        // Sin ningún permiso efectivo la app solo deja entrar a "Inicio" y
+        // "Cuenta".
+        expect(visibleTabs, <AppTab>[AppTab.home, AppTab.account]);
       }
 
       debugPrint(

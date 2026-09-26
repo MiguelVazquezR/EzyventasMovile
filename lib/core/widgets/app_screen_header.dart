@@ -7,10 +7,16 @@ import '../../features/auth/application/auth_controller.dart';
 import '../router/app_router.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import 'app_drawer_scope.dart';
 import 'ezy_icon_button.dart';
 
-/// Cabecera de pantalla: título sin margen (`h1`), botón de sucursal activa y
-/// campana de notificaciones (§4.1).
+/// Cabecera de pantalla: menú lateral, título sin margen (`h1`), botón de
+/// sucursal activa y campana de notificaciones (§4.1).
+///
+/// La hamburguesa abre el `Drawer` del cascarón (la navegación de la app desde
+/// que dejó de haber barra inferior); solo se pinta cuando la pantalla vive
+/// dentro de él (`AppDrawerScope`), así que una pantalla a pantalla completa
+/// —el alta de una orden— o una prueba de widget no la muestran.
 ///
 /// El botón de sucursal solo aparece si el usuario tiene
 /// `system.branches.switch`; la campana solo con `transactions.access` y navega a
@@ -49,6 +55,10 @@ class AppScreenHeader extends ConsumerWidget {
         showBranchChip && canSwitchBranch && accessContext != null;
     final showBell = permissions.can('transactions.access');
 
+    // Disparador del menú lateral: `null` fuera del cascarón (no hay `Drawer`).
+    final openDrawer = AppDrawerScope.maybeOf(context);
+    final hasLeading = openDrawer != null || hasBranchChip;
+
     // El badge solo consulta `GET /notifications` cuando la campana se pinta:
     // sin `transactions.access` esa llamada no aporta nada (el servidor
     // devolvería ceros).
@@ -60,9 +70,17 @@ class AppScreenHeader extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          if (hasBranchChip || showBell || actions.isNotEmpty) ...<Widget>[
+          if (hasLeading || showBell || actions.isNotEmpty) ...<Widget>[
             Row(
               children: <Widget>[
+                if (openDrawer != null) ...<Widget>[
+                  EzyIconButton(
+                    icon: Icons.menu,
+                    tooltip: appDrawerOpenTooltip,
+                    onTap: openDrawer,
+                  ),
+                  if (hasBranchChip) const SizedBox(width: 8),
+                ],
                 if (hasBranchChip)
                   Flexible(
                     child: _BranchChip(

@@ -6,6 +6,7 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_action_bar.dart';
 import '../../../../core/widgets/ezy_amount.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
@@ -33,10 +34,9 @@ Future<bool> showPaymentSheet(
   BuildContext context, {
   PaymentMode mode = PaymentMode.checkout,
 }) async {
-  final result = await showModalBottomSheet<bool>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
+  final result = await EzyBottomSheet.show<bool>(
+    context,
+    maxHeightFactor: 0.96,
     builder: (sheetContext) => _PaymentSheet(mode: mode),
   );
 
@@ -82,71 +82,73 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
     final controller = ref.read(cartControllerProvider.notifier);
     final banks = ref.watch(bankAccountsProvider);
 
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.92,
-      maxChildSize: 0.96,
-      builder: (context, scrollController) => ListView(
-        controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-        children: <Widget>[
-          const SizedBox(height: 8),
-          EzySheetHeader(
-            title: _isLayaway ? 'Apartado' : 'Cobro',
-            subtitle: cart.customer == null
-                ? 'Venta de público general'
-                : 'Cliente: ${cart.customer!.displayName}',
-            padding: EdgeInsets.zero,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        EzySheetHeader(
+          title: _isLayaway ? 'Apartado' : 'Cobro',
+          subtitle: cart.customer == null
+              ? 'Venta de público general'
+              : 'Cliente: ${cart.customer!.displayName}',
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        ),
+        Flexible(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: <Widget>[
+              _AmountsCard(cart: cart),
+              if (cart.customer?.hasBalanceInFavor ?? false) ...<Widget>[
+                const SizedBox(height: 12),
+                _BalanceSwitch(
+                  customerBalance: cart.customer!.balance,
+                  balanceUsed: cart.balanceUsed,
+                  value: cart.useBalance,
+                  onChanged: controller.setUseBalance,
+                ),
+              ],
+              const SizedBox(height: 12),
+              _PaymentsCard(cart: cart, banks: banks),
+              if (_isLayaway) ...<Widget>[
+                const SizedBox(height: 12),
+                _ExpirationField(
+                  controller: _expirationController,
+                  errorText: cart.errorFor('layaway_expiration_date'),
+                  onTap: _pickExpirationDate,
+                ),
+              ],
+              if (cart.remaining > 0.01) ...<Widget>[
+                const SizedBox(height: 12),
+                NoticeBanner(
+                  message: cart.customer == null
+                      ? 'Selecciona un cliente para dejar saldo pendiente.'
+                      : 'Quedarán ${Money.format(cart.remaining)} a crédito del '
+                            'cliente (disponible '
+                            '${Money.format(cart.availableCredit)}).',
+                  tone: EzySeverity.warn,
+                ),
+              ],
+              if (cart.blockerMessage != null) ...<Widget>[
+                const SizedBox(height: 12),
+                NoticeBanner(message: cart.blockerMessage!),
+              ],
+              if (cart.errorMessage != null) ...<Widget>[
+                const SizedBox(height: 12),
+                NoticeBanner(message: cart.errorMessage!),
+              ],
+            ],
           ),
-          const SizedBox(height: 16),
-          _AmountsCard(cart: cart),
-          if (cart.customer?.hasBalanceInFavor ?? false) ...<Widget>[
-            const SizedBox(height: 12),
-            _BalanceSwitch(
-              customerBalance: cart.customer!.balance,
-              balanceUsed: cart.balanceUsed,
-              value: cart.useBalance,
-              onChanged: controller.setUseBalance,
-            ),
-          ],
-          const SizedBox(height: 12),
-          _PaymentsCard(cart: cart, banks: banks),
-          if (_isLayaway) ...<Widget>[
-            const SizedBox(height: 12),
-            _ExpirationField(
-              controller: _expirationController,
-              errorText: cart.errorFor('layaway_expiration_date'),
-              onTap: _pickExpirationDate,
-            ),
-          ],
-          if (cart.remaining > 0.01) ...<Widget>[
-            const SizedBox(height: 12),
-            NoticeBanner(
-              message: cart.customer == null
-                  ? 'Selecciona un cliente para dejar saldo pendiente.'
-                  : 'Quedarán ${Money.format(cart.remaining)} a crédito del '
-                        'cliente (disponible '
-                        '${Money.format(cart.availableCredit)}).',
-              tone: EzySeverity.warn,
-            ),
-          ],
-          if (cart.blockerMessage != null) ...<Widget>[
-            const SizedBox(height: 12),
-            NoticeBanner(message: cart.blockerMessage!),
-          ],
-          if (cart.errorMessage != null) ...<Widget>[
-            const SizedBox(height: 12),
-            NoticeBanner(message: cart.errorMessage!),
-          ],
-          const SizedBox(height: 16),
-          EzyButton(
+        ),
+        // Cobrar es el héroe de la hoja (§8): CTA de 56 fijo al pie.
+        EzyActionBar(
+          child: EzyButton(
             label: _isLayaway ? 'Crear apartado' : 'Finalizar venta',
             icon: Icons.check_outlined,
+            height: 56,
             isLoading: cart.isSubmitting,
             onPressed: _canSubmit(cart) ? () => _submit(cart) : null,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -241,9 +243,7 @@ class _AmountsCard extends StatelessWidget {
           if (isChange)
             Text(
               'El cambio lo calcula y devuelve el servidor al registrar la venta.',
-              style: EzyTextStyles.caption.copyWith(
-                color: surfaces.textMuted,
-              ),
+              style: EzyTextStyles.caption.copyWith(color: surfaces.textMuted),
             ),
         ],
       ),
@@ -611,4 +611,3 @@ class BankAccountSelector extends StatelessWidget {
     );
   }
 }
-

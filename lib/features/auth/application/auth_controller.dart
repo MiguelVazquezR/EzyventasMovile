@@ -35,7 +35,7 @@ final permissionsProvider = Provider<PermissionsService>((ref) {
   );
 });
 
-/// Pestañas visibles del cascarón, en orden.
+/// Pestañas visibles del cascarón, en orden (las que pinta el menú lateral).
 final visibleTabsProvider = Provider<List<AppTab>>(
   (ref) => ref.watch(permissionsProvider).visibleTabs,
 );

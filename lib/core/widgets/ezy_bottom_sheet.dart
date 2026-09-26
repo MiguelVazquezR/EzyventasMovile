@@ -8,7 +8,9 @@ import '../theme/app_text_styles.dart';
 /// Envuelve `showModalBottomSheet` para que **todas** las hojas cumplan las
 /// mismas reglas: `isScrollControlled: true`, `useSafeArea: true`, alto máximo
 /// acotado, teclado respetado (`viewInsets`) y, si se pasa [title], la misma
-/// cabecera. Así ninguna hoja vuelve a quedarse sin las banderas.
+/// cabecera. El `footer` opcional se ancla al pie (fuera del scroll) para que el
+/// CTA siga a la vista en las hojas largas. Así ninguna hoja vuelve a quedarse
+/// sin las banderas.
 class EzyBottomSheet {
   const EzyBottomSheet._();
 
@@ -19,6 +21,7 @@ class EzyBottomSheet {
     String? title,
     String? subtitle,
     Widget? trailing,
+    Widget? footer,
     double maxHeightFactor = 0.9,
     bool isDismissible = true,
     bool enableDrag = true,
@@ -41,22 +44,33 @@ class EzyBottomSheet {
         return Padding(
           // El teclado empuja la hoja: sin esto el campo activo queda tapado.
           padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: media.size.height * maxHeightFactor,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                if (title != null)
-                  EzySheetHeader(
-                    title: title,
-                    subtitle: subtitle,
-                    trailing: trailing,
-                  ),
-                Flexible(child: content),
-                SizedBox(height: media.viewPadding.bottom),
-              ],
+          // El alto máximo se acota con las restricciones de LAYOUT de la hoja
+          // (no con `MediaQuery.size`, que en las pruebas no refleja la
+          // superficie): así la hoja sigue siendo "el 90 % de la pantalla" en
+          // el teléfono y se puede medir en las pruebas.
+          child: LayoutBuilder(
+            builder: (context, constraints) => ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: constraints.maxHeight * maxHeightFactor,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  if (title != null)
+                    EzySheetHeader(
+                      title: title,
+                      subtitle: subtitle,
+                      trailing: trailing,
+                    ),
+                  Flexible(child: content),
+                  // El pie se queda fijo: el CTA de una hoja larga (§7.6) no
+                  // puede depender de haber bajado hasta el final. Con pie, el
+                  // área segura la resuelve él mismo (`EzyActionBar`).
+                  if (footer == null)
+                    SizedBox(height: media.viewPadding.bottom),
+                  ?footer,
+                ],
+              ),
             ),
           ),
         );

@@ -14,3 +14,23 @@ String cartSummaryLabel(CartState cart) {
 
   return '$products · $items $unit';
 }
+
+/// Nombres de las líneas del carrito, para la vista previa de la barra (§9).
+///
+/// Se corta en [maxNames] para que la línea no crezca sin fin y el resto se
+/// resume con `+N`. Cada línea se identifica con su `description` (producto y
+/// variante): dos tallas del mismo artículo son dos líneas distintas.
+String cartPreviewLabel(CartState cart, {int maxNames = 3}) {
+  final names = cart.lines
+      .take(maxNames)
+      .map((line) => line.description)
+      .toList(growable: true);
+  final rest = cart.lines.length - names.length;
+
+  if (rest > 0) {
+    names.add('+$rest más');
+  }
+
+  return names.join(', ');
+}
+

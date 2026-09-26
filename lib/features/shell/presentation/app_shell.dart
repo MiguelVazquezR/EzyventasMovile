@@ -2,14 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/auth/permissions_service.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_drawer_scope.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../account/application/account_providers.dart';
 import '../../auth/application/auth_controller.dart';
+import 'widgets/app_drawer.dart';
 
-/// Cascarón de navegación: barra inferior persistente cuyas pestañas dependen de
-/// los módulos contratados y de los permisos reales del servidor (§4.1).
+/// Cascarón de navegación: menú lateral (`EzyAppDrawer`) sobre el índice de
+/// pestañas del `StatefulShellRoute`.
+///
+/// Desde que la navegación vive en el menú lateral **no hay barra inferior** ni
+/// FAB global: el catálogo del POS y los listados ganan el alto de la barra y del
+/// botón, y las pestañas que antes no cabían (Vender y Caja) dejan de ser un caso
+/// aparte, porque están en el mismo panel que las demás.
+///
+/// Cada pestaña monta su **propio** `Scaffold` (el POS cuelga del pie la barra
+/// del carrito), así que el `Drawer` es de **este** `Scaffold` y se abre por
+/// `AppDrawerScope`: la hamburguesa de las cabeceras llama al cascarón, no al
+/// `Scaffold` de dentro, que no tiene menú.
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key, required this.navigationShell});
 
@@ -21,6 +31,9 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell>
     with WidgetsBindingObserver {
+  /// `Scaffold` del cascarón: es el dueño del `Drawer`.
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   @override
   void initState() {
     super.initState();
@@ -47,103 +60,33 @@ class _AppShellState extends ConsumerState<AppShell>
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
     final tabs = ref.watch(visibleTabsProvider);
-    final location = GoRouterState.of(context).uri.path;
-
-    if (tabs.isEmpty) {
-      return Scaffold(
-        body: SafeArea(
-          child: EmptyState(
-            icon: Icons.lock_outline,
-            title: 'Tu suscripción no tiene módulos activos.',
-            message:
-                'Contacta al administrador para renovar el plan. Puedes seguir '
-                'entrando a «Cuenta» para revisar tu información.',
-          ),
-        ),
-      );
-    }
-
-    final currentTab = AppTab.fromLocation(location) ?? tabs.first;
-    final selectedIndex = tabs.contains(currentTab)
-        ? tabs.indexOf(currentTab)
-        : 0;
-
-    // Con una sola pestaña disponible la barra inferior no aporta nada.
-    if (tabs.length == 1) {
-      return Scaffold(
-        body: SafeArea(bottom: false, child: widget.navigationShell),
-      );
-    }
 
     return Scaffold(
-      body: SafeArea(bottom: false, child: widget.navigationShell),
-      bottomNavigationBar: DecoratedBox(
-        decoration: BoxDecoration(
-          color: surfaces.panel,
-          border: Border(top: BorderSide(color: surfaces.border)),
-        ),
-        child: NavigationBar(
-          selectedIndex: selectedIndex,
-          onDestinationSelected: (index) {
-            final tab = tabs[index];
-            widget.navigationShell.goBranch(AppTab.values.indexOf(tab));
-          },
-          destinations: <Widget>[
-            for (final tab in tabs)
-              NavigationDestination(
-                icon: _DestinationIcon(tab: tab, isActive: false),
-                selectedIcon: _DestinationIcon(tab: tab, isActive: true),
-                label: tab.label,
-              ),
-          ],
+      key: _scaffoldKey,
+      drawer: const EzyAppDrawer(),
+      body: AppDrawerScope(
+        openDrawer: _openDrawer,
+        child: SafeArea(
+          bottom: false,
+          child: tabs.isEmpty
+              // Sin módulos contratados no hay pestaña que mostrar, pero el menú
+              // sigue ahí: es la única forma de llegar a Cuenta para ver qué
+              // falta.
+              ? const EmptyState(
+                  icon: Icons.lock_outline,
+                  title: 'Tu suscripción no tiene módulos activos.',
+                  message:
+                      'Contacta al administrador para renovar el plan. Puedes '
+                      'seguir entrando a «Cuenta» para revisar tu información.',
+                )
+              : widget.navigationShell,
         ),
       ),
     );
   }
+
+  /// Abre el menú lateral; lo llama la hamburguesa de las cabeceras.
+  void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
 }
 
-/// Icono de la pestaña; añade el punto pulsante de "turno abierto" en Caja.
-class _DestinationIcon extends ConsumerWidget {
-  const _DestinationIcon({required this.tab, required this.isActive});
-
-  final AppTab tab;
-  final bool isActive;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final icon = Icon(isActive ? tab.activeIcon : tab.icon);
-
-    if (tab != AppTab.cashRegister) {
-      return icon;
-    }
-
-    final hasSession = ref.watch(
-      authControllerProvider.select((state) => state.context?.hasActiveSession ?? false),
-    );
-
-    if (!hasSession) {
-      return icon;
-    }
-
-    return Stack(
-      clipBehavior: Clip.none,
-      children: <Widget>[
-        icon,
-        Positioned(
-          right: -2,
-          top: -1,
-          child: Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: EzyColors.success,
-              shape: BoxShape.circle,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}

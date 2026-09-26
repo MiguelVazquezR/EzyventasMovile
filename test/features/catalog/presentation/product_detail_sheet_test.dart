@@ -21,37 +21,50 @@ const List<String> _sellerPermissions = <String>[
 
 /// Producto de la tarjeta del catálogo; `withVariants` añade dos combinaciones
 /// (una con stock y otra agotada) para probar la sección de venta.
-Product _product({double stock = 8, bool withVariants = false}) =>
-    Product.fromJson(<String, dynamic>{
-      'id': 45,
-      'name': 'Filtro de aceite',
-      'sku': 'FIL-001',
-      'category': 'Filtros',
-      'description': '<p>Filtro de alto rendimiento</p>',
-      'price': 135.0,
-      'original_price': 150.0,
-      'stock': stock,
-      'measure_unit': 'pz',
-      'is_bulk': false,
-      'show_in_pos': true,
-      if (withVariants)
-        'variant_combinations': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'id': 1,
-            'attributes': <String, dynamic>{'Talla': 'M'},
-            'price': 135.0,
-            'stock': 4.0,
-            'sku_suffix': 'M',
-          },
-          <String, dynamic>{
-            'id': 2,
-            'attributes': <String, dynamic>{'Talla': 'G'},
-            'price': 145.0,
-            'stock': 0.0,
-            'sku_suffix': 'G',
-          },
-        ],
-    });
+///
+/// [generalImages] son las fotos del producto tal como llegan en
+/// `general_images`: la portada (`image`) repite la primera, igual que las manda
+/// el servidor. [variantImage] es la foto de la combinación «Talla M»
+/// (`variant_combinations[].image_url`).
+Product _product({
+  double stock = 8,
+  bool withVariants = false,
+  List<String> generalImages = const <String>[],
+  String? variantImage,
+}) => Product.fromJson(<String, dynamic>{
+  'id': 45,
+  'name': 'Filtro de aceite',
+  'sku': 'FIL-001',
+  'category': 'Filtros',
+  'description': '<p>Filtro de alto rendimiento</p>',
+  'image': generalImages.isEmpty ? null : generalImages.first,
+  'general_images': generalImages,
+  'price': 135.0,
+  'original_price': 150.0,
+  'stock': stock,
+  'measure_unit': 'pz',
+  'is_bulk': false,
+  'show_in_pos': true,
+  if (withVariants)
+    'variant_combinations': <Map<String, dynamic>>[
+      <String, dynamic>{
+        'id': 1,
+        'attributes': <String, dynamic>{'Talla': 'M'},
+        'price': 135.0,
+        'stock': 4.0,
+        'sku_suffix': 'M',
+        'image_url': variantImage,
+      },
+      <String, dynamic>{
+        'id': 2,
+        'attributes': <String, dynamic>{'Talla': 'G'},
+        'price': 145.0,
+        'stock': 0.0,
+        'sku_suffix': 'G',
+        'image_url': null,
+      },
+    ],
+});
 
 /// Monta el detalle del producto como lo abre el catálogo y devuelve el
 /// contenedor para leer el carrito.
@@ -230,5 +243,125 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Agregar al carrito'), findsNothing);
+  });
+
+  test('la variante se pinta primero y las imágenes repetidas se descartan', () {
+    expect(
+      ProductGallery.resolveImages(
+        <String>['https://x/a.jpg', 'https://x/b.jpg'],
+        overrideImage: 'https://x/m.jpg',
+      ),
+      <String>['https://x/m.jpg', 'https://x/a.jpg', 'https://x/b.jpg'],
+    );
+
+    // Si la variante elegida no trae foto propia, quedan las del producto.
+    expect(
+      ProductGallery.resolveImages(<String>['https://x/a.jpg']),
+      <String>['https://x/a.jpg'],
+    );
+
+    // Sin fotos la galería queda vacía (el detalle pinta el marcador).
+    expect(ProductGallery.resolveImages(const <String>[]), isEmpty);
+  });
+
+  testWidgets('la galería recorre todas las fotos del producto', (
+    tester,
+  ) async {
+    await _pumpSheet(
+      tester,
+      product: _product(
+        generalImages: <String>[
+          'https://ezyventas2.test/storage/filtro.jpg',
+          'https://ezyventas2.test/storage/filtro-2.jpg',
+        ],
+      ),
+    );
+
+    final gallery = tester.widget<ProductGallery>(find.byType(ProductGallery));
+
+    // La portada repetida en `general_images` no cuenta dos veces: 2 páginas.
+    expect(gallery.images, hasLength(2));
+    expect(gallery.overrideImage, isNull);
+    expect(find.byTooltip('Imagen anterior'), findsOneWidget);
+    expect(find.byTooltip('Imagen siguiente'), findsOneWidget);
+    expect(find.byKey(const Key('gallery-dot-0')), findsOneWidget);
+    expect(find.byKey(const Key('gallery-dot-1')), findsOneWidget);
+    expect(find.byKey(const Key('gallery-dot-2')), findsNothing);
+
+    // La flecha avanza la página del `PageView` (antes solo se veía la primera).
+    await tester.tap(find.byTooltip('Imagen siguiente'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<PageView>(find.byType(PageView)).controller!.page, 1);
+  });
+
+  testWidgets('con una sola foto no hay flechas ni puntos', (tester) async {
+    await _pumpSheet(
+      tester,
+      product: _product(
+        generalImages: <String>['https://ezyventas2.test/storage/filtro.jpg'],
+      ),
+    );
+
+    expect(find.byTooltip('Imagen siguiente'), findsNothing);
+    expect(find.byTooltip('Imagen anterior'), findsNothing);
+    expect(find.byKey(const Key('gallery-dot-0')), findsNothing);
+  });
+
+  testWidgets('sin fotos la galería muestra el marcador de la pantalla', (
+    tester,
+  ) async {
+    await _pumpSheet(tester);
+
+    expect(find.byType(ProductGallery), findsOneWidget);
+    expect(find.byType(ImagePlaceholder), findsOneWidget);
+    expect(find.byTooltip('Imagen siguiente'), findsNothing);
+  });
+
+  testWidgets('la variante elegida pinta su propia foto en la galería', (
+    tester,
+  ) async {
+    await _pumpSheet(
+      tester,
+      product: _product(
+        withVariants: true,
+        generalImages: <String>['https://ezyventas2.test/storage/filtro.jpg'],
+        variantImage: 'https://ezyventas2.test/storage/filtro-m.jpg',
+      ),
+    );
+
+    // El detalle abre con la primera combinación («Talla M»), así que la foto de
+    // esa variante manda y las del producto quedan como segunda página.
+    var gallery = tester.widget<ProductGallery>(find.byType(ProductGallery));
+    expect(
+      gallery.overrideImage,
+      'https://ezyventas2.test/storage/filtro-m.jpg',
+    );
+    expect(
+      ProductGallery.resolveImages(
+        gallery.images,
+        overrideImage: gallery.overrideImage,
+      ),
+      <String>[
+        'https://ezyventas2.test/storage/filtro-m.jpg',
+        'https://ezyventas2.test/storage/filtro.jpg',
+      ],
+    );
+
+    await tester.tap(find.text('Talla G'));
+    await tester.pumpAndSettle();
+
+    // «Talla G» no trae foto propia: se regresa a las imágenes del producto y a
+    // la primera página de la galería.
+    gallery = tester.widget<ProductGallery>(find.byType(ProductGallery));
+    expect(gallery.overrideImage, isNull);
+    expect(
+      ProductGallery.resolveImages(
+        gallery.images,
+        overrideImage: gallery.overrideImage,
+      ),
+      <String>['https://ezyventas2.test/storage/filtro.jpg'],
+    );
+    expect(tester.widget<PageView>(find.byType(PageView)).controller!.page, 0);
   });
 }

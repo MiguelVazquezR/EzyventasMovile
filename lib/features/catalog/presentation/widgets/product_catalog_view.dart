@@ -4,27 +4,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/empty_state.dart';
-import '../../../../core/widgets/ezy_search_field.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../pos/application/cart_controller.dart';
 import '../../application/catalog_providers.dart';
+import '../../data/models/product.dart';
 import 'catalog_controls.dart';
 import 'product_card.dart';
 import 'product_detail_sheet.dart';
 
-/// Catálogo del POS: buscador, chips de categoría, grid con paginación infinita
-/// y detalle en bottom sheet.
+/// Catálogo del POS: carrusel de categorías, reja de dos columnas con paginación
+/// infinita y detalle en hoja.
+///
+/// El buscador no vive aquí: está fijo en la cabecera del POS, con el botón del
+/// escáner de códigos.
 ///
 /// Precio, stock y promociones son los que calculó el servidor para la sucursal
-/// del usuario.
+/// del usuario. Cada celda escucha **solo** la cantidad de su producto en el
+/// carrito, así que agregar unidades en una tarjeta no repinta la reja entera.
 class ProductCatalogView extends ConsumerStatefulWidget {
-  const ProductCatalogView({super.key});
+  const ProductCatalogView({super.key, required this.searchController});
 
-  /// Cuántos productos está mostrando el catálogo (§9).
+  /// Buscador del catálogo.
   ///
-  /// Lo usan el pie de la reja y el subtítulo de la cabecera del POS, para que
-  /// los dos digan exactamente lo mismo.
+  /// El campo vive en la cabecera del POS (fijo, con su botón de escáner), así
+  /// que la vista no lo pinta: lo recibe solo para poder vaciarlo desde «Limpiar
+  /// filtros» (§10).
+  final TextEditingController searchController;
+
+  /// Subtítulo del pie de la reja: cuántos productos se están mostrando.
   static String countLabel(ProductsState state) {
     if (state.hasMore) {
       return 'Mostrando ${state.items.length} de ${state.total} productos';
@@ -34,12 +42,6 @@ class ProductCatalogView extends ConsumerStatefulWidget {
 
     return '${state.total} $unit en esta sucursal';
   }
-
-  /// Subtítulo de la cabecera del POS (§9). Mientras no haya nada que contar
-  /// (carga inicial o error) devuelve `null`: de eso ya avisan el esqueleto y el
-  /// aviso de error, y un `0 productos` ahí sería mentira.
-  static String? subtitle(ProductsState state) =>
-      state.items.isEmpty ? null : countLabel(state);
 
   @override
   ConsumerState<ProductCatalogView> createState() => _ProductCatalogViewState();
@@ -58,6 +60,14 @@ class _ProductCatalogViewState extends ConsumerState<ProductCatalogView> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// Deja el catálogo sin filtros: buscador, categoría y estado del servidor.
+  void _clearFilters() {
+    widget.searchController.clear();
+    final controller = ref.read(productsControllerProvider.notifier);
+    controller.setSearch('');
+    controller.setCategory(null);
   }
 
   void _onScroll() {
@@ -82,18 +92,14 @@ class _ProductCatalogViewState extends ConsumerState<ProductCatalogView> {
       child: CustomScrollView(
         controller: _scrollController,
         slivers: <Widget>[
-          SliverToBoxAdapter(
+          // El buscador vive en la banda de la cabecera del POS (fijo, con su
+          // botón de escáner): aquí solo queda el scroll del catálogo.
+          const SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              // El buscador del design system trae su propio retardo: no se pide
-              // una página por tecla (§9, §12).
-              child: EzySearchField(
-                hint: 'Buscar por nombre o SKU…',
-                onChanged: controller.setSearch,
-              ),
+              padding: EdgeInsets.only(top: 4),
+              child: CatalogCategoryChips(),
             ),
           ),
-          const SliverToBoxAdapter(child: CatalogCategoryChips()),
           if (state.errorMessage != null)
             SliverToBoxAdapter(
               child: Padding(
@@ -116,6 +122,9 @@ class _ProductCatalogViewState extends ConsumerState<ProductCatalogView> {
                 message: state.search.isEmpty
                     ? 'Agrega productos al catálogo desde la versión web.'
                     : 'Prueba con otro nombre o código SKU.',
+                // Vacío tras filtrar: siempre se ofrece la salida (§10).
+                actionLabel: state.hasFilters ? 'Limpiar filtros' : null,
+                onAction: state.hasFilters ? _clearFilters : null,
               ),
             )
           else
@@ -131,21 +140,14 @@ class _ProductCatalogViewState extends ConsumerState<ProductCatalogView> {
                 delegate: SliverChildBuilderDelegate((context, index) {
                   final product = state.items[index];
 
-                  return ProductCard(
-                    product: product,
-                    onTap: () => showProductDetail(context, product),
-                    onAdd: canSell && !product.hasVariants
-                        ? () => ref
-                              .read(cartControllerProvider.notifier)
-                              .addProduct(product)
-                        : null,
-                  );
+                  return _CatalogTile(product: product, canSell: canSell);
                 }, childCount: state.items.length),
               ),
             ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              // §1.7: el scroll nunca queda bajo la barra ni bajo el FAB.
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               child: state.isLoadingMore
                   ? const Center(
                       child: SizedBox(
@@ -168,3 +170,41 @@ class _ProductCatalogViewState extends ConsumerState<ProductCatalogView> {
     );
   }
 }
+
+/// Celda de la reja del catálogo.
+///
+/// Escucha **solo** la cantidad de su producto en el carrito (`select`), así que
+/// agregar una unidad en una tarjeta no repinta las demás. El `ProductCard` sigue
+/// siendo presentacional: aquí se decide si el producto se agrega de un toque
+/// (sin variantes) o si hay que abrir el detalle para elegir la combinación.
+class _CatalogTile extends ConsumerWidget {
+  const _CatalogTile({required this.product, required this.canSell});
+
+  final Product product;
+  final bool canSell;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cart = ref.read(cartControllerProvider.notifier);
+    final quantity = ref.watch(
+      cartControllerProvider.select((state) => state.quantityOf(product.id)),
+    );
+    // Los productos con variantes se agregan desde el detalle: son varias líneas
+    // posibles y la tarjeta no puede elegir por el usuario.
+    final canAddQuickly = canSell && !product.hasVariants;
+
+    return ProductCard(
+      product: product,
+      quantity: quantity,
+      onTap: () => showProductDetail(context, product),
+      onAdd: canAddQuickly ? () => cart.incrementProduct(product) : null,
+      onIncrement: canAddQuickly
+          ? () => cart.incrementProduct(product)
+          : null,
+      onDecrement: canAddQuickly
+          ? () => cart.decrementProduct(product.id)
+          : null,
+    );
+  }
+}
+

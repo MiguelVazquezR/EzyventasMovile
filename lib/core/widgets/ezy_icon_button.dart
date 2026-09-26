@@ -18,6 +18,8 @@ class EzyIconButton extends StatelessWidget {
     this.badgeCount,
     this.badgeColor = EzyColors.danger,
     this.color,
+    this.background,
+    this.borderColor,
   });
 
   final IconData icon;
@@ -35,6 +37,14 @@ class EzyIconButton extends StatelessWidget {
   /// Color del icono; por defecto el tono secundario de la superficie.
   final Color? color;
 
+  /// Relleno del círculo; por defecto `panel`. Sobre la cabecera con degradado
+  /// (POS, menú lateral) se pasa un blanco translúcido para que el botón se lea
+  /// sin abrir un agujero oscuro en la banda.
+  final Color? background;
+
+  /// Color del borde de 1 px; por defecto `border`.
+  final Color? borderColor;
+
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
@@ -48,9 +58,9 @@ class EzyIconButton extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: surfaces.panel,
+          color: background ?? surfaces.panel,
           shape: BoxShape.circle,
-          border: Border.all(color: surfaces.border),
+          border: Border.all(color: borderColor ?? surfaces.border),
         ),
         child: Stack(
           alignment: Alignment.center,

@@ -12,6 +12,9 @@ enum EzyAmountSize {
   /// 22 px `w300` — cabeceras de resumen y cortes.
   large(EzyTextStyles.moneyMedium),
 
+  /// 19 px `w400` — monto de barra: comparte fila con texto y un acceso.
+  bar(EzyTextStyles.moneyBar),
+
   /// 14 px `w700` — montos dentro de listas.
   list(EzyTextStyles.moneyList);
 

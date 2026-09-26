@@ -78,6 +78,20 @@ class EzyTextStyles {
     fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
   );
 
+  /// Monto de barra: 19 px `w400` con cifras tabulares.
+  ///
+  /// Un paso por debajo de [moneyMedium] para el monto que comparte fila con el
+  /// resumen del carrito y su acceso: con la letra grande un total largo se
+  /// partía en dos renglones.
+  static const TextStyle moneyBar = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 19,
+    fontWeight: FontWeight.w400,
+    letterSpacing: -0.4,
+    height: 1.1,
+    fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+  );
+
   /// Monto en lista: 14 px `w700` con cifras tabulares.
   static const TextStyle moneyList = TextStyle(
     fontFamily: fontFamily,

@@ -24,12 +24,12 @@ final productDetailProvider = FutureProvider.family<Product, int>(
 );
 
 /// Servicios de la sucursal (los usa el formulario de órdenes de servicio).
-final servicesProvider = FutureProvider.family<Paginated<CatalogService>, String?>((
-  ref,
-  search,
-) => ref
-    .watch(catalogRepositoryProvider)
-    .fetchServices(search: search, perPage: 50));
+final servicesProvider =
+    FutureProvider.family<Paginated<CatalogService>, String?>(
+      (ref, search) => ref
+          .watch(catalogRepositoryProvider)
+          .fetchServices(search: search, perPage: 50),
+    );
 
 /// Estado del catálogo del POS: lista + filtros + paginación.
 class ProductsState {
@@ -56,6 +56,10 @@ class ProductsState {
   final String? errorMessage;
 
   bool get isEmpty => items.isEmpty && !isLoading && errorMessage == null;
+
+  /// `true` cuando hay un filtro puesto (buscador o categoría): es lo que
+  /// habilita «Limpiar filtros» en el estado vacío (§10).
+  bool get hasFilters => search.isNotEmpty || categoryId != null;
 
   ProductsState copyWith({
     List<Product>? items,
@@ -152,7 +156,9 @@ class ProductsController extends Notifier<ProductsState> {
           );
 
       state = state.copyWith(
-        items: reset ? result.items : <Product>[...state.items, ...result.items],
+        items: reset
+            ? result.items
+            : <Product>[...state.items, ...result.items],
         page: result.currentPage,
         hasMore: result.hasMore,
         total: result.total,
@@ -171,6 +177,4 @@ class ProductsController extends Notifier<ProductsState> {
 }
 
 final productsControllerProvider =
-    NotifierProvider<ProductsController, ProductsState>(
-      ProductsController.new,
-    );
+    NotifierProvider<ProductsController, ProductsState>(ProductsController.new);

@@ -59,6 +59,11 @@ class EzyColors {
 
   static const Color surfaceLight = Color(0xFFFFFFFF);
   static const Color surfaceLightInner = Color(0xFFF9FAFB);
+
+  /// Lienzo del tema claro (fondo de la app): un gris un paso más oscuro que el
+  /// blanco de cards, filtros y campos, para que estos se despeguen del fondo.
+  static const Color surfaceLightCanvas = Color(0xFFE9EBF0);
+
   static const Color borderLight = Color(0xFFF3F4F6);
   static const Color borderLightStrong = Color(0xFFE5E7EB);
 
@@ -153,7 +158,7 @@ class EzySurfaces extends ThemeExtension<EzySurfaces> {
   static const EzySurfaces light = EzySurfaces(
     panel: EzyColors.surfaceLight,
     panelInner: EzyColors.surfaceLightInner,
-    background: EzyColors.surfaceLightInner,
+    background: EzyColors.surfaceLightCanvas,
     border: EzyColors.borderLight,
     borderStrong: EzyColors.borderLightStrong,
     textPrimary: EzyColors.textPrimaryLight,

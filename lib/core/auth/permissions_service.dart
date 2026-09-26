@@ -4,7 +4,25 @@ import 'package:flutter/material.dart';
 ///
 /// Cada pestaña declara la condición exacta que la hace visible: módulo
 /// contratado (`module_keys`) **y** permiso efectivo del servidor.
+///
+/// **El orden del enum es el orden de las ramas** del
+/// `StatefulShellRoute.indexedStack` (`app_router.dart`) y el que usa el menú
+/// lateral (`EzyAppDrawer`) para listarlas. `home` va primero: es el destino por
+/// defecto tras el login.
+///
+/// **Menú lateral.** Desde que la navegación vive en el `Drawer` no hay barra
+/// inferior: todas las pestañas visibles se pintan igual en el panel, sin el caso
+/// especial que tenían `Vender` y `Caja` cuando competían por un hueco en la
+/// barra.
 enum AppTab {
+  home(
+    path: '/home',
+    label: 'Inicio',
+    icon: Icons.home_outlined,
+    activeIcon: Icons.home,
+    moduleKey: null,
+    permission: null,
+  ),
   sell(
     path: '/sell',
     label: 'Vender',
@@ -118,6 +136,10 @@ class PermissionsService {
   bool hasModule(String moduleKey) => moduleKeys.contains(moduleKey);
 
   /// Pestañas visibles para este usuario, en orden.
+  ///
+  /// Es la lista de **acceso** y, a la vez, la que pinta el menú lateral: las
+  /// rutas que no aparecen siguen existiendo en el cascarón, pero su redirect
+  /// manda a la primera disponible cuando un enlace directo las pide.
   List<AppTab> get visibleTabs => AppTab.values.where(isTabVisible).toList(
     growable: false,
   );

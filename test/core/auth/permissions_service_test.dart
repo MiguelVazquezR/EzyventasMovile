@@ -16,8 +16,35 @@ void main() {
       );
 
       expect(owner.visibleTabs, AppTab.values);
-      expect(owner.defaultTab, AppTab.sell);
-      expect(service.visibleTabs, <AppTab>[AppTab.account]);
+      // Inicio es el destino por defecto y la primera pestaña del cascarón.
+      expect(owner.defaultTab, AppTab.home);
+      expect(service.visibleTabs, <AppTab>[AppTab.home, AppTab.account]);
+    });
+
+    test('el menú lateral ofrece las seis pestañas visibles', () {
+      final owner = PermissionsService.fromLists(
+        permissions: <String>[
+          'pos.access',
+          'pos.create_sale',
+          'transactions.access',
+          'services.orders.access',
+        ],
+        moduleKeys: <String>['module_pos', 'module_services'],
+      );
+
+      // Desde que la navegación vive en el menú lateral no hay barra inferior:
+      // Vender y Caja se listan igual que las demás (el orden es el del enum, que
+      // es también el de las ramas del cascarón).
+      expect(owner.visibleTabs, <AppTab>[
+        AppTab.home,
+        AppTab.sell,
+        AppTab.serviceOrders,
+        AppTab.cashRegister,
+        AppTab.sales,
+        AppTab.account,
+      ]);
+      expect(owner.isTabVisible(AppTab.sell), isTrue);
+      expect(owner.isTabVisible(AppTab.cashRegister), isTrue);
     });
 
     test('empleado limitado: solo POS, caja y ventas', () {
@@ -27,6 +54,7 @@ void main() {
       );
 
       expect(employee.visibleTabs, <AppTab>[
+        AppTab.home,
         AppTab.sell,
         AppTab.cashRegister,
         AppTab.sales,
@@ -43,6 +71,7 @@ void main() {
       );
 
       expect(technician.visibleTabs, <AppTab>[
+        AppTab.home,
         AppTab.serviceOrders,
         AppTab.account,
       ]);
@@ -61,15 +90,16 @@ void main() {
       expect(employee.isTabVisible(AppTab.sell), isFalse);
       // §4.1: la pestaña Caja solo depende de `pos.access`.
       expect(employee.visibleTabs, <AppTab>[
+        AppTab.home,
         AppTab.cashRegister,
         AppTab.account,
       ]);
     });
 
-    test('suscripción vencida (sin permisos ni módulos): solo cuenta', () {
+    test('suscripción vencida (sin permisos ni módulos): inicio y cuenta', () {
       const expired = PermissionsService.empty();
 
-      expect(expired.visibleTabs, <AppTab>[AppTab.account]);
+      expect(expired.visibleTabs, <AppTab>[AppTab.home, AppTab.account]);
       expect(expired.can('pos.access'), isFalse);
       expect(expired.hasModule('module_pos'), isFalse);
     });
@@ -102,6 +132,7 @@ void main() {
 
   group('AppTab.fromLocation', () {
     test('reconoce la pestaña y sus subrutas', () {
+      expect(AppTab.fromLocation('/home'), AppTab.home);
       expect(AppTab.fromLocation('/sell'), AppTab.sell);
       expect(AppTab.fromLocation('/account/profile'), AppTab.account);
       expect(AppTab.fromLocation('/service-orders/12'), AppTab.serviceOrders);

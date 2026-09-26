@@ -78,6 +78,12 @@ void main() {
       expect(product.isBulk, isFalse);
       expect(product.hasPromotion, isTrue);
       expect(product.displayImage, contains('filtro.jpg'));
+      // La galería del detalle se arma con la portada y `general_images`.
+      expect(product.galleryImages, <String>[
+        'https://ezyventas2.test/storage/filtro.jpg',
+        'https://ezyventas2.test/storage/filtro-2.jpg',
+      ]);
+      expect(product.cardImage, 'https://ezyventas2.test/storage/filtro.jpg');
       expect(product.components.single.name, 'Goma');
     });
 
@@ -125,6 +131,93 @@ void main() {
       expect(product.isOutOfStock, isTrue);
       expect(product.displayImage, isNull);
       expect(product.priceForQuantity(10), 3900.0);
+    });
+
+    test('la portada repetida en general_images no duplica la galería', () {
+      // El servidor manda la portada también dentro de `general_images`: el
+      // detalle debe dar dos páginas, no tres.
+      final product = Product.fromJson(<String, dynamic>{
+        'id': 2,
+        'name': 'Funda',
+        'selling_price': '100.00',
+        'price': 100,
+        'original_price': 100,
+        'stock': 3,
+        'image': 'https://ezyventas2.test/storage/funda.jpg',
+        'general_images': <String>[
+          'https://ezyventas2.test/storage/funda.jpg',
+          'https://ezyventas2.test/storage/funda-2.jpg',
+        ],
+      });
+
+      expect(product.galleryImages, <String>[
+        'https://ezyventas2.test/storage/funda.jpg',
+        'https://ezyventas2.test/storage/funda-2.jpg',
+      ]);
+    });
+
+    test('el marcador del servidor (placehold.co) no cuenta como imagen', () {
+      // `ProductCatalogService::payload` pone esa URL cuando el producto no
+      // tiene fotos propias: la app dibuja su propio marcador en lugar del
+      // cuadro gris del servicio.
+      final product = Product.fromJson(<String, dynamic>{
+        'id': 1,
+        'name': 'Iphone 20',
+        'selling_price': '12000.00',
+        'price': 12000,
+        'original_price': 12000,
+        'stock': 4,
+        'image': 'https://placehold.co/400x400/EBF8FF/3182CE?text=Iphone%2020',
+        'general_images': <String>[],
+      });
+
+      expect(product.displayImage, isNull);
+      expect(product.galleryImages, isEmpty);
+      expect(product.cardImage, isNull);
+    });
+
+    test('producto de solo variantes usa la foto de su primera variante', () {
+      // Caso real del POS: las fotos viven en
+      // `variant_combinations[].image_url` y el producto no tiene fotos propias,
+      // así que la tarjeta y el detalle caen a la de la variante (como la web).
+      final product = Product.fromJson(<String, dynamic>{
+        'id': 9,
+        'name': 'Playera',
+        'selling_price': '200.00',
+        'price': 200,
+        'original_price': 200,
+        'stock': 0,
+        'image': 'https://placehold.co/400x400/EBF8FF/3182CE?text=Playera',
+        'general_images': <String>[],
+        'variant_combinations': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 30,
+            'attributes': <String, dynamic>{'Talla': 'M'},
+            'price': 200.0,
+            'stock': 2.0,
+            'image_url': 'https://ezyventas2.test/storage/playera-m.jpg',
+          },
+          <String, dynamic>{
+            'id': 31,
+            'attributes': <String, dynamic>{'Talla': 'G'},
+            'price': 200.0,
+            'stock': 1.0,
+            'image_url': null,
+          },
+        ],
+      });
+
+      expect(
+        product.variantCombinations.first.imageUrl,
+        'https://ezyventas2.test/storage/playera-m.jpg',
+      );
+      expect(
+        product.cardImage,
+        'https://ezyventas2.test/storage/playera-m.jpg',
+      );
+      // El producto no tiene fotos propias: la galería se queda con la de la
+      // variante que el detalle elija.
+      expect(product.galleryImages, isEmpty);
     });
   });
 

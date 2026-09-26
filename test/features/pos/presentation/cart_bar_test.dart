@@ -1,6 +1,6 @@
 import 'package:ezyventas_app/core/auth/permissions_service.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
-import 'package:ezyventas_app/core/widgets/ezy_action_bar.dart';
+import 'package:ezyventas_app/core/widgets/ezy_amount.dart';
 import 'package:ezyventas_app/features/auth/application/auth_controller.dart';
 import 'package:ezyventas_app/features/cash/data/models/active_cash_session.dart';
 import 'package:ezyventas_app/features/catalog/data/models/product.dart';
@@ -13,16 +13,19 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
 /// Permisos del vendedor del mostrador: entra al POS y puede cobrar.
-const List<String> _sellerPermissions = <String>['pos.access', 'pos.create_sale'];
+const List<String> _sellerPermissions = <String>[
+  'pos.access',
+  'pos.create_sale',
+];
 
-Product _product() => Product.fromJson(<String, dynamic>{
+Product _product({double price = 135}) => Product.fromJson(<String, dynamic>{
   'id': 45,
   'name': 'Filtro de aceite',
   'sku': 'FIL-001',
   'selling_price': '150.00',
-  'price': 135.0,
-  'original_price': 150.0,
-  'stock': 24.0,
+  'price': price,
+  'original_price': price,
+  'stock': 2400.0,
   'measure_unit': 'pz',
   'is_bulk': false,
   'show_in_pos': true,
@@ -42,7 +45,7 @@ ActiveCashSession _openShift() => ActiveCashSession.fromJson(<String, dynamic>{
   },
 });
 
-/// Monta la barra del carrito anclada al pie, con el turno de caja sustituido
+/// Monta la pill del carrito anclada al pie, con el turno de caja sustituido
 /// (sin turno el servidor respondería `session_required`) y los permisos
 /// indicados.
 ///
@@ -54,6 +57,7 @@ Future<ProviderContainer> _pumpBar(
   bool canSell = true,
   bool withShift = false,
   int lines = 0,
+  double unitPrice = 135,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -74,7 +78,7 @@ Future<ProviderContainer> _pumpBar(
 
   final cart = container.read(cartControllerProvider.notifier);
   for (var line = 0; line < lines; line++) {
-    cart.addProduct(_product());
+    cart.addProduct(_product(price: unitPrice));
   }
 
   await tester.pumpWidget(
@@ -83,9 +87,7 @@ Future<ProviderContainer> _pumpBar(
       child: MaterialApp(
         theme: EzyTheme.dark(),
         home: const Scaffold(
-          body: Column(
-            children: <Widget>[Spacer(), CartBar()],
-          ),
+          body: Column(children: <Widget>[Spacer(), CartBar()]),
         ),
       ),
     ),
@@ -108,28 +110,51 @@ void main() {
   ) async {
     await _pumpBar(tester);
 
-    expect(find.byType(EzyActionBar), findsOneWidget);
+    // La pill es un resumen, no una barra de acciones: el importe y el acceso
+    // al carrito viven en la misma pieza táctil (§8.1).
+    expect(find.byType(EzyAmount), findsOneWidget);
     expect(find.text('Sin turno abierto'), findsOneWidget);
     expect(find.text('Carrito vacío'), findsOneWidget);
     expect(find.textContaining('0.00'), findsOneWidget);
   });
 
-  testWidgets('con líneas: resume el carrito y muestra su total', (
+  testWidgets('con líneas: resume el carrito, muestra su total y la flecha', (
     tester,
   ) async {
     await _pumpBar(tester, withShift: true, lines: 1);
 
-    expect(find.text('Ver carrito'), findsOneWidget);
+    // El acceso al carrito es el chevron, no la pastilla «Ver carrito»: el
+    // texto robaba al total el ancho que necesita para caber en un renglón.
+    expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+    expect(find.text('Ver carrito'), findsNothing);
     expect(find.text('1 producto · 1 artículo'), findsOneWidget);
     // El total lo formatea `EzyAmount` con el dinero del carrito.
     expect(find.textContaining('135.00'), findsOneWidget);
   });
 
-  testWidgets('sin permiso de venta la barra no se dibuja', (tester) async {
+  testWidgets('el total va en un solo renglón aunque tenga siete cifras', (
+    tester,
+  ) async {
+    // En un teléfono estrecho el monto es donde se partía en dos renglones.
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpBar(tester, withShift: true, lines: 3, unitPrice: 1240000);
+
+    final total = find.textContaining('3,720,000.00');
+    expect(total, findsOneWidget);
+    // Dos renglones medirían el doble del alto de la tipografía del monto
+    // (19 px × 1.1 ≈ 21 px).
+    expect(tester.getSize(total).height, lessThan(24));
+  });
+
+  testWidgets('sin permiso de venta la pill no se dibuja', (tester) async {
     await _pumpBar(tester, canSell: false);
 
-    expect(find.byType(EzyActionBar), findsNothing);
-    expect(find.text('Ver carrito'), findsNothing);
+    expect(find.byType(EzyAmount), findsNothing);
+    expect(find.byIcon(Icons.chevron_right), findsNothing);
     expect(find.text('Carrito vacío'), findsNothing);
   });
 }
