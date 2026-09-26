@@ -41,7 +41,7 @@ flutter build apk --release --dart-define=API_BASE_URL=https://app.ezyventas.com
 
 ```bash
 flutter analyze     # debe quedar sin issues
-flutter test        # 441 tests (9 omitidas: las live sin credenciales): dinero, errores, sesion,
+flutter test        # 449 tests (9 omitidas: las live sin credenciales): dinero, errores, sesion,
                     # permisos, catalogo, caja, cobro, ventas, ordenes, impresion (las
                     # `operations` del servidor -> bytes ESC/POS/TSPL, el comprobante del corte,
                     # plantillas y su filtro por contexto, la hoja de impresion, el controlador de
@@ -50,7 +50,10 @@ flutter test        # 441 tests (9 omitidas: las live sin credenciales): dinero,
                     # soporte, perfil y suscripcion), mas config (reescritura de las URLs de medios
                     # por el tunel USB, `ServerImage` y su cadena de origenes), texto plano a partir
                     # del HTML de las descripciones (`HtmlText`) y el logotipo de marca (`BrandLogo`:
-                    # asset segun el tema y respaldo sin asset)
+                    # asset segun el tema y respaldo sin asset), mas las piezas del rediseno: la banda
+                    # de marca del POS (vendedor, negocio · sucursal y el avatar legible sobre el
+                    # naranja), la barra del carrito con su chevron, el menu lateral del cascaron, el
+                    # buscador y el avatar del sistema, el escaner de codigos y Home
 ```
 
 Pruebas **reales** contra el servidor (no corren en `flutter test` normal):
