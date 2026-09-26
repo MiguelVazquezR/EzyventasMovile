@@ -9,7 +9,6 @@ import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/ezy_action_bar.dart';
-import '../../../../core/widgets/ezy_amount.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
@@ -35,8 +34,14 @@ Future<void> showCartSheet(BuildContext context) {
   );
 }
 
-/// Carrito dentro de la hoja estándar: cabecera, líneas con scroll y el CTA de
-/// cobro **fijo** al pie (§7.6).
+/// Carrito dentro de la hoja estándar: cabecera con el conteo, líneas con scroll,
+/// resumen de venta y las tres acciones **fijas** al pie (§1, §4 y §5 del
+/// rediseño del carrito).
+///
+/// La jerarquía sigue al diseño: cliente → lista de artículos → resumen → pie de
+/// acciones. El monto ya no se repite en una franja arriba del todo: el total
+/// vive una sola vez, en el resumen, y el conteo de la cabecera da la pista
+/// rápida de lo que hay en el carrito.
 class CartSheet extends ConsumerWidget {
   const CartSheet({super.key});
 
@@ -78,16 +83,9 @@ class CartSheet extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             children: <Widget>[
-              _CartTotalBand(cart: cart),
-              const SizedBox(height: 12),
               const _CustomerRow(),
               const SizedBox(height: 16),
-              Text(
-                'PRODUCTOS',
-                style: EzyTextStyles.cardTitle.copyWith(
-                  color: context.surfaces.textBody,
-                ),
-              ),
+              _LinesHeader(cart: cart, onClear: controller.clear),
               const SizedBox(height: 12),
               for (final line in cart.lines) CartLineTile(line: line),
               if (cart.isEmpty)
@@ -110,45 +108,48 @@ class CartSheet extends ConsumerWidget {
               ],
               const SizedBox(height: 12),
               _TotalsCard(cart: cart),
-              const SizedBox(height: 8),
-              EzyButton(
-                label: 'Vaciar carrito',
-                variant: EzyButtonVariant.text,
-                onPressed: cart.isEmpty ? null : () => controller.clear(),
-              ),
             ],
           ),
         ),
-        // El cobro no se busca bajando: vive fijo al pie de la hoja.
+        // El cobro no se busca bajando: vive fijo al pie de la hoja (§5).
         EzyActionBar(child: const _CheckoutSection()),
       ],
     );
   }
 }
 
-/// Franja del total: el monto que se va a cobrar, arriba y en el cuerpo del
-/// panel, para no tener que bajar hasta el final del carrito.
-class _CartTotalBand extends StatelessWidget {
-  const _CartTotalBand({required this.cart});
+/// Encabezado de la lista de líneas, con «Vaciar carrito» a la derecha (§1).
+///
+/// El vaciado vive pegado a lo que vacía y no al final del scroll: es una acción
+/// destructiva y tiene que verse **antes** de las líneas, no después. Va en el
+/// tono de peligro del sistema, sin relleno, para que no compita con el pie.
+class _LinesHeader extends StatelessWidget {
+  const _LinesHeader({required this.cart, required this.onClear});
 
   final CartState cart;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: surfaces.panelInner,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: surfaces.border),
-      ),
-      child: EzyAmount(
-        value: cart.total,
-        label: 'Total a cobrar',
-        size: EzyAmountSize.hero,
-      ),
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            'ARTÍCULOS EN ORDEN',
+            style: EzyTextStyles.cardTitle.copyWith(
+              color: context.surfaces.textMuted,
+            ),
+          ),
+        ),
+        EzyButton(
+          label: 'Vaciar carrito',
+          variant: EzyButtonVariant.text,
+          icon: Icons.delete_outline,
+          textColor: StatusPalette.text(context, EzySeverity.danger),
+          expand: false,
+          onPressed: cart.isEmpty ? null : onClear,
+        ),
+      ],
     );
   }
 }
@@ -180,16 +181,27 @@ class _CustomerRow extends ConsumerWidget {
 
     return EzyListTile(
       icon: Icons.person_outline,
-      title: customer?.displayName ??
-          (guestName.isEmpty ? 'Público general' : guestName),
+      title: 'Cliente: ${_customerLabel(customer?.displayName, guestName)}',
       subtitle: subtitle,
       showDivider: false,
       onTap: () => showCustomerPickerSheet(context),
     );
   }
+
+  /// Nombre con el que se registra la venta, ya resuelto para la fila (§1).
+  ///
+  /// El prefijo «Cliente:» va en la fila —y no en el nombre— para que la venta
+  /// sin cliente registrado se lea de un golpe: `Cliente: Público general`.
+  static String _customerLabel(String? displayName, String guestName) {
+    if (displayName != null) {
+      return displayName;
+    }
+
+    return guestName.isEmpty ? 'Público general' : guestName;
+  }
 }
 
-/// Totales del carrito (subtotal, descuento y total).
+/// Resumen de venta del carrito (§4): subtotal, descuentos y total a pagar.
 class _TotalsCard extends StatelessWidget {
   const _TotalsCard({required this.cart});
 
@@ -198,13 +210,13 @@ class _TotalsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SectionCard(
-      title: 'Totales',
+      title: 'Resumen de venta',
       child: Column(
         children: <Widget>[
           SectionRow(label: 'Subtotal', value: Money.format(cart.subtotal)),
           if (cart.totalDiscount != 0)
             SectionRow(
-              label: 'Descuento',
+              label: 'Descuentos',
               value: '-${Money.format(cart.totalDiscount)}',
               valueStyle: EzyTextStyles.moneyList.copyWith(
                 color: StatusPalette.text(context, EzySeverity.success),
@@ -212,7 +224,7 @@ class _TotalsCard extends StatelessWidget {
             ),
           const Divider(height: 24),
           SectionRow(
-            label: 'Total',
+            label: 'Total a pagar',
             value: Money.format(cart.total),
             emphasized: true,
           ),
@@ -222,14 +234,16 @@ class _TotalsCard extends StatelessWidget {
   }
 }
 
-/// Acciones de cobro: venta, apartado y pedido.
+/// Acciones del pie: pedido, apartado y cobro (§5).
 ///
 /// Sin sesión de caja abierta el servidor responde `session_required`, así que
 /// la app bloquea los botones y lleva al flujo de apertura.
 ///
-/// Las tres comparten una fila de 48 px y ninguna lleva icono (§8: `Cobrar` se
+/// Las tres comparten una fila de 48 px y ninguna lleva icono (§5: `Cobrar` se
 /// distingue por el naranja de la marca, no por el alto), para que el carrito
-/// tenga el máximo de alto útil.
+/// tenga el máximo de alto útil. El orden va de la acción más liviana a la que
+/// cierra la venta: `Pedido` (contorno de marca), `Apartar` (ámbar suave) y
+/// `Cobrar` (relleno primario).
 class _CheckoutSection extends ConsumerWidget {
   const _CheckoutSection();
 
@@ -274,9 +288,28 @@ class _CheckoutSection extends ConsumerWidget {
 
     // Las tres acciones caben en **una sola fila** de 48 px (sin icono): el pie
     // de la hoja le deja así unos 64 px más de alto al contenido del carrito.
-    // `Cobrar` sigue siendo la acción primaria, pero por color (§1.1).
+    // `Cobrar` sigue siendo la acción primaria, pero por color (§5).
     return Row(
       children: <Widget>[
+        Expanded(
+          child: EzyButton(
+            label: 'Pedido',
+            variant: EzyButtonVariant.outlinePrimary,
+            onPressed: enabled ? () => showStoreOrderSheet(context) : null,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: EzyButton(
+            label: 'Apartar',
+            // Ámbar suave: deja el producto reservado sin cobrarlo.
+            variant: EzyButtonVariant.warn,
+            onPressed: enabled
+                ? () => showPaymentSheet(context, mode: PaymentMode.layaway)
+                : null,
+          ),
+        ),
+        const SizedBox(width: 10),
         Expanded(
           child: EzyButton(
             label: 'Cobrar',
@@ -284,25 +317,6 @@ class _CheckoutSection extends ConsumerWidget {
             onPressed: enabled
                 ? () => showPaymentSheet(context, mode: PaymentMode.checkout)
                 : null,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: EzyButton(
-            label: 'Apartar',
-            // Azul: deja el producto reservado sin cobrarlo.
-            variant: EzyButtonVariant.info,
-            onPressed: enabled
-                ? () => showPaymentSheet(context, mode: PaymentMode.layaway)
-                : null,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: EzyButton(
-            label: 'Pedido',
-            variant: EzyButtonVariant.outline,
-            onPressed: enabled ? () => showStoreOrderSheet(context) : null,
           ),
         ),
       ],

@@ -11,7 +11,7 @@ import 'ezy_text_field.dart';
 /// borde de 1 px que las tarjetas y las hojas, y las acciones con los botones
 /// del sistema. Casi siempre conviene usar [showEzyConfirmDialog] o
 /// [showEzyPromptDialog]; [EzyDialog] se reserva para los casos con contenido
-/// propio (el editor de una línea del carrito, por ejemplo).
+/// propio (el diálogo que pide un dato, por ejemplo).
 class EzyDialog extends StatelessWidget {
   const EzyDialog({
     super.key,

@@ -115,7 +115,10 @@ final Finder cartBarChevron = find.descendant(
 );
 
 const String cartTitle = 'Carrito';
-const String cartTotalsCard = 'TOTALES';
+/// Encabezado de la lista y card de totales del rediseño (§1 y §4): el orden de
+/// las anclas es el del recorrido (`Carrito` → lista → resumen → `Cobrar`).
+const String cartLinesHeader = 'ARTÍCULOS EN ORDEN';
+const String cartTotalsCard = 'RESUMEN DE VENTA';
 const String clearCartLabel = 'Vaciar carrito';
 const String checkoutLabel = 'Cobrar';
 const String paymentTitle = 'Cobro';
@@ -345,7 +348,14 @@ Future<void> main() async {
     // Carrito: lineas, totales y el candado de la sesión de caja.
     await tester.tap(added ? cartBarChevron : find.text(cartBarEmpty));
     await _waitFor(tester, find.text(cartTitle), reason: 'El carrito no abrió');
-    expect(find.text(cartTotalsCard), findsOneWidget);
+    // El encabezado de la lista se ve sin bajar; el resumen de venta puede quedar
+    // fuera de la pantalla en un carrito largo, así que se revela antes.
+    expect(find.text(cartLinesHeader), findsOneWidget);
+    expect(
+      await _waitScrolling(tester, find.text(cartTotalsCard)),
+      isTrue,
+      reason: 'El carrito no mostró el resumen de venta',
+    );
 
     final cobrar = find.widgetWithText(EzyButton, checkoutLabel);
     expect(
@@ -389,9 +399,12 @@ Future<void> main() async {
       );
     }
 
-    // Se deja el carrito limpio: `Vaciar carrito` no toca el servidor.
+    // Se deja el carrito limpio: `Vaciar carrito` no toca el servidor. El botón
+    // vive ahora en el encabezado de la lista (§1), así que puede estar fuera de
+    // la pantalla si el carrito trae muchas líneas.
     final clearCart = find.widgetWithText(EzyButton, clearCartLabel);
     if (tester.widget<EzyButton>(clearCart).onPressed != null) {
+      await _waitScrolling(tester, clearCart);
       await tester.tap(clearCart);
       await tester.pump(const Duration(milliseconds: 400));
     }

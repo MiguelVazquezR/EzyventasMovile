@@ -5,6 +5,7 @@ import 'package:ezyventas_app/features/auth/application/auth_controller.dart';
 import 'package:ezyventas_app/features/cash/data/models/active_cash_session.dart';
 import 'package:ezyventas_app/features/catalog/data/models/product.dart';
 import 'package:ezyventas_app/features/pos/application/cart_controller.dart';
+import 'package:ezyventas_app/features/pos/presentation/widgets/cart_line_tile.dart';
 import 'package:ezyventas_app/features/pos/presentation/widgets/cart_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -40,8 +41,9 @@ ActiveCashSession _openShift() => ActiveCashSession.fromJson(<String, dynamic>{
 /// Monta la hoja del carrito con el turno de caja y los permisos sustituidos.
 ///
 /// Las etiquetas que se comprueban son las que el recorrido del teléfono
-/// (`integration_test/qa_device_test.dart`) busca dentro del carrito, así que un
-/// cambio de texto aquí rompería la corrida real.
+/// (`integration_test/qa_device_test.dart`) busca dentro del carrito (`Carrito`,
+/// `RESUMEN DE VENTA`, `Cobrar`, `Vaciar carrito`), así que un cambio de texto
+/// aquí rompería la corrida real.
 Future<ProviderContainer> _pumpSheet(
   WidgetTester tester, {
   bool withShift = true,
@@ -66,8 +68,8 @@ Future<ProviderContainer> _pumpSheet(
   addTearDown(container.dispose);
 
   // Pantalla alta: la hoja (0.92 del alto) no recorta el carrito y las anclas
-  // que el recorrido del teléfono busca al final (`TOTALES`, `Cobrar`) quedan
-  // construidas por el `ListView`.
+  // que el recorrido del teléfono busca al final (`RESUMEN DE VENTA`, `Cobrar`)
+  // quedan construidas por el `ListView`.
   await tester.binding.setSurfaceSize(const Size(400, 2000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -98,33 +100,96 @@ void main() {
     Intl.defaultLocale = 'es_MX';
   });
 
-  testWidgets('con líneas: cabecera, total a cobrar, totales y cobro', (
+  testWidgets('con líneas: cabecera, cliente, lista y resumen de venta', (
     tester,
   ) async {
     await _pumpSheet(tester);
 
     expect(find.text('Carrito'), findsOneWidget);
     expect(find.text('1 producto · 1 artículo'), findsOneWidget);
-    expect(find.text('TOTAL A COBRAR'), findsOneWidget);
     expect(find.textContaining('135.00'), findsWidgets);
-    expect(find.text('TOTALES'), findsOneWidget);
-    expect(find.text('Vaciar carrito'), findsOneWidget);
+
+    // §1: la lista se anuncia como `ARTÍCULOS EN ORDEN` y el cliente va arriba
+    // de las líneas, con el prefijo del diseño.
+    expect(find.text('ARTÍCULOS EN ORDEN'), findsOneWidget);
+    expect(find.text('Cliente: Público general'), findsOneWidget);
+
+    // §4: un solo bloque de totales. La franja duplicada que vivía arriba del
+    // todo (`TOTAL A COBRAR`) ya no existe.
+    expect(find.text('RESUMEN DE VENTA'), findsOneWidget);
+    expect(find.text('Subtotal'), findsOneWidget);
+    expect(find.text('Total a pagar'), findsOneWidget);
+    expect(find.text('TOTAL A COBRAR'), findsNothing);
 
     final cobrar = find.widgetWithText(EzyButton, 'Cobrar');
     expect(cobrar, findsOneWidget);
     expect(tester.widget<EzyButton>(cobrar).onPressed, isNotNull);
+    expect(
+      tester
+          .widget<EzyButton>(find.widgetWithText(EzyButton, 'Vaciar carrito'))
+          .onPressed,
+      isNotNull,
+    );
   });
 
-  testWidgets('carrito vacío: estado vacío y cobro deshabilitado', (
+  testWidgets('el pie ordena Pedido, Apartar y Cobrar con sus variantes (§5)', (
+    tester,
+  ) async {
+    await _pumpSheet(tester);
+
+    final pedido = find.widgetWithText(EzyButton, 'Pedido');
+    final apartar = find.widgetWithText(EzyButton, 'Apartar');
+    final cobrar = find.widgetWithText(EzyButton, 'Cobrar');
+
+    expect(
+      tester.widget<EzyButton>(pedido).variant,
+      EzyButtonVariant.outlinePrimary,
+    );
+    expect(tester.widget<EzyButton>(apartar).variant, EzyButtonVariant.warn);
+    expect(tester.widget<EzyButton>(cobrar).variant, EzyButtonVariant.primary);
+
+    // De izquierda a derecha: de la acción más liviana a la que cierra la venta.
+    expect(tester.getTopLeft(pedido).dx, lessThan(tester.getTopLeft(apartar).dx));
+    expect(tester.getTopLeft(apartar).dx, lessThan(tester.getTopLeft(cobrar).dx));
+  });
+
+  testWidgets('vaciar carrito desde el encabezado deja la lista vacía', (
+    tester,
+  ) async {
+    await _pumpSheet(tester);
+    expect(find.byType(CartLineTile), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(EzyButton, 'Vaciar carrito'));
+    await tester.pump();
+
+    expect(find.byType(CartLineTile), findsNothing);
+    expect(find.text('El carrito está vacío'), findsOneWidget);
+  });
+
+  testWidgets('carrito vacío: estado vacío, resumen y acciones apagadas', (
     tester,
   ) async {
     await _pumpSheet(tester, lines: 0);
 
     expect(find.text('El carrito está vacío'), findsOneWidget);
-    expect(find.text('TOTALES'), findsOneWidget);
+    expect(find.text('ARTÍCULOS EN ORDEN'), findsOneWidget);
+    expect(find.text('RESUMEN DE VENTA'), findsOneWidget);
+    expect(find.text('Total a pagar'), findsOneWidget);
 
     final cobrar = find.widgetWithText(EzyButton, 'Cobrar');
     expect(tester.widget<EzyButton>(cobrar).onPressed, isNull);
+    expect(
+      tester
+          .widget<EzyButton>(find.widgetWithText(EzyButton, 'Pedido'))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<EzyButton>(find.widgetWithText(EzyButton, 'Apartar'))
+          .onPressed,
+      isNull,
+    );
     expect(
       tester
           .widget<EzyButton>(find.widgetWithText(EzyButton, 'Vaciar carrito'))
