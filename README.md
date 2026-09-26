@@ -1241,6 +1241,22 @@ adb install -r -t build\app\outputs\flutter-apk\app-debug.apk
   **LF**: el repo lo fuerza con `.gitattributes` (`*.sh text eol=lf`). Si lo editas en Windows y lo
   subes con CRLF, `curl` recibe las URLs con `\r` y todo responde `000` sin explicar por qué
   (`adb shell dos2unix /data/local/tmp/android_tunnel_check.sh` lo arregla en el teléfono).
+- **Ojo con el APK que deja la corrida de QA.** `flutter test integration_test/qa_device_test.dart -d
+  <serial>` **recompila e instala** `build\app\outputs\flutter-apk\app-debug.apk` con el **test como
+  entry point** (`IntegrationTestWidgetsFlutterBinding`, que espera al driver de `flutter test`): en el
+  archivo, `assets/flutter_assets/kernel_blob.bin` contiene `qa_device_test`. Si después abres la app a
+  mano se queda **para siempre en el logo de arranque** sin pintar nada y sin un solo error: Dart sí
+  arranca (en `logcat` se anuncia el VM service) pero hay **cero frames**, así que el logo que se ve es
+  el `launch screen` nativo de Android, no el `SplashScreen` de Flutter:
+
+  ```powershell
+  & $adb shell dumpsys gfxinfo com.ezyventas.app | Select-String 'Total frames rendered'
+  # Total frames rendered: 0  -> el APK instalado es el del test, no la app
+  ```
+
+  La cura es volver a compilar el **paso 3** (`flutter build apk --debug …`, que usa `lib/main.dart`)
+  e instalar ese APK con `adb install -r -t`. El túnel y la API no tienen nada que ver: no hace falta
+  tocar `adb reverse` ni Herd, solo recompilar la app normal.
 
 ### 4.2 Instalar la app en un teléfono Xiaomi/Redmi (MIUI/HyperOS)
 
