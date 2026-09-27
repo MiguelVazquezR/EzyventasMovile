@@ -54,7 +54,7 @@ flutter test        # 459 tests (9 omitidas: las live sin credenciales): dinero,
                     # de marca del POS (vendedor, negocio · sucursal y el avatar legible sobre el
                     # naranja), la barra del carrito con su chevron, el carrito del POS (la lista de
                     # articulos con su cabecera, el contador de cada linea, el editor de linea -cantidad,
-                    # descuento y precio-, el resumen de venta y el pie de tres acciones), el menu
+                    # descuento y precio-, el resumen de venta y el pie de cierre de venta con su menu),
                     # lateral del cascaron, el buscador y el avatar del sistema, el escaner de codigos y
                     # Home
 ```
@@ -361,15 +361,21 @@ El POS (`features/pos/`, `features/catalog/`) quedó así:
 - **Barra del carrito flotante** (`CartBar`): card oscura en los dos temas con el contador, la vista previa
   de los artículos, el total (19 px y en un solo renglón: si no cabe, encoge) y el **chevron** del acceso.
   Toda la barra es un solo blanco táctil que abre la hoja del carrito.
-- **Hoja del carrito** (`CartSheet`): el conteo en el subtítulo de la cabecera y la fila del cliente
-  (`Cliente: Público general`; la fila entera abre el selector), la cabecera `ARTÍCULOS EN ORDEN` con
-  **Vaciar carrito** en el tono de peligro (apagado sin líneas; pegado a lo que vacía, no al final del
-  scroll) y una tarjeta por línea (`CartLineTile`: nombre, precio unitario con el de lista tachado y la
+- **Hoja del carrito** (`CartSheet`): la hoja se apoya en el **mismo lienzo del POS** (`background`), el
+  conteo va en el subtítulo de la cabecera y la sección del cliente es una tarjeta blanca más (`Cliente:
+  Público general`; la fila entera abre el selector), la cabecera `ARTÍCULOS EN ORDEN` con
+  **Vaciar** en el tono de peligro (apagado sin líneas; pegado a lo que vacía, no al final del scroll y
+  **con confirmación**, porque es lo único que no se puede deshacer) y una tarjeta por línea
+  (`CartLineTile`: miniatura que abarca todo el alto, nombre, precio unitario con el de lista tachado y la
   pastilla del ahorro, el contador del sistema, el total de la línea y los botones de icono del lápiz
-  —editor— y la papelera). El editor de línea captura cantidad, descuento (dinero o por ciento) y precio
-  (con `pos.edit_prices`) en un solo guardado. Al pie del scroll va el **RESUMEN DE VENTA** (subtotal,
-  descuentos y total a pagar) y, fijo en el pie (`EzyActionBar`, no se va con el scroll), **Pedido**
-  (contorno de marca), **Apartar** (ámbar suave) y **Cobrar** (relleno primario), el único sitio del cobro.
+  —editor— y la papelera). Cliente, líneas y resumen llevan la **sombra de tarjeta flotante**
+  (`EzyColors.cardShadow`) sobre ese lienzo. El
+  editor de línea captura cantidad, descuento (dinero o por ciento) y precio (con `pos.edit_prices`) en un
+  solo guardado. Al pie del scroll va el **RESUMEN DE VENTA** (subtotal, descuentos y total a pagar) y,
+  fijo en el pie (`EzyActionBar` sobre el fondo del lienzo, no se va con el scroll), **Finalizar compra**
+  (relleno primario, a 2/3 del ancho y centrado): despliega hacia arriba el menú con las tres formas de
+  cerrar la venta como **opciones de lista** en el color de marca —**Pago al contado**, **Apartar** y
+  **Pedido**—, el único sitio del cobro.
 
 ### Ventas (etapa 4)
 `features/sales/` cubre el historial, el detalle y el dinero de una venta ya registrada.

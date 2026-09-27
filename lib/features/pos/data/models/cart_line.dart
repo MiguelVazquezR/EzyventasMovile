@@ -30,10 +30,15 @@ class CartLine {
     this.stockLimit = 0,
     this.measureUnit = '',
     this.isBulk = false,
+    this.imageUrl,
   });
 
   final int productId;
   final String productName;
+
+  /// Foto de la línea (la de la variante si la tiene, si no la del producto).
+  /// Solo para pintar la miniatura de la tarjeta del carrito.
+  final String? imageUrl;
 
   /// `variant_combinations[].id` (`product_attribute_id`), o `null`.
   final int? variantId;
@@ -130,9 +135,8 @@ class CartLine {
   }
 
   /// `listPrice - unitPrice` por unidad, nunca negativo.
-  double get discountPerUnit => Money.round2(
-    listPrice > unitPrice ? listPrice - unitPrice : 0,
-  );
+  double get discountPerUnit =>
+      Money.round2(listPrice > unitPrice ? listPrice - unitPrice : 0);
 
   /// Subtotal de la línea con precio de lista (base del descuento).
   double get lineSubtotal => Money.round2(listPrice * quantity);
@@ -191,6 +195,7 @@ class CartLine {
       productName: productName,
       variantId: variantId,
       variantLabel: variantLabel,
+      imageUrl: imageUrl,
       listPrice: listPrice ?? this.listPrice,
       unitPrice: unitPrice ?? this.unitPrice,
       quantity: quantity ?? this.quantity,

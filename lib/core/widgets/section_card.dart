@@ -12,6 +12,7 @@ class SectionCard extends StatelessWidget {
     this.trailing,
     this.padding = const EdgeInsets.all(20),
     this.inner = false,
+    this.boxShadow,
   });
 
   final Widget child;
@@ -27,6 +28,10 @@ class SectionCard extends StatelessWidget {
   /// `true` para cards internas (fondo `panelInner`, radio 16).
   final bool inner;
 
+  /// Sombra de la card cuando **flota** sobre un lienzo (el carrito): sin ella la
+  /// card solo se apoya en el borde de 1 px.
+  final List<BoxShadow>? boxShadow;
+
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
@@ -37,6 +42,7 @@ class SectionCard extends StatelessWidget {
         color: inner ? surfaces.panelInner : surfaces.panel,
         borderRadius: BorderRadius.circular(inner ? 16 : 24),
         border: Border.all(color: surfaces.border),
+        boxShadow: boxShadow,
       ),
       padding: padding,
       child: Column(

@@ -37,6 +37,9 @@ class ProductLineBuilder {
         stockLimit: variant?.stock ?? product.stock,
         measureUnit: product.measureUnit,
         isBulk: product.isBulk,
+        // Miniatura de la línea: la foto de la variante elegida y, si no tiene,
+        // la del producto (`cardImage` ya recorre la galería y sus variantes).
+        imageUrl: Product.cleanImage(variant?.imageUrl) ?? product.cardImage,
       ),
       quantity,
     );

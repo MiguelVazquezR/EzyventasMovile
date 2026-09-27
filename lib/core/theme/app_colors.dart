@@ -37,7 +37,6 @@ class EzyColors {
   /// Azul de Bluetooth: botones de impresora (buscar, conectar, cambiar).
   static const Color bluetooth = Color(0xFF3B82F6);
 
-
   // Neutros
   static const Color grayF2 = Color(0xFFF2F2F2);
   static const Color grayD9 = Color(0xFFD9D9D9);
@@ -94,6 +93,19 @@ class EzyColors {
   static const Color neutralTextLight = Color(0xFF4B5563);
 
   static const Color white = Color(0xFFFFFFFF);
+
+  // Sombras
+  /// Sombra de las tarjetas que **flotan** sobre un lienzo: la sección del
+  /// cliente, las líneas del carrito y el resumen de venta. Baja y ancha, para
+  /// despegar la tarjeta del fondo sin dibujar un borde duro; es la misma familia
+  /// que la de la barra del carrito y el botón del escáner del POS.
+  static final List<BoxShadow> cardShadow = <BoxShadow>[
+    BoxShadow(
+      color: black2.withValues(alpha: 0.20),
+      blurRadius: 18,
+      offset: const Offset(0, 6),
+    ),
+  ];
 }
 
 /// Superficies semánticas resueltas por tema.

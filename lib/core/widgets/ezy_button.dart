@@ -60,7 +60,7 @@ class EzyButton extends StatelessWidget {
     // La variante `text` pinta su etiqueta en naranja (o en el tono que pida
     // [textColor]); el resto hereda el color del botón. Apagada, la etiqueta se
     // queda en el tono de la superficie: un color propio no puede hacer pasar por
-    // activa una acción deshabilitada (`Vaciar carrito` con el carrito vacío).
+    // activa una acción deshabilitada (`Vaciar` con el carrito vacío).
     final labelColor = variant != EzyButtonVariant.text
         ? null
         : isEnabled

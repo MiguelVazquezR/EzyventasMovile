@@ -25,6 +25,7 @@ class EzyBottomSheet {
     double maxHeightFactor = 0.9,
     bool isDismissible = true,
     bool enableDrag = true,
+    Color? backgroundColor,
   }) {
     assert(
       child != null || builder != null,
@@ -37,6 +38,10 @@ class EzyBottomSheet {
       useSafeArea: true,
       isDismissible: isDismissible,
       enableDrag: enableDrag,
+      // El tema pinta el fondo de las hojas (`#232323`); una hoja que tenga que
+      // apoyarse en el lienzo de la pantalla que la abre —el carrito sobre el
+      // POS— pasa su propio color en lugar de repetir `showModalBottomSheet`.
+      backgroundColor: backgroundColor,
       builder: (sheetContext) {
         final media = MediaQuery.of(sheetContext);
         final content = builder?.call(sheetContext) ?? child!;

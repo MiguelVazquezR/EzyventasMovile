@@ -25,6 +25,7 @@ import 'package:ezyventas_app/core/config/app_config.dart';
 import 'package:ezyventas_app/core/printing/bluetooth_printer_service.dart';
 import 'package:ezyventas_app/core/widgets/app_drawer_scope.dart';
 import 'package:ezyventas_app/core/widgets/ezy_button.dart';
+import 'package:ezyventas_app/core/widgets/ezy_dialog.dart';
 import 'package:ezyventas_app/features/account/presentation/account_screen.dart';
 import 'package:ezyventas_app/features/cash/presentation/cash_register_screen.dart';
 import 'package:ezyventas_app/features/catalog/presentation/widgets/product_card.dart';
@@ -115,12 +116,20 @@ final Finder cartBarChevron = find.descendant(
 );
 
 const String cartTitle = 'Carrito';
+
 /// Encabezado de la lista y card de totales del rediseño (§1 y §4): el orden de
 /// las anclas es el del recorrido (`Carrito` → lista → resumen → `Cobrar`).
 const String cartLinesHeader = 'ARTÍCULOS EN ORDEN';
 const String cartTotalsCard = 'RESUMEN DE VENTA';
-const String clearCartLabel = 'Vaciar carrito';
-const String checkoutLabel = 'Cobrar';
+
+/// §2 del rediseño: el encabezado de la lista y el diálogo que confirma se
+/// llaman igual (`Vaciar`), así que el botón del diálogo se busca dentro de él.
+const String clearCartLabel = 'Vaciar';
+
+/// §5: el pie lleva una sola acción y del menú salen las tres formas de cerrar
+/// la venta (`Pago al contado`, `Apartar` y `Pedido`).
+const String checkoutLabel = 'Finalizar compra';
+const String checkoutMenuLabel = 'Pago al contado';
 const String paymentTitle = 'Cobro';
 const String paymentTotalsCard = 'TOTAL DE LA VENTA';
 const String finishSaleLabel = 'Finalizar venta';
@@ -361,13 +370,23 @@ Future<void> main() async {
     expect(
       await _waitScrolling(tester, cobrar),
       isTrue,
-      reason: 'El carrito no mostró el botón de cobro',
+      reason: 'El carrito no mostró el botón de cierre de venta',
     );
 
     if (added && shiftState == 0) {
-      // Con turno abierto el carrito abre el cobro: se comprueba que exige
+      // Con turno abierto el carrito abre el cobro: `Finalizar compra` despliega
+      // el menú (§5) y la primera opción es el cobro. Se comprueba que exige
       // montos capturados y se descarta sin registrar la venta.
       await tester.tap(cobrar);
+      final checkoutAction = find.text(checkoutMenuLabel);
+      // `Finalizar compra` no cobra directo: despliega el menú (§5) —opciones de
+      // lista— y la primera, `Pago al contado`, es el cobro.
+      await _waitFor(
+        tester,
+        checkoutAction,
+        reason: 'El menú de cierre de venta no abrió',
+      );
+      await tester.tap(checkoutAction);
       await _waitFor(
         tester,
         find.text(paymentTitle),
@@ -399,13 +418,20 @@ Future<void> main() async {
       );
     }
 
-    // Se deja el carrito limpio: `Vaciar carrito` no toca el servidor. El botón
-    // vive ahora en el encabezado de la lista (§1), así que puede estar fuera de
-    // la pantalla si el carrito trae muchas líneas.
+    // Se deja el carrito limpio: `Vaciar` no toca el servidor y pide confirmar
+    // antes de limpiar (§2). El botón vive en el encabezado de la lista (§1), así
+    // que puede estar fuera de la pantalla si el carrito trae muchas líneas.
     final clearCart = find.widgetWithText(EzyButton, clearCartLabel);
     if (tester.widget<EzyButton>(clearCart).onPressed != null) {
       await _waitScrolling(tester, clearCart);
       await tester.tap(clearCart);
+      await _waitFor(tester, find.byType(EzyDialog));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(EzyDialog),
+          matching: find.widgetWithText(EzyButton, clearCartLabel),
+        ),
+      );
       await tester.pump(const Duration(milliseconds: 400));
     }
 
@@ -919,10 +945,8 @@ Future<void> _expectMenu(WidgetTester tester, List<String> expected) async {
 ///
 /// Se busca **dentro** del `Drawer`: la misma etiqueta puede existir en la
 /// pantalla que queda detrás (la tarjeta «Vender» de Inicio, por ejemplo).
-Finder _drawerRow(String label) => find.descendant(
-  of: find.byType(Drawer),
-  matching: find.text(label),
-);
+Finder _drawerRow(String label) =>
+    find.descendant(of: find.byType(Drawer), matching: find.text(label));
 
 /// Abre el menú lateral con la hamburguesa de la cabecera.
 Future<void> _openDrawer(WidgetTester tester) async {
