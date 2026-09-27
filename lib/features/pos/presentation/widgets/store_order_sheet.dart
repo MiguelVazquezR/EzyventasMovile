@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_action_bar.dart';
@@ -24,6 +25,8 @@ Future<bool> showStoreOrderSheet(BuildContext context) async {
   final result = await EzyBottomSheet.show<bool>(
     context,
     maxHeightFactor: 0.96,
+    // Mismo lienzo gris del POS que el carrito, el cliente y el cobro.
+    backgroundColor: context.surfaces.background,
     builder: (sheetContext) => const _StoreOrderSheet(),
   );
 
@@ -65,6 +68,7 @@ class _StoreOrderSheetState extends ConsumerState<_StoreOrderSheet> {
   @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cartControllerProvider);
+    final surfaces = context.surfaces;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -80,6 +84,7 @@ class _StoreOrderSheetState extends ConsumerState<_StoreOrderSheet> {
             children: <Widget>[
               SectionCard(
                 title: 'Datos de contacto',
+                boxShadow: EzyColors.cardShadow,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
@@ -92,6 +97,7 @@ class _StoreOrderSheetState extends ConsumerState<_StoreOrderSheet> {
                       label: 'Nombre de quien recibe',
                       isRequired: true,
                       controller: _nameController,
+                      fillColor: surfaces.panel,
                       errorText: _nameError(cart),
                       maxLength: 255,
                       onChanged: (_) => setState(() {}),
@@ -102,6 +108,7 @@ class _StoreOrderSheetState extends ConsumerState<_StoreOrderSheet> {
                       hint: 'Opcional',
                       keyboardType: TextInputType.phone,
                       controller: _phoneController,
+                      fillColor: surfaces.panel,
                       errorText: cart.errorFor('contact_info.phone'),
                       maxLength: 20,
                     ),
@@ -122,6 +129,7 @@ class _StoreOrderSheetState extends ConsumerState<_StoreOrderSheet> {
               const SizedBox(height: 12),
               SectionCard(
                 title: 'Totales',
+                boxShadow: EzyColors.cardShadow,
                 child: Column(
                   children: <Widget>[
                     SectionRow(
@@ -272,8 +280,11 @@ class _DeliveryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
     return SectionCard(
       title: 'Entrega',
+      boxShadow: EzyColors.cardShadow,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -282,6 +293,7 @@ class _DeliveryCard extends StatelessWidget {
             isRequired: true,
             readOnly: true,
             controller: deliveryController,
+            fillColor: surfaces.panel,
             hint: 'Seleccionar fecha…',
             errorText: cart.errorFor('delivery_date'),
             suffix: const Icon(Icons.event_outlined, size: 18),
@@ -292,6 +304,7 @@ class _DeliveryCard extends StatelessWidget {
             label: 'Dirección de entrega',
             hint: 'Opcional',
             controller: addressController,
+            fillColor: surfaces.panel,
             errorText: cart.errorFor('shipping_address'),
             maxLines: 2,
             maxLength: 255,
@@ -300,6 +313,7 @@ class _DeliveryCard extends StatelessWidget {
           MoneyField(
             label: 'Costo de envío',
             controller: shippingController,
+            fillColor: surfaces.panel,
             onChanged: onShippingChanged,
           ),
           const SizedBox(height: 16),
@@ -307,6 +321,7 @@ class _DeliveryCard extends StatelessWidget {
             label: 'Notas',
             hint: 'Opcional',
             controller: notesController,
+            fillColor: surfaces.panel,
             maxLines: 3,
             maxLength: 1000,
           ),

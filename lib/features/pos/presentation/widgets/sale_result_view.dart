@@ -33,6 +33,7 @@ class SaleResultView extends StatelessWidget {
         SectionCard(
           title: transaction.isFullyPaid ? 'Venta cobrada' : 'Venta registrada',
           trailing: StatusBadge.transaction(transaction.status, showDot: true),
+          boxShadow: EzyColors.cardShadow,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
@@ -93,6 +94,7 @@ class SaleResultView extends StatelessWidget {
         const SizedBox(height: 16),
         SectionCard(
           title: 'Ticket',
+          boxShadow: EzyColors.cardShadow,
           child: PrintActionsPanel(
             document: PrintDocument.posCheckout(
               transactionId: result.printHint.dataSourceId > 0
