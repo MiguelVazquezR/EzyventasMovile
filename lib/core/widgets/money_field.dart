@@ -24,6 +24,7 @@ class MoneyField extends StatelessWidget {
     this.autofocus = false,
     this.emphasized = false,
     this.prefixIcon = true,
+    this.fillColor,
   });
 
   final String label;
@@ -42,6 +43,11 @@ class MoneyField extends StatelessWidget {
   /// Muestra el `$` dentro del campo.
   final bool prefixIcon;
 
+  /// Relleno del campo; `null` deja el del tema. Se usa para pintar el campo en
+  /// blanco (`surfaces.panel`) cuando la sección que lo contiene es del mismo
+  /// color (POS) o cuando el campo flota sobre el lienzo gris de la hoja.
+  final Color? fillColor;
+
   /// Valor inicial listo para capturar (`1,240.00`).
   static String format(double value) => Money.formatPlain(value);
 
@@ -59,6 +65,7 @@ class MoneyField extends StatelessWidget {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       textAlign: TextAlign.right,
       prefixIcon: prefixIcon ? Icons.attach_money : null,
+      fillColor: fillColor,
       inputFormatters: <TextInputFormatter>[
         FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
       ],

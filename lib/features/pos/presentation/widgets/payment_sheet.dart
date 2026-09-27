@@ -37,6 +37,10 @@ Future<bool> showPaymentSheet(
   final result = await EzyBottomSheet.show<bool>(
     context,
     maxHeightFactor: 0.96,
+    // §3 del rediseño: la hoja se apoya en el **mismo lienzo gris del POS** que el
+    // carrito y el selector de cliente; las secciones blancas y su sombra son las
+    // que dan el relieve.
+    backgroundColor: context.surfaces.background,
     builder: (sheetContext) => _PaymentSheet(mode: mode),
   );
 
@@ -219,6 +223,8 @@ class _AmountsCard extends StatelessWidget {
 
     return SectionCard(
       title: 'Total de la venta',
+      // Flota sobre el lienzo gris de la hoja, como las tarjetas del carrito.
+      boxShadow: EzyColors.cardShadow,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -271,6 +277,7 @@ class _BalanceSwitch extends StatelessWidget {
 
     return SectionCard(
       title: 'Saldo a favor',
+      boxShadow: EzyColors.cardShadow,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -320,6 +327,7 @@ class _PaymentsCard extends ConsumerWidget {
 
     return SectionCard(
       title: 'Pagos',
+      boxShadow: EzyColors.cardShadow,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -373,9 +381,12 @@ class _PaymentTile extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: context.surfaces.panelInner,
+        // El pago es una pieza blanca que flota dentro de su sección, con la
+        // misma sombra que las tarjetas del carrito.
+        color: context.surfaces.panel,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: context.surfaces.border),
+        boxShadow: EzyColors.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -462,6 +473,7 @@ class _PaymentAmountFieldState extends State<PaymentAmountField> {
   Widget build(BuildContext context) => MoneyField(
     label: 'Monto',
     controller: _controller,
+    fillColor: context.surfaces.panel,
     onChanged: widget.onChanged,
   );
 }
@@ -519,11 +531,15 @@ class _ExpirationField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
     return EzyTextField(
       label: 'Fecha límite del apartado',
       isRequired: true,
       readOnly: true,
       controller: controller,
+      // Campo blanco sobre el lienzo gris, igual que en el resto del POS.
+      fillColor: surfaces.panel,
       hint: 'Seleccionar fecha…',
       errorText: errorText,
       helperText: 'Debe ser posterior a hoy.',
@@ -600,6 +616,7 @@ class BankAccountSelector extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: 'Seleccionar cuenta…',
                 errorText: errorText,
+                fillColor: surfaces.panel,
                 hintStyle: EzyTextStyles.fieldValue.copyWith(
                   color: surfaces.textMuted,
                 ),
