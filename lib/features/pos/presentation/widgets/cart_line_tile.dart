@@ -23,8 +23,9 @@ import '../../data/models/cart_line.dart';
 /// Tarjeta de una línea del carrito (§2).
 ///
 /// Tres renglones: el nombre con sus acciones a la derecha, el precio unitario
-/// —con el de lista tachado y la pastilla del descuento cuando lo hay— y, al
-/// pie, el contador del sistema junto al total de la línea.
+/// —con el de lista tachado— y, al pie, el contador del sistema junto al total
+/// de la línea. El descuento, cuando lo hay, abre su propio renglón debajo del
+/// precio: la pastilla con el ahorro por unidad y el motivo al lado.
 ///
 /// Las acciones son los botones de icono del design system ([EzyIconButton] con
 /// su `Tooltip`) y **no** el botón de texto «Editar cantidad y descuento» ni la
@@ -44,9 +45,9 @@ class CartLineTile extends ConsumerWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      // §3: 10 px de aire —el único espacio que se le da a la foto— y la tarjeta
+      // §3: 8 px de aire —el único espacio que se le da a la foto— y la tarjeta
       // lo más baja posible en el eje vertical.
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         // §3 del rediseño: la tarjeta va en blanco (`panel`) sobre el gris del
         // carrito; con `panelInner` se leía como un hueco del contenedor.
@@ -119,64 +120,70 @@ class CartLineTile extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  // Precio unitario: con descuento se tacha el de lista al lado y la
-                  // diferencia va en la pastilla del sistema, así el ahorro se lee de un
-                  // golpe sin sumar renglones de texto.
+                  const SizedBox(height: 4),
+                  // Precio unitario: con descuento se tacha el de lista al lado.
                   Row(
                     children: <Widget>[
-                      Expanded(
-                        child: Row(
-                          children: <Widget>[
-                            Flexible(
-                              child: Text(
-                                '${Money.format(line.unitPrice)} c/u',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: EzyTextStyles.caption.copyWith(
-                                  color: surfaces.textMuted,
-                                ),
-                              ),
-                            ),
-                            if (line.hasDiscount) ...<Widget>[
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  Money.format(line.listPrice),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: EzyTextStyles.caption.copyWith(
-                                    color: surfaces.textMuted,
-                                    decoration: TextDecoration.lineThrough,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
+                      Flexible(
+                        child: Text(
+                          '${Money.format(line.unitPrice)} c/u',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: EzyTextStyles.caption.copyWith(
+                            color: surfaces.textMuted,
+                          ),
                         ),
                       ),
                       if (line.hasDiscount) ...<Widget>[
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            Money.format(line.listPrice),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: EzyTextStyles.caption.copyWith(
+                              color: surfaces.textMuted,
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  // El descuento abre su **propio renglón**, debajo del precio: la
+                  // pastilla del sistema con el ahorro por unidad y, al lado, el motivo
+                  // que pone el modelo (`Promoción de producto`, `Precio de mayoreo`,
+                  // `Descuento manual`). Antes compartían el renglón del precio y le
+                  // robaban ancho a la foto de la tarjeta.
+                  if (line.hasDiscount) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: <Widget>[
                         EzyChip(
                           label: '-${Money.format(line.discountPerUnit)} c/u',
                           compact: true,
                           tone: EzySeverity.success,
                         ),
+                        if (reason != null) ...<Widget>[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              reason,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: EzyTextStyles.caption.copyWith(
+                                color: StatusPalette.text(
+                                  context,
+                                  EzySeverity.success,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
-                  // El motivo lo pone el modelo (`Promoción de producto`, `Precio de
-                  // mayoreo`, `Descuento manual`): la tarjeta no inventa texto.
-                  if (line.hasDiscount && reason != null) ...<Widget>[
-                    const SizedBox(height: 4),
-                    Text(
-                      reason,
-                      style: EzyTextStyles.caption.copyWith(
-                        color: StatusPalette.text(context, EzySeverity.success),
-                      ),
                     ),
                   ],
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Row(
                     children: <Widget>[
                       _QuantityStepper(line: line),
@@ -210,8 +217,9 @@ class _Thumbnail extends StatelessWidget {
 
   final String? url;
 
-  /// Ancho fijo: el alto lo pone la tarjeta.
-  static const double _width = 56;
+  /// Ancho fijo —bastante más ancho que en la primera versión, donde la foto se
+  /// veía como una tira—: el alto lo pone la tarjeta.
+  static const double _width = 76;
 
   @override
   Widget build(BuildContext context) {

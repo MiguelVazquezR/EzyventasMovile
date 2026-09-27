@@ -20,9 +20,15 @@ import '../../application/cart_controller.dart';
 ///
 /// Guarda la elección en el carrito; "Público general" lo deja sin cliente y
 /// permite capturar un nombre para el ticket (`guest_name`).
+///
+/// Se apoya en el **mismo lienzo gris del carrito** (`surfaces.background`): las
+/// secciones —la de público general, el buscador y cada cliente— van en blanco
+/// (`panel`) con la sombra flotante, así la hoja se lee como un paso del cobro y
+/// no como otra pantalla encima.
 Future<void> showCustomerPickerSheet(BuildContext context) {
   return EzyBottomSheet.show<void>(
     context,
+    backgroundColor: context.surfaces.background,
     builder: (sheetContext) => const _CustomerPickerSheet(),
   );
 }
@@ -90,6 +96,7 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
               const SizedBox(height: 12),
               EzySearchField(
                 hint: 'Buscar cliente por nombre o teléfono…',
+                fillColor: surfaces.panel,
                 onChanged: (value) => setState(() => _search = value.trim()),
               ),
               const SizedBox(height: 12),
@@ -130,6 +137,8 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
                                   '${Money.format(customer.availableCredit)}',
                           ].join(' · '),
                           isSelected: cart.customer?.id == customer.id,
+                          fillColor: surfaces.panel,
+                          boxShadow: EzyColors.cardShadow,
                           onTap: () {
                             controller.setCustomer(customer);
                             Navigator.of(context).pop();
@@ -167,8 +176,12 @@ class _GuestOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
     return SectionCard(
       title: 'Público general',
+      // Flota sobre el lienzo gris de la hoja, como las tarjetas del carrito.
+      boxShadow: EzyColors.cardShadow,
       trailing: isSelected
           ? Text(
               'Seleccionado',
@@ -183,6 +196,7 @@ class _GuestOption extends StatelessWidget {
             hint: 'Opcional',
             controller: controller,
             maxLength: 255,
+            fillColor: surfaces.panel,
           ),
           const SizedBox(height: 12),
           EzyButton(

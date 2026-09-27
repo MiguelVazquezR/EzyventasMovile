@@ -33,6 +33,7 @@ class EzyTextField extends StatelessWidget {
     this.focusNode,
     this.enabled = true,
     this.maxLength,
+    this.fillColor,
   });
 
   final String label;
@@ -58,6 +59,11 @@ class EzyTextField extends StatelessWidget {
   final FocusNode? focusNode;
   final bool enabled;
   final int? maxLength;
+
+  /// Relleno del campo. Sin él manda el tema (`panelInner`); sobre un lienzo gris
+  /// la hoja del cliente pasa `panel` para que el campo se lea blanco, como las
+  /// secciones que lo rodean.
+  final Color? fillColor;
 
   @override
   Widget build(BuildContext context) {
@@ -91,6 +97,7 @@ class EzyTextField extends StatelessWidget {
             hintText: hint,
             errorText: errorText,
             counterText: '',
+            fillColor: fillColor,
             prefixIcon: prefixIcon == null
                 ? null
                 : Icon(prefixIcon, size: 20, color: surfaces.textMuted),
@@ -102,7 +109,9 @@ class EzyTextField extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             helperText!,
-            style: EzyTextStyles.caption.copyWith(color: surfaces.textSecondary),
+            style: EzyTextStyles.caption.copyWith(
+              color: surfaces.textSecondary,
+            ),
           ),
         ],
       ],

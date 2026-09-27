@@ -26,6 +26,8 @@ class EzySelectableTile extends StatelessWidget {
     this.child,
     this.accent,
     this.compact = false,
+    this.fillColor,
+    this.boxShadow,
   });
 
   final String title;
@@ -51,6 +53,15 @@ class EzySelectableTile extends StatelessWidget {
 
   /// Fila compacta (32 px) sin contenedor ni margen: para opciones anidadas.
   final bool compact;
+
+  /// Relleno del contenedor cuando la fila **no** está seleccionada. Sin él manda
+  /// `panelInner`; sobre un lienzo gris (la hoja del cliente) se pasa `panel` para
+  /// que la opción se lea como una sección blanca.
+  final Color? fillColor;
+
+  /// Sombra del contenedor: la de las piezas que flotan sobre un lienzo
+  /// (`EzyColors.cardShadow`). La selección no la cambia.
+  final List<BoxShadow>? boxShadow;
 
   final bool isSelected;
   final VoidCallback onTap;
@@ -142,11 +153,12 @@ class EzySelectableTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? color.withValues(alpha: 0.12)
-              : surfaces.panelInner,
+              : (fillColor ?? surfaces.panelInner),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected ? color.withValues(alpha: 0.5) : surfaces.border,
           ),
+          boxShadow: boxShadow,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
