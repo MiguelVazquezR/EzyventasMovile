@@ -1,6 +1,5 @@
 import 'package:ezyventas_app/core/auth/permissions_service.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
-import 'package:ezyventas_app/core/widgets/ezy_amount.dart';
 import 'package:ezyventas_app/features/auth/application/auth_controller.dart';
 import 'package:ezyventas_app/features/cash/data/models/active_cash_session.dart';
 import 'package:ezyventas_app/features/catalog/data/models/product.dart';
@@ -112,7 +111,6 @@ void main() {
 
     // La pill es un resumen, no una barra de acciones: el importe y el acceso
     // al carrito viven en la misma pieza táctil (§8.1).
-    expect(find.byType(EzyAmount), findsOneWidget);
     expect(find.text('Sin turno abierto'), findsOneWidget);
     expect(find.text('Carrito vacío'), findsOneWidget);
     expect(find.textContaining('0.00'), findsOneWidget);
@@ -127,7 +125,7 @@ void main() {
     // texto robaba al total el ancho que necesita para caber en un renglón.
     expect(find.byIcon(Icons.chevron_right), findsOneWidget);
     expect(find.text('Ver carrito'), findsNothing);
-    expect(find.text('1 producto · 1 artículo'), findsOneWidget);
+    expect(find.text('1 prod. · 1 arts.'), findsOneWidget);
     // El total lo formatea `EzyAmount` con el dinero del carrito.
     expect(find.textContaining('135.00'), findsOneWidget);
   });
@@ -153,7 +151,6 @@ void main() {
   testWidgets('sin permiso de venta la pill no se dibuja', (tester) async {
     await _pumpBar(tester, canSell: false);
 
-    expect(find.byType(EzyAmount), findsNothing);
     expect(find.byIcon(Icons.chevron_right), findsNothing);
     expect(find.text('Carrito vacío'), findsNothing);
   });

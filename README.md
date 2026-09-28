@@ -371,11 +371,21 @@ El POS (`features/pos/`, `features/catalog/`) quedó así:
   —editor— y la papelera). Cliente, líneas y resumen llevan la **sombra de tarjeta flotante**
   (`EzyColors.cardShadow`) sobre ese lienzo. El
   editor de línea captura cantidad, descuento (dinero o por ciento) y precio (con `pos.edit_prices`) en un
-  solo guardado. Al pie del scroll va el **RESUMEN DE VENTA** (subtotal, descuentos y total a pagar) y,
-  fijo en el pie (`EzyActionBar` sobre el fondo del lienzo, no se va con el scroll), **Finalizar compra**
-  (relleno primario, a 2/3 del ancho y centrado): despliega hacia arriba el menú con las tres formas de
-  cerrar la venta como **opciones de lista** en el color de marca —**Pago al contado**, **Apartar** y
-  **Pedido**—, el único sitio del cobro.
+  solo guardado, y su pie reparte las acciones 1:2 (`Cancelar` a un tercio y **Guardar cambios** a dos
+  tercios, con el CTA 3D). Al pie del scroll va el **desglose** del carrito (subtotal, ahorro y total a
+  pagar) y, fijo en el pie (`EzyActionBar` sobre el fondo del lienzo, no se va con el scroll),
+  **Finalizar compra** —`EzyPrimary3dButton`, a 3/4 del ancho con tope de 280 px—: despliega hacia arriba
+  el menú con las tres formas de cerrar la venta como **opciones de lista** —**Pago al contado**,
+  **Apartar** y **Pedido**—, el único sitio del cobro.
+
+  El CTA 3D (**`core/widgets/ezy_primary_3d_button.dart`**) es la misma pieza en el carrito, en el cobro
+  (`Finalizar venta` / `Crear apartado`, 56 px, §8 del rediseño de la hoja de cobro) y en el pie del editor
+  de línea (`Guardar cambios`, 50 px): degradado vertical, bisel físico y relieve sólido con glow de marca.
+  **El bisel no puede ir en el mismo `BoxDecoration` que el degradado**: un `Border` con colores distintos
+  por lado y `borderRadius` dispara la aserción *«A borderRadius can only be given on borders with uniform
+  colors.»* y, en las compilaciones de depuración, corta el `paint` del `DecoratedBox` **antes de pintar a
+  su hijo** —el botón salía con su cara naranja y sin etiqueta—; el bisel vive por eso en un `DecoratedBox`
+  interior, sin radio, dentro de un `ClipRRect`.
 
 ### Ventas (etapa 4)
 `features/sales/` cubre el historial, el detalle y el dinero de una venta ya registrada.

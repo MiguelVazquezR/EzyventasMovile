@@ -9,8 +9,8 @@ import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_action_bar.dart';
 import '../../../../core/widgets/ezy_amount.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
-import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_chip.dart';
+import '../../../../core/widgets/ezy_primary_3d_button.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/field_label.dart';
 import '../../../../core/widgets/money_field.dart';
@@ -142,9 +142,9 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
             ],
           ),
         ),
-        // Cobrar es el héroe de la hoja (§8): CTA de 56 fijo al pie.
+        // §8: cobrar es el héroe de la hoja — CTA de 56 px con relieve 3D.
         EzyActionBar(
-          child: EzyButton(
+          child: EzyPrimary3dButton(
             label: _isLayaway ? 'Crear apartado' : 'Finalizar venta',
             icon: Icons.check_outlined,
             height: 56,

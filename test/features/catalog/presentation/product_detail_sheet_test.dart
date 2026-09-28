@@ -1,5 +1,6 @@
 import 'package:ezyventas_app/core/auth/permissions_service.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
+import 'package:ezyventas_app/core/widgets/ezy_primary_3d_button.dart';
 import 'package:ezyventas_app/core/widgets/ezy_quantity_stepper.dart';
 import 'package:ezyventas_app/core/widgets/ezy_selectable_tile.dart';
 import 'package:ezyventas_app/features/auth/application/auth_controller.dart';
@@ -147,13 +148,14 @@ void main() {
     expect(find.textContaining('135.00'), findsNWidgets(2));
     expect(find.text('Antes \$150.00'), findsOneWidget);
 
-    // Sección de venta: cantidad con el control del design system y el ancla
-    // del recorrido del teléfono. El título de la card va en micro-mayúsculas.
+    // Sección de venta: el renglón del stepper con el total de la línea a la
+    // derecha (el rótulo «Cantidad» ya no existe: la cifra la dice el stepper) y
+    // el CTA 3D. El título de la card va en micro-mayúsculas.
     expect(find.text('AGREGAR A LA VENTA'), findsOneWidget);
-    expect(find.text('Cantidad'), findsOneWidget);
     expect(find.byType(EzyQuantityStepper), findsOneWidget);
     expect(find.text('1 pz'), findsOneWidget);
     expect(find.text('TOTAL DE LA LÍNEA'), findsOneWidget);
+    expect(find.byType(EzyPrimary3dButton), findsOneWidget);
     expect(find.text('Agregar al carrito'), findsOneWidget);
   });
 

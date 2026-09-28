@@ -1,9 +1,7 @@
 import 'package:ezyventas_app/core/auth/permissions_service.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
 import 'package:ezyventas_app/core/widgets/ezy_amount.dart';
-import 'package:ezyventas_app/core/widgets/ezy_button.dart';
-import 'package:ezyventas_app/core/widgets/ezy_chip.dart';
-import 'package:ezyventas_app/core/widgets/ezy_quantity_stepper.dart';
+import 'package:ezyventas_app/core/widgets/ezy_primary_3d_button.dart';
 import 'package:ezyventas_app/features/auth/application/auth_controller.dart';
 import 'package:ezyventas_app/features/catalog/data/models/product.dart';
 import 'package:ezyventas_app/features/pos/application/cart_controller.dart';
@@ -134,14 +132,17 @@ void main() {
     // sistema: el descuento se lee sin restar renglones de texto.
     final listPrice = tester.widget<Text>(find.text(r'$150.00'));
     expect(listPrice.style?.decoration, TextDecoration.lineThrough);
-    expect(find.widgetWithText(EzyChip, r'-$15.00 c/u'), findsOneWidget);
+    // El ahorro viaja con el motivo en la pastilla de la línea.
+    expect(find.textContaining(r'- $15.00 c/u'), findsOneWidget);
 
-    // El motivo lo pone el modelo, no la tarjeta.
-    expect(find.text('Promoción de producto'), findsOneWidget);
+    // El motivo lo pone el modelo, no la tarjeta: viaja en la pastilla.
+    expect(find.textContaining('Promoción de producto'), findsOneWidget);
 
-    // Contador del sistema y total de la línea, en el mismo renglón.
-    expect(find.byType(EzyQuantityStepper), findsOneWidget);
-    expect(tester.widget<EzyAmount>(find.byType(EzyAmount)).value, 135);
+    // Contador propio de la tarjeta y total de la línea, en el mismo renglón.
+    expect(find.byTooltip('Quitar una unidad'), findsOneWidget);
+    expect(find.byTooltip('Agregar una unidad'), findsOneWidget);
+    expect(find.text('TOTAL LÍNEA'), findsOneWidget);
+    expect(find.text(r'$135.00'), findsOneWidget);
 
     // Las acciones son botones de icono con su ayuda, no botones de texto.
     expect(find.byTooltip('Editar cantidad y descuento'), findsOneWidget);
@@ -206,8 +207,10 @@ void main() {
     // Una promoción no es un precio capturado a mano: no hay nada que devolver.
     expect(find.text('Volver al precio del catálogo'), findsNothing);
 
-    expect(find.widgetWithText(EzyButton, 'Cancelar'), findsOneWidget);
-    expect(find.widgetWithText(EzyButton, 'Guardar cambios'), findsOneWidget);
+    // El pie reparte las acciones 1:2: «Cancelar» y el CTA 3D de guardado.
+    expect(find.text('Cancelar'), findsOneWidget);
+    expect(find.text('Guardar cambios'), findsOneWidget);
+    expect(find.byType(EzyPrimary3dButton), findsOneWidget);
   });
 
 
@@ -229,7 +232,7 @@ void main() {
     expect(find.text(r'-$60.00'), findsOneWidget);
     expect(find.text(r'$390.00'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(EzyButton, 'Guardar cambios'));
+    await tester.tap(find.text('Guardar cambios'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
@@ -242,7 +245,7 @@ void main() {
 
     // La hoja se cerró y la tarjeta ya muestra el resultado.
     expect(find.text('Guardar cambios'), findsNothing);
-    expect(find.widgetWithText(EzyChip, r'-$20.00 c/u'), findsOneWidget);
+    expect(find.textContaining(r'- $20.00 c/u'), findsOneWidget);
     expect(find.text(r'$390.00'), findsOneWidget);
   });
 
@@ -252,7 +255,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField).first, '4');
     await tester.pump();
-    await tester.tap(find.widgetWithText(EzyButton, 'Cancelar'));
+    await tester.tap(find.text('Cancelar'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
@@ -281,7 +284,7 @@ void main() {
     // Cambiar solo la cantidad no toca el precio ni el motivo de la promoción.
     await tester.enterText(find.byType(TextField).first, '2');
     await tester.pump();
-    await tester.tap(find.widgetWithText(EzyButton, 'Guardar cambios'));
+    await tester.tap(find.text('Guardar cambios'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
@@ -307,8 +310,8 @@ void main() {
     await tester.pump();
 
     expect(find.text(r'$120.00 c/u'), findsOneWidget);
-    expect(find.widgetWithText(EzyChip, r'-$30.00 c/u'), findsOneWidget);
-    expect(find.text('Descuento manual'), findsOneWidget);
+    expect(find.textContaining(r'- $30.00 c/u'), findsOneWidget);
+    expect(find.textContaining('Descuento manual'), findsOneWidget);
 
     await _openEditor(tester);
     expect(find.text('Volver al precio del catálogo'), findsOneWidget);

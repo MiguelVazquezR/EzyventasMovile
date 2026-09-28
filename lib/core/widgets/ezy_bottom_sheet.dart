@@ -26,6 +26,11 @@ class EzyBottomSheet {
     bool isDismissible = true,
     bool enableDrag = true,
     Color? backgroundColor,
+    // El asa de arrastre, la forma y el recorte se pasan a `showModalBottomSheet`
+    // solo cuando una hoja los necesita: el resto sigue heredando el tema.
+    bool? showDragHandle,
+    ShapeBorder? shape,
+    Clip? clipBehavior,
   }) {
     assert(
       child != null || builder != null,
@@ -42,6 +47,9 @@ class EzyBottomSheet {
       // apoyarse en el lienzo de la pantalla que la abre —el carrito sobre el
       // POS— pasa su propio color en lugar de repetir `showModalBottomSheet`.
       backgroundColor: backgroundColor,
+      showDragHandle: showDragHandle,
+      shape: shape,
+      clipBehavior: clipBehavior,
       builder: (sheetContext) {
         final media = MediaQuery.of(sheetContext);
         final content = builder?.call(sheetContext) ?? child!;

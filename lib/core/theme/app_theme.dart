@@ -189,7 +189,9 @@ class EzyTheme {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         showDragHandle: true,
-        dragHandleColor: surfaces.borderStrong,
+        // El asa de arrastre necesita gris propio: con `borderStrong` quedaba
+        // prácticamente invisible sobre el lienzo (claro) y el panel (oscuro).
+        dragHandleColor: isDark ? EzyColors.gray77 : EzyColors.gray9A,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),

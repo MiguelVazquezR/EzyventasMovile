@@ -10,13 +10,12 @@ import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../core/widgets/ezy_action_bar.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
-import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_dialog.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
-import '../../../../core/widgets/ezy_list_tile.dart';
 import '../../../../core/widgets/notice_banner.dart';
-import '../../../../core/widgets/section_card.dart';
+import '../../../../core/widgets/ezy_primary_3d_button.dart';
 import '../../../auth/application/auth_controller.dart';
+import '../../../customers/data/models/customer.dart';
 import '../../application/cart_controller.dart';
 import '../../application/cart_state.dart';
 import 'cart_line_tile.dart';
@@ -35,6 +34,12 @@ Future<void> showCartSheet(BuildContext context) {
     // modo que la hoja se lea como un paso de la pantalla y no como otra pantalla
     // encima. Las tarjetas blancas y su sombra son las que dan el relieve.
     backgroundColor: context.surfaces.background,
+    // El asa la pinta la hoja (§1 del rediseño) con el borde fuerte del sistema:
+    // por eso se apaga la del tema y se dibuja la propia.
+    showDragHandle: false,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
     builder: (sheetContext) => const CartSheet(),
   );
 }
@@ -74,16 +79,8 @@ class CartSheet extends ConsumerWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        EzySheetHeader(
-          title: 'Carrito',
-          subtitle: cartSummaryLabel(cart),
-          trailing: EzyIconButton(
-            icon: Icons.close,
-            tooltip: 'Cerrar',
-            onTap: () => Navigator.of(context).pop(),
-          ),
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        ),
+        const _DragHandle(),
+        _CartHeader(cart: cart),
         Flexible(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -112,7 +109,7 @@ class CartSheet extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: 12),
-              _TotalsCard(cart: cart),
+              CartSummaryCard(cart: cart),
             ],
           ),
         ),
@@ -153,12 +150,12 @@ Future<void> _confirmClearCart(
   }
 }
 
-/// Encabezado de la lista de líneas, con «Vaciar» a la derecha (§1 y §2).
+/// Encabezado de la lista de líneas, con «Vaciar» a la derecha (§1 y §3).
 ///
 /// El vaciado vive pegado a lo que vacía y no al final del scroll: es una acción
 /// destructiva y tiene que verse **antes** de las líneas, no después. Va en el
-/// tono de peligro del sistema, sin relleno, y confirma antes de limpiar (§2):
-/// el carrito no se pierde por un toque de más.
+/// tono de peligro del sistema —texto y papelera a 14 px— y confirma antes de
+/// limpiar (§3): el carrito no se pierde por un toque de más.
 class _LinesHeader extends StatelessWidget {
   const _LinesHeader({required this.cart, required this.onClear});
 
@@ -172,17 +169,14 @@ class _LinesHeader extends StatelessWidget {
         Expanded(
           child: Text(
             'ARTÍCULOS EN ORDEN',
-            style: EzyTextStyles.cardTitle.copyWith(
+            style: EzyTextStyles.microLabel.copyWith(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
               color: context.surfaces.textMuted,
             ),
           ),
         ),
-        EzyButton(
-          label: 'Vaciar',
-          variant: EzyButtonVariant.text,
-          icon: Icons.delete_outline,
-          textColor: StatusPalette.text(context, EzySeverity.danger),
-          expand: false,
+        _ClearCartButton(
           onPressed: cart.isEmpty
               ? null
               : () => _confirmClearCart(context, onClear),
@@ -192,94 +186,334 @@ class _LinesHeader extends StatelessWidget {
   }
 }
 
-/// Cliente de la venta (o público general con nombre opcional).
+/// «Vaciar» en el tono de peligro: icono de 14 px y texto sin relleno.
+class _ClearCartButton extends StatelessWidget {
+  const _ClearCartButton({this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final color = enabled
+        ? StatusPalette.text(context, EzySeverity.danger)
+        : context.surfaces.textMuted;
+
+    return Tooltip(
+      message: 'Quitar todos los artículos del carrito',
+      child: GestureDetector(
+        onTap: onPressed,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.delete_outline, size: 14, color: color),
+              const SizedBox(width: 5),
+              Text(
+                'Vaciar',
+                style: EzyTextStyles.bodyStrong.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Cliente de la venta (o público general con nombre opcional) (§2).
 ///
-/// Es una **fila** del design system (`EzyListTile`) y no una card con título y
-/// botón «Cambiar»: la fila entera abre el selector, que es una hoja inferior
-/// que se arrastra hacia abajo para cerrarla —el gesto de las secciones de
-/// Mercado Pago—, así que el chevron ya dice que se abre (§10).
+/// Es una **tarjeta táctil**: el cuadro del icono a la izquierda, la etiqueta y
+/// el nombre con sus chips de saldo y crédito en el centro, y el chevron en su
+/// círculo a la derecha. La tarjeta entera abre el selector de clientes, que es
+/// la única interacción de la fila.
 class _CustomerRow extends ConsumerWidget {
   const _CustomerRow();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final surfaces = context.surfaces;
     final cart = ref.watch(cartControllerProvider);
     final customer = cart.customer;
     final guestName = cart.guestName.trim();
 
-    final subtitle = customer != null
-        ? <String>[
-            'Saldo ${Money.format(customer.balance)}',
-            if (customer.hasCredit)
-              'Crédito ${Money.format(customer.availableCredit)}',
-          ].join(' · ')
-        : (guestName.isEmpty
-              ? 'Toca para elegir un cliente.'
-              : 'Público general · Toca para cambiar.');
-
-    return DecoratedBox(
-      // §1 del rediseño: la sección del cliente es una tarjeta blanca más —como
-      // las de producto—, con la sombra de las tarjetas que flotan sobre el
-      // lienzo. La fila sigue siendo la del design system.
-      decoration: BoxDecoration(
-        color: context.surfaces.panel,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.surfaces.border),
-        boxShadow: EzyColors.cardShadow,
-      ),
-      child: EzyListTile(
-        icon: Icons.person_outline,
-        title: 'Cliente: ${_customerLabel(customer?.displayName, guestName)}',
-        subtitle: subtitle,
-        showDivider: false,
-        onTap: () => showCustomerPickerSheet(context),
+    return GestureDetector(
+      onTap: () => showCustomerPickerSheet(context),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: surfaces.panel,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: surfaces.border, width: 1.5),
+          boxShadow: EzyColors.cardShadow,
+        ),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: EzyColors.primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: EzyColors.primary.withValues(alpha: 0.20),
+                ),
+              ),
+              child: const Icon(
+                Icons.person_outline,
+                size: 20,
+                color: EzyColors.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    'CLIENTE',
+                    style: EzyTextStyles.microLabel.copyWith(
+                      fontSize: 10.5,
+                      color: surfaces.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    customer?.displayName ??
+                        (guestName.isEmpty ? 'Público general' : guestName),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: EzyTextStyles.bodyStrong.copyWith(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: surfaces.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  _CustomerBalances(customer: customer),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: surfaces.panelInner,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: surfaces.textMuted,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
 
-  /// Nombre con el que se registra la venta, ya resuelto para la fila (§1).
-  ///
-  /// El prefijo «Cliente:» va en la fila —y no en el nombre— para que la venta
-  /// sin cliente registrado se lea de un golpe: `Cliente: Público general`.
-  static String _customerLabel(String? displayName, String guestName) {
-    if (displayName != null) {
-      return displayName;
+/// Renglón de datos del cliente (§2): chips de saldo y crédito, o la pista de
+/// que la tarjeta abre el selector.
+class _CustomerBalances extends StatelessWidget {
+  const _CustomerBalances({required this.customer});
+
+  /// Cliente de la venta; `null` = público general.
+  final Customer? customer;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final current = customer;
+    final balance = current?.balance ?? 0;
+
+    if (current == null) {
+      return Text(
+        'Toca para elegir o cambiar el cliente.',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: EzyTextStyles.caption.copyWith(
+          fontSize: 11,
+          color: surfaces.textMuted,
+        ),
+      );
     }
 
-    return guestName.isEmpty ? 'Público general' : guestName;
+    if (balance == 0 && !current.hasCredit) {
+      return Text(
+        'Sin saldo pendiente.',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: EzyTextStyles.caption.copyWith(
+          fontSize: 11,
+          color: surfaces.textMuted,
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: <Widget>[
+        if (balance != 0)
+          _CustomerChip(
+            icon: Icons.savings_outlined,
+            label: 'Saldo: ${Money.format(balance)}',
+            severity: EzySeverity.success,
+          ),
+        if (current.hasCredit)
+          _CustomerChip(
+            icon: Icons.credit_score_outlined,
+            label: 'Crédito: ${Money.format(current.availableCredit)}',
+          ),
+      ],
+    );
   }
 }
 
-/// Resumen de venta del carrito (§4): subtotal, descuentos y total a pagar.
-class _TotalsCard extends StatelessWidget {
-  const _TotalsCard({required this.cart});
+/// Chip de dato del cliente (§2): saldo a favor en verde, crédito en neutro.
+class _CustomerChip extends StatelessWidget {
+  const _CustomerChip({
+    required this.icon,
+    required this.label,
+    this.severity,
+  });
+
+  final IconData icon;
+  final String label;
+
+  /// Severidad del chip; `null` = tono neutro del sistema.
+  final EzySeverity? severity;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final tint = severity;
+    final color = tint == null
+        ? surfaces.textMuted
+        : StatusPalette.text(context, tint);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: tint == null ? surfaces.panelInner : StatusPalette.soft(tint),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: tint == null ? surfaces.border : StatusPalette.border(tint),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: EzyTextStyles.caption.copyWith(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+
+/// Cabecera de la hoja del carrito (§1).
+///
+/// Título a 20 px en negrita fuerte, el conteo en el tono apagado y la X de
+/// cierre en su círculo de 32 px sobre el panel: es la salida de la hoja y el
+/// único control de la cabecera.
+class _CartHeader extends StatelessWidget {
+  const _CartHeader({required this.cart});
 
   final CartState cart;
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
-      title: 'Resumen de venta',
-      // §4: el resumen flota sobre el lienzo igual que las tarjetas de producto.
-      boxShadow: EzyColors.cardShadow,
-      child: Column(
+    final surfaces = context.surfaces;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          SectionRow(label: 'Subtotal', value: Money.format(cart.subtotal)),
-          if (cart.totalDiscount != 0)
-            SectionRow(
-              label: 'Descuentos',
-              value: '-${Money.format(cart.totalDiscount)}',
-              valueStyle: EzyTextStyles.moneyList.copyWith(
-                color: StatusPalette.text(context, EzySeverity.success),
-              ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  'Carrito',
+                  style: EzyTextStyles.screenTitle.copyWith(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: surfaces.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  cartSummaryLabel(cart),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: EzyTextStyles.caption.copyWith(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: surfaces.textMuted,
+                  ),
+                ),
+              ],
             ),
-          const Divider(height: 24),
-          SectionRow(
-            label: 'Total a pagar',
-            value: Money.format(cart.total),
-            emphasized: true,
+          ),
+          const SizedBox(width: 12),
+          EzyIconButton(
+            icon: Icons.close,
+            tooltip: 'Cerrar',
+            size: 32,
+            iconSize: 16,
+            background: surfaces.panel,
+            borderColor: surfaces.border,
+            onTap: () => Navigator.of(context).pop(),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Asa de la hoja (§1): 40 × 5 px, totalmente redondeada, en el borde fuerte.
+///
+/// Se dibuja aquí en lugar de usar la del tema porque el carrito la quiere en su
+/// propio tono; el resto de hojas sigue con la suya.
+class _DragHandle extends StatelessWidget {
+  const _DragHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 40,
+        height: 5,
+        margin: const EdgeInsets.only(top: 10, bottom: 12),
+        decoration: BoxDecoration(
+          color: context.surfaces.borderStrong,
+          borderRadius: BorderRadius.circular(999),
+        ),
       ),
     );
   }
@@ -364,16 +598,18 @@ class _CheckoutSectionState extends ConsumerState<_CheckoutSection> {
           ),
           const SizedBox(height: 12),
         ],
-        // El menú sale en el `Overlay` y no como otra hoja inferior: las opciones
-        // tienen que quedar pegadas al botón que las abre.
         OverlayPortal(
           controller: _menu,
           overlayChildBuilder: _buildMenu,
-          child: _CheckoutButton(
+          child: EzyPrimary3dButton(
             anchorKey: _anchorKey,
-            enabled: enabled,
+            label: 'Finalizar compra',
+            trailingIcon: Icons.keyboard_arrow_up_rounded,
+            height: _checkoutButtonHeight,
+            widthFactor: 0.75,
+            maxWidth: _checkoutButtonMaxWidth,
             isLoading: cart.isSubmitting,
-            onPressed: _toggleMenu,
+            onPressed: enabled ? _toggleMenu : null,
           ),
         ),
       ],
@@ -405,9 +641,14 @@ class _CheckoutSectionState extends ConsumerState<_CheckoutSection> {
           final size = constraints.biggest;
           final anchor = _anchor;
 
-          final double width = anchor != null
-              ? anchor.width.clamp(0, size.width - 24)
-              : size.width - 48;
+          // El menú hereda el ancho del botón que lo abre, con dos límites: nunca
+          // menos de 288 px —los subtítulos se leen de una línea— ni más que la
+          // pantalla.
+          final double byAnchor = anchor?.width ?? size.width - 48;
+          final double preferred = byAnchor > 288 ? byAnchor : 288.0;
+          final double width = preferred > size.width - 24
+              ? size.width - 24
+              : preferred;
           final double left = anchor != null
               ? (anchor.left + (anchor.width - width) / 2).clamp(
                   12,
@@ -458,46 +699,24 @@ class _CheckoutSectionState extends ConsumerState<_CheckoutSection> {
   }
 }
 
-/// Botón que cierra la venta: **Finalizar compra**, a 2/3 del ancho y centrado
-/// (§5).
+/// Alto del botón que cierra la venta (52 px) y ancho máximo en tablet.
 ///
-/// El ancho es una fracción de la barra y no un valor fijo: en un teléfono el
-/// dedo llega sin estirar y en una tablet no se convierte en una franja enorme.
-class _CheckoutButton extends StatelessWidget {
-  const _CheckoutButton({
-    required this.anchorKey,
-    required this.enabled,
-    required this.isLoading,
-    required this.onPressed,
-  });
+/// El botón en sí es el CTA 3D compartido (`EzyPrimary3dButton`, §6 del
+/// rediseño): aquí solo viven las medidas que el carrito le pasa y con las que
+/// `_buildMenu` lo mide para colgarle el menú arriba.
+const double _checkoutButtonHeight = 52;
+const double _checkoutButtonMaxWidth = 280;
 
-  final GlobalKey anchorKey;
-  final bool enabled;
-  final bool isLoading;
-  final VoidCallback onPressed;
 
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: FractionallySizedBox(
-        key: anchorKey,
-        widthFactor: 2 / 3,
-        child: EzyButton(
-          label: 'Finalizar compra',
-          isLoading: isLoading,
-          onPressed: enabled ? onPressed : null,
-        ),
-      ),
-    );
-  }
-}
 
-/// Menú del cierre de venta: las tres formas de cerrar la venta, apiladas (§5).
+
+
+/// Menú del cierre de venta: las tres formas de cerrar la venta (§5).
 ///
-/// No son botones: son **opciones de lista** en el color de marca, apretadas en
-/// el eje vertical, para que el menú se lea como un menú y no como tres botones
-/// metidos en una caja. Es una card flotante, así que lleva la sombra suave que
-/// el resto del design system no necesita: tiene que despegarse de lo que tapa.
+/// No son botones: son **opciones de lista** con el icono en su recuadro, el
+/// título y una línea que explica qué pasa, separadas por un filo. Es una card
+/// flotante, así que lleva la sombra profunda que el resto del design system no
+/// necesita: tiene que despegarse del carrito que tapa.
 class _CheckoutMenu extends StatelessWidget {
   const _CheckoutMenu({
     required this.onCheckout,
@@ -514,7 +733,7 @@ class _CheckoutMenu extends StatelessWidget {
     final surfaces = context.surfaces;
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
         color: surfaces.panel,
         borderRadius: BorderRadius.circular(20),
@@ -522,8 +741,8 @@ class _CheckoutMenu extends StatelessWidget {
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: EzyColors.black2.withValues(alpha: 0.45),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            blurRadius: 30,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
@@ -532,17 +751,25 @@ class _CheckoutMenu extends StatelessWidget {
         children: <Widget>[
           _CheckoutMenuOption(
             icon: Icons.payments_outlined,
-            label: 'Pago al contado',
+            title: 'Pago al contado',
+            subtitle: 'Cobrar ahora en efectivo, tarjeta o transferencia',
+            severity: EzySeverity.success,
             onTap: onCheckout,
           ),
+          const _MenuSeparator(),
           _CheckoutMenuOption(
             icon: Icons.bookmark_outline,
-            label: 'Apartar',
+            title: 'Apartar',
+            subtitle: 'Pedir enganche y reservar las piezas del carrito',
+            severity: EzySeverity.warn,
             onTap: onLayaway,
           ),
+          const _MenuSeparator(),
           _CheckoutMenuOption(
             icon: Icons.receipt_long_outlined,
-            label: 'Pedido',
+            title: 'Pedido',
+            subtitle: 'Guardar la orden abierta para entregarla después',
+            severity: EzySeverity.info,
             onTap: onStoreOrder,
           ),
         ],
@@ -553,41 +780,92 @@ class _CheckoutMenu extends StatelessWidget {
 
 /// Opción del menú de cierre de venta (§5).
 ///
-/// Icono + texto en el naranja de marca, sin relleno ni contorno: el mismo
-/// lenguaje de las filas del design system, con menos aire arriba y abajo.
+/// Icono en su recuadro con el color semántico de la acción, el título en el
+/// color del texto principal y una línea de apoyo: así se entiende qué hace cada
+/// forma de cerrar la venta sin abrirla.
 class _CheckoutMenuOption extends StatelessWidget {
   const _CheckoutMenuOption({
     required this.icon,
-    required this.label,
+    required this.title,
+    required this.subtitle,
+    required this.severity,
     required this.onTap,
   });
 
   final IconData icon;
-  final String label;
+  final String title;
+  final String subtitle;
+
+  /// Color semántico de la acción: verde cobrar, ámbar apartar, azul pedido.
+  final EzySeverity severity;
+
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final color = StatusPalette.text(context, severity);
+
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: <Widget>[
-            Icon(icon, size: 18, color: EzyColors.primary),
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: StatusPalette.soft(severity),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: StatusPalette.border(severity)),
+              ),
+              child: Icon(icon, size: 18, color: color),
+            ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                label,
-                style: EzyTextStyles.bodyStrong.copyWith(
-                  color: EzyColors.primary,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    title,
+                    style: EzyTextStyles.bodyStrong.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: surfaces.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: EzyTextStyles.caption.copyWith(
+                      fontSize: 11,
+                      color: surfaces.textMuted,
+                    ),
+                  ),
+                ],
               ),
             ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right, size: 18, color: surfaces.textMuted),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Filo entre dos opciones del menú: separa sin cortar la card.
+class _MenuSeparator extends StatelessWidget {
+  const _MenuSeparator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Container(height: 1, color: context.surfaces.border),
     );
   }
 }

@@ -26,6 +26,7 @@ import 'package:ezyventas_app/core/printing/bluetooth_printer_service.dart';
 import 'package:ezyventas_app/core/widgets/app_drawer_scope.dart';
 import 'package:ezyventas_app/core/widgets/ezy_button.dart';
 import 'package:ezyventas_app/core/widgets/ezy_dialog.dart';
+import 'package:ezyventas_app/core/widgets/ezy_primary_3d_button.dart';
 import 'package:ezyventas_app/features/account/presentation/account_screen.dart';
 import 'package:ezyventas_app/features/cash/presentation/cash_register_screen.dart';
 import 'package:ezyventas_app/features/catalog/presentation/widgets/product_card.dart';
@@ -117,10 +118,10 @@ final Finder cartBarChevron = find.descendant(
 
 const String cartTitle = 'Carrito';
 
-/// Encabezado de la lista y card de totales del rediseño (§1 y §4): el orden de
-/// las anclas es el del recorrido (`Carrito` → lista → resumen → `Cobrar`).
+/// Encabezado de la lista y desglose del rediseño (§1 y §4): el orden de las
+/// anclas es el del recorrido (`Carrito` → lista → desglose → `Finalizar compra`).
 const String cartLinesHeader = 'ARTÍCULOS EN ORDEN';
-const String cartTotalsCard = 'RESUMEN DE VENTA';
+const String cartTotalsCard = 'TOTAL A PAGAR';
 
 /// §2 del rediseño: el encabezado de la lista y el diálogo que confirma se
 /// llaman igual (`Vaciar`), así que el botón del diálogo se busca dentro de él.
@@ -366,7 +367,7 @@ Future<void> main() async {
       reason: 'El carrito no mostró el resumen de venta',
     );
 
-    final cobrar = find.widgetWithText(EzyButton, checkoutLabel);
+    final cobrar = find.widgetWithText(EzyPrimary3dButton, checkoutLabel);
     expect(
       await _waitScrolling(tester, cobrar),
       isTrue,
@@ -395,14 +396,14 @@ Future<void> main() async {
       );
       expect(find.text(paymentTotalsCard), findsOneWidget);
 
-      final finish = find.widgetWithText(EzyButton, finishSaleLabel);
+      final finish = find.widgetWithText(EzyPrimary3dButton, finishSaleLabel);
       expect(
         await _waitScrolling(tester, finish),
         isTrue,
         reason: 'El cobro no mostró el botón para cerrar la venta',
       );
       expect(
-        tester.widget<EzyButton>(finish).onPressed,
+        tester.widget<EzyPrimary3dButton>(finish).onPressed,
         isNull,
         reason: 'El cobro dejó cerrar la venta sin pagos capturados',
       );
@@ -412,17 +413,32 @@ Future<void> main() async {
     } else {
       // Sin turno de caja (o sin lineas) el cobro esta bloqueado en la app.
       expect(
-        tester.widget<EzyButton>(cobrar).onPressed,
+        tester.widget<EzyPrimary3dButton>(cobrar).onPressed,
         isNull,
         reason: 'El cobro se habilitó sin turno de caja o sin lineas',
       );
     }
 
     // Se deja el carrito limpio: `Vaciar` no toca el servidor y pide confirmar
-    // antes de limpiar (§2). El botón vive en el encabezado de la lista (§1), así
-    // que puede estar fuera de la pantalla si el carrito trae muchas líneas.
-    final clearCart = find.widgetWithText(EzyButton, clearCartLabel);
-    if (tester.widget<EzyButton>(clearCart).onPressed != null) {
+    // antes de limpiar (§2). El botón vive en el encabezado de la lista (§1) y no
+    // es un `EzyButton` —el carrito pinta su propia pieza con un gesto—, así que
+    // se busca por su texto y se lee su estado del gesto que abre el diálogo.
+    final clearCart = find.text(clearCartLabel);
+    final clearCartEnabled =
+        clearCart.evaluate().isNotEmpty &&
+        tester
+                .widget<GestureDetector>(
+                  find
+                      .ancestor(
+                        of: clearCart,
+                        matching: find.byType(GestureDetector),
+                      )
+                      .first,
+                )
+                .onTap !=
+            null;
+
+    if (clearCartEnabled) {
       await _waitScrolling(tester, clearCart);
       await tester.tap(clearCart);
       await _waitFor(tester, find.byType(EzyDialog));

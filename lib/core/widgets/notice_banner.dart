@@ -13,6 +13,7 @@ class NoticeBanner extends StatelessWidget {
   const NoticeBanner({
     super.key,
     required this.message,
+    this.title,
     this.tone = EzySeverity.danger,
     this.icon,
     this.actionLabel,
@@ -20,6 +21,12 @@ class NoticeBanner extends StatelessWidget {
   });
 
   final String message;
+
+  /// Título del aviso, en negrita sobre el texto (§5 y §7 de los rediseños: los
+  /// avisos contextuales se anuncian con nombre —«Stock agotado», «Cuenta por
+  /// cobrar»—). Opcional: los avisos de una línea siguen siendo solo texto.
+  final String? title;
+
   final EzySeverity tone;
   final IconData? icon;
   final String? actionLabel;
@@ -54,6 +61,16 @@ class NoticeBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
+                if (title != null) ...<Widget>[
+                  Text(
+                    title!,
+                    style: EzyTextStyles.bodyStrong.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                ],
                 Text(
                   message,
                   style: EzyTextStyles.body.copyWith(color: color),

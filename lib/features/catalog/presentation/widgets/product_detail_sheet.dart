@@ -7,10 +7,11 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/html_text.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_action_bar.dart';
 import '../../../../core/widgets/ezy_amount.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
-import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
+import '../../../../core/widgets/ezy_primary_3d_button.dart';
 import '../../../../core/widgets/ezy_quantity_stepper.dart';
 import '../../../../core/widgets/ezy_selectable_tile.dart';
 import '../../../../core/widgets/notice_banner.dart';
@@ -135,19 +136,17 @@ class _ProductDetailSheetState extends ConsumerState<_ProductDetailSheet> {
                   ),
                 ),
               ],
-              const SizedBox(height: 16),
-              if (stock <= 0)
-                const NoticeBanner(
-                  message: 'El producto ya no tiene stock suficiente.',
-                  tone: EzySeverity.warn,
-                )
-              else
-                _AddToCartSection(
-                  product: product,
-                  variant: selected,
-                  onAdded: () => Navigator.of(context).maybePop(),
-                ),
             ],
+          ),
+        ),
+        // §5: la zona de acción vive fija al pie, fuera del scroll —el CTA no se
+        // busca bajando—. Los banners de bloqueo y la card de cantidad los pone
+        // `_AddToCartSection`.
+        EzyActionBar(
+          child: _AddToCartSection(
+            product: product,
+            variant: selected,
+            onAdded: () => Navigator.of(context).maybePop(),
           ),
         ),
       ],
@@ -211,28 +210,34 @@ class _AddToCartSectionState extends ConsumerState<_AddToCartSection> {
     final stock = widget.variant?.stock ?? widget.product.stock;
     final step = widget.product.isBulk ? 0.5 : 1.0;
 
+    // §5: los dos bloqueos se anuncian con su banner y el pie se queda sin CTA.
     if (!canSell) {
       return const NoticeBanner(
+        title: 'Acción restringida',
         message: 'Tu usuario no tiene permiso para esta acción.',
         tone: EzySeverity.info,
         icon: Icons.lock_outline,
       );
     }
 
+    if (stock <= 0) {
+      return const NoticeBanner(
+        title: 'Stock agotado',
+        message: 'El producto ya no tiene stock suficiente.',
+        tone: EzySeverity.warn,
+      );
+    }
+
     return SectionCard(
       title: 'Agregar a la venta',
+      // §5: flota en el pie, como el resto de tarjetas del lienzo.
+      boxShadow: EzyColors.cardShadow,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: <Widget>[
-              Text(
-                'Cantidad',
-                style: EzyTextStyles.microLabel.copyWith(
-                  color: surfaces.textMuted,
-                ),
-              ),
-              const Spacer(),
               EzyQuantityStepper(
                 quantity: _quantity,
                 measureUnit: widget.product.measureUnit,
@@ -243,18 +248,49 @@ class _AddToCartSectionState extends ConsumerState<_AddToCartSection> {
                     ? () => setState(() => _quantity = _quantity + step)
                     : null,
               ),
+              const SizedBox(width: 12),
+              // Total de la línea: rótulo micro arriba y el monto en el naranja
+              // de marca, pegado al borde derecho. El bloque se queda con el
+              // ancho que sobra y no con su ancho natural: en un teléfono
+              // estrecho el monto se encoge en lugar de desbordar el renglón.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      'TOTAL DE LA LÍNEA',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: EzyTextStyles.microLabel.copyWith(
+                        fontSize: 10,
+                        letterSpacing: 0.8,
+                        color: surfaces.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        Money.format(_lineTotal()),
+                        style: EzyTextStyles.moneyMedium.copyWith(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          color: EzyColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
-          EzyAmount(
-            value: _lineTotal(),
-            label: 'Total de la línea',
-            size: EzyAmountSize.large,
-          ),
-          const SizedBox(height: 12),
-          EzyButton(
+          const SizedBox(height: 14),
+          EzyPrimary3dButton(
             label: 'Agregar al carrito',
-            icon: Icons.add_shopping_cart_outlined,
+            icon: Icons.shopping_cart_outlined,
+            height: 52,
             onPressed: _add,
           ),
         ],

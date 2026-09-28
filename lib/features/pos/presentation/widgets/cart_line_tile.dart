@@ -6,12 +6,11 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_action_bar.dart';
-import '../../../../core/widgets/ezy_amount.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
-import '../../../../core/widgets/ezy_chip.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/ezy_quantity_stepper.dart';
+import '../../../../core/widgets/ezy_primary_3d_button.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/money_field.dart';
 import '../../../../core/widgets/section_card.dart';
@@ -20,17 +19,14 @@ import '../../../auth/application/auth_controller.dart';
 import '../../application/cart_controller.dart';
 import '../../data/models/cart_line.dart';
 
-/// Tarjeta de una línea del carrito (§2).
+/// Tarjeta de una línea del carrito (§2 y §4 del rediseño).
 ///
-/// Tres renglones: el nombre con sus acciones a la derecha, el precio unitario
-/// —con el de lista tachado— y, al pie, el contador del sistema junto al total
-/// de la línea. El descuento, cuando lo hay, abre su propio renglón debajo del
-/// precio: la pastilla con el ahorro por unidad y el motivo al lado.
+/// Renglones: miniatura de 76 px con el detalle del producto y sus acciones
+/// rápidas, el precio unitario —con el de lista tachado—, la pastilla del
+/// descuento y, al pie, el contador de cantidad junto al total de la línea.
 ///
-/// Las acciones son los botones de icono del design system ([EzyIconButton] con
-/// su `Tooltip`) y **no** el botón de texto «Editar cantidad y descuento» ni la
-/// «x» de antes: el lápiz abre el editor de la línea y la papelera la quita del
-/// carrito.
+/// El lápiz abre el editor de la línea y la papelera la quita del carrito: los
+/// dos siguen llamando al mismo `CartController` de siempre.
 class CartLineTile extends ConsumerWidget {
   const CartLineTile({super.key, required this.line});
 
@@ -42,184 +38,350 @@ class CartLineTile extends ConsumerWidget {
     final controller = ref.read(cartControllerProvider.notifier);
     final variant = line.variantLabel;
     final reason = line.discountReason;
+    final dangerText = StatusPalette.text(context, EzySeverity.danger);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      // §3: 8 px de aire —el único espacio que se le da a la foto— y la tarjeta
-      // lo más baja posible en el eje vertical.
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        // §3 del rediseño: la tarjeta va en blanco (`panel`) sobre el gris del
-        // carrito; con `panelInner` se leía como un hueco del contenedor.
         color: surfaces.panel,
         borderRadius: BorderRadius.circular(16),
-        // El borde de 1 px es el de los pagos del cobro; la sombra es la de las
-        // tarjetas que flotan sobre el lienzo del carrito.
-        border: Border.all(color: surfaces.border),
+        border: Border.all(color: surfaces.border, width: 1.5),
         boxShadow: EzyColors.cardShadow,
       ),
-      child: IntrinsicHeight(
-        child: Row(
-          // La foto se estira: abarca **todo** el alto de la tarjeta.
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            // §3 del rediseño: la miniatura va a la izquierda, como en la tarjeta
-            // del catálogo, y el resto de la línea ocupa lo que queda.
-            _Thumbnail(url: line.imageUrl),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              line.productName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: EzyTextStyles.bodyStrong.copyWith(
-                                color: surfaces.textPrimary,
-                              ),
-                            ),
-                            if (variant != null &&
-                                variant.isNotEmpty) ...<Widget>[
-                              const SizedBox(height: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _Thumbnail(url: line.imageUrl),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
                               Text(
-                                variant,
-                                maxLines: 1,
+                                line.productName,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: EzyTextStyles.secondary.copyWith(
-                                  color: surfaces.textSecondary,
+                                style: EzyTextStyles.bodyStrong.copyWith(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: surfaces.textPrimary,
                                 ),
                               ),
+                              if (variant != null && variant.isNotEmpty)
+                                ...<Widget>[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    variant,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: EzyTextStyles.caption.copyWith(
+                                      fontSize: 11.5,
+                                      color: surfaces.textSecondary,
+                                    ),
+                                  ),
+                                ],
                             ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      EzyIconButton(
-                        icon: Icons.edit_outlined,
-                        tooltip: 'Editar cantidad y descuento',
-                        iconSize: 18,
-                        onTap: () =>
-                            showCartLineEditorSheet(context, line: line),
-                      ),
-                      const SizedBox(width: 6),
-                      EzyIconButton(
-                        icon: Icons.delete_outline,
-                        tooltip: 'Quitar del carrito',
-                        iconSize: 18,
-                        color: StatusPalette.text(context, EzySeverity.danger),
-                        borderColor: StatusPalette.border(EzySeverity.danger),
-                        onTap: () => controller.removeLine(line),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  // Precio unitario: con descuento se tacha el de lista al lado.
-                  Row(
-                    children: <Widget>[
-                      Flexible(
-                        child: Text(
-                          '${Money.format(line.unitPrice)} c/u',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: EzyTextStyles.caption.copyWith(
-                            color: surfaces.textMuted,
                           ),
                         ),
-                      ),
-                      if (line.hasDiscount) ...<Widget>[
+                        const SizedBox(width: 8),
+                        _QuickAction(
+                          icon: Icons.edit_outlined,
+                          tooltip: 'Editar cantidad y descuento',
+                          onTap: () =>
+                              showCartLineEditorSheet(context, line: line),
+                        ),
                         const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            Money.format(line.listPrice),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: EzyTextStyles.caption.copyWith(
-                              color: surfaces.textMuted,
-                              decoration: TextDecoration.lineThrough,
-                            ),
-                          ),
+                        _QuickAction(
+                          icon: Icons.delete_outline,
+                          tooltip: 'Quitar del carrito',
+                          color: dangerText,
+                          background: StatusPalette.soft(EzySeverity.danger),
+                          border: StatusPalette.border(EzySeverity.danger),
+                          onTap: () => controller.removeLine(line),
                         ),
                       ],
-                    ],
-                  ),
-                  // El descuento abre su **propio renglón**, debajo del precio: la
-                  // pastilla del sistema con el ahorro por unidad y, al lado, el motivo
-                  // que pone el modelo (`Promoción de producto`, `Precio de mayoreo`,
-                  // `Descuento manual`). Antes compartían el renglón del precio y le
-                  // robaban ancho a la foto de la tarjeta.
-                  if (line.hasDiscount) ...<Widget>[
-                    const SizedBox(height: 4),
+                    ),
+                    const SizedBox(height: 6),
                     Row(
                       children: <Widget>[
-                        EzyChip(
-                          label: '-${Money.format(line.discountPerUnit)} c/u',
-                          compact: true,
-                          tone: EzySeverity.success,
+                        Text(
+                          '${Money.format(line.unitPrice)} c/u',
+                          style: EzyTextStyles.moneyList.copyWith(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: EzyColors.primary,
+                          ),
                         ),
-                        if (reason != null) ...<Widget>[
-                          const SizedBox(width: 8),
-                          Expanded(
+                        if (line.hasDiscount) ...<Widget>[
+                          const SizedBox(width: 6),
+                          Flexible(
                             child: Text(
-                              reason,
+                              Money.format(line.listPrice),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: EzyTextStyles.caption.copyWith(
-                                color: StatusPalette.text(
-                                  context,
-                                  EzySeverity.success,
-                                ),
+                                fontSize: 11,
+                                color: surfaces.textMuted,
+                                decoration: TextDecoration.lineThrough,
                               ),
                             ),
                           ),
                         ],
                       ],
                     ),
-                  ],
-                  const SizedBox(height: 4),
-                  Row(
-                    children: <Widget>[
-                      _QuantityStepper(line: line),
-                      const Spacer(),
-                      EzyAmount(
-                        value: line.lineTotal,
-                        size: EzyAmountSize.list,
+                    if (line.hasDiscount) ...<Widget>[
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: _DiscountPill(
+                          label:
+                              '- ${Money.format(line.discountPerUnit)} c/u'
+                              '${reason == null || reason.isEmpty ? '' : ' • $reason'}',
+                        ),
                       ),
                     ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(height: 1, color: surfaces.border),
+          const SizedBox(height: 10),
+          Row(
+            children: <Widget>[
+              _LineStepper(line: line),
+              const Spacer(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(
+                    'TOTAL LÍNEA',
+                    style: EzyTextStyles.microLabel.copyWith(
+                      color: surfaces.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    Money.format(line.lineTotal),
+                    style: EzyTextStyles.moneyList.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: EzyColors.primary,
+                    ),
                   ),
                 ],
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pastilla del descuento de la línea: ahorro por unidad y su motivo.
+class _DiscountPill extends StatelessWidget {
+  const _DiscountPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final success = StatusPalette.text(context, EzySeverity.success);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: StatusPalette.soft(EzySeverity.success),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: StatusPalette.border(EzySeverity.success)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(Icons.local_offer_outlined, size: 12, color: success),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: EzyTextStyles.caption.copyWith(
+                fontSize: 10.5,
+                fontWeight: FontWeight.bold,
+                color: success,
+              ),
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Acción rápida de la tarjeta: 28 px de lado, con su `Tooltip`.
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.color,
+    this.background,
+    this.border,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final Color? color;
+  final Color? background;
+  final Color? border;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: background ?? surfaces.panelInner,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: border ?? surfaces.border),
+          ),
+          child: Icon(
+            icon,
+            size: 15,
+            color: color ?? surfaces.textSecondary,
+            semanticLabel: tooltip,
+          ),
         ),
       ),
     );
   }
 }
 
-/// Miniatura de una línea del carrito (§3).
-///
-/// Es la foto del producto —o la de la variante elegida— a la izquierda de la
-/// tarjeta, con el mismo tratamiento que la del catálogo: caja de `panelInner` y
-/// `BoxFit.cover` para que llene el alto sin dejar franjas. Abarca **todo** el
-/// alto de la tarjeta —se estira con la fila—, así que el único espacio alrededor
-/// es el padding de la tarjeta. Sin foto queda el icono del sistema, nunca un
-/// hueco vacío.
+/// Contador de la línea: radio 12, botones táctiles y el «+» con el tinte de
+/// marca. Llama a los mismos `incrementLine` / `decrementLine` del carrito.
+class _LineStepper extends ConsumerWidget {
+  const _LineStepper({required this.line});
+
+  final CartLine line;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final surfaces = context.surfaces;
+    final controller = ref.read(cartControllerProvider.notifier);
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: surfaces.panelInner,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: surfaces.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _StepperButton(
+            icon: Icons.remove,
+            tooltip: 'Quitar una unidad',
+            onTap: () => controller.decrementLine(line),
+          ),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 34),
+            child: Text(
+              Money.formatQuantity(line.quantity),
+              textAlign: TextAlign.center,
+              style: EzyTextStyles.bodyStrong.copyWith(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: surfaces.textPrimary,
+              ),
+            ),
+          ),
+          _StepperButton(
+            icon: Icons.add,
+            tooltip: 'Agregar una unidad',
+            emphasized: true,
+            onTap: () => controller.incrementLine(line),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Extremo del contador: 30 px de lado; el «+» lleva el tinte de marca.
+class _StepperButton extends StatelessWidget {
+  const _StepperButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.emphasized = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: emphasized
+                ? EzyColors.primary.withValues(alpha: 0.15)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: emphasized ? EzyColors.primary : surfaces.textSecondary,
+            semanticLabel: tooltip,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Miniatura de una línea del carrito (§4): 76 × 76 con la foto del producto o
+/// de su variante y el icono del sistema cuando no hay imagen.
 class _Thumbnail extends StatelessWidget {
   const _Thumbnail({this.url});
 
   final String? url;
 
-  /// Ancho fijo —bastante más ancho que en la primera versión, donde la foto se
-  /// veía como una tira—: el alto lo pone la tarjeta.
-  static const double _width = 76;
+  static const double _side = 76;
 
   @override
   Widget build(BuildContext context) {
@@ -228,51 +390,33 @@ class _Thumbnail extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        width: _width,
-        child: ColoredBox(
+      child: Container(
+        width: _side,
+        height: _side,
+        decoration: BoxDecoration(
           color: surfaces.panelInner,
-          child: image.isEmpty
-              ? _placeholder(context)
-              : ServerImage(
-                  image,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      _placeholder(context),
-                ),
+          borderRadius: BorderRadius.circular(12),
         ),
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: surfaces.border),
+        ),
+        child: image.isEmpty
+            ? _placeholder(context)
+            : ServerImage(
+                image,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    _placeholder(context),
+              ),
       ),
     );
   }
 
+  /// Placeholder cuando el producto no tiene foto en el catálogo.
   Widget _placeholder(BuildContext context) => Center(
-    child: Icon(
-      Icons.image_outlined,
-      size: 20,
-      color: context.surfaces.textMuted,
-    ),
+    child: Icon(Icons.image_outlined, size: 20, color: context.surfaces.textMuted),
   );
-}
-
-/// Cantidad con botones − / + (paso 1, o 0.5 en productos a granel).
-///
-/// El control en sí es el del design system; aquí solo se conecta con el
-/// carrito (`incrementLine` / `decrementLine`).
-class _QuantityStepper extends ConsumerWidget {
-  const _QuantityStepper({required this.line});
-
-  final CartLine line;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.read(cartControllerProvider.notifier);
-
-    return EzyQuantityStepper(
-      quantity: line.quantity,
-      onDecrease: () => controller.decrementLine(line),
-      onIncrease: () => controller.incrementLine(line),
-    );
-  }
 }
 
 /// Abre el editor de una línea del carrito (§3).
@@ -480,35 +624,84 @@ class _CartLineEditorSheetState extends ConsumerState<_CartLineEditorSheet> {
             ],
           ),
         ),
+        // §8: el pie del editor reparte la acciones 1:2 —«Cancelar» a un tercio
+        // del ancho y el CTA 3D «Guardar cambios» a dos tercios—, así el guardado
+        // queda bajo el pulgar y el descarte no se toca de más.
         EzyActionBar(
-          child: EzySheetActions(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Row(
             children: <Widget>[
-              EzyButton(
-                label: 'Cancelar',
-                variant: EzyButtonVariant.outline,
-                onPressed: () => Navigator.of(context).pop(),
+              Expanded(
+                child: _CancelButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ),
-              EzyButton(
-                label: 'Guardar cambios',
-                onPressed: () {
-                  // El carrito ya acota mínimo y stock: aquí solo se evita
-                  // mandar una cantidad vacía o en cero.
-                  final quantity = _quantity < _minimum ? _minimum : _quantity;
-                  controller.setQuantity(_currentLine(), quantity);
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: EzyPrimary3dButton(
+                  label: 'Guardar cambios',
+                  icon: Icons.check,
+                  height: 50,
+                  labelFontSize: 13.5,
+                  maxWidth: double.infinity,
+                  onPressed: () {
+                    // El carrito ya acota mínimo y stock: aquí solo se evita
+                    // mandar una cantidad vacía o en cero.
+                    final quantity = _quantity < _minimum
+                        ? _minimum
+                        : _quantity;
+                    controller.setQuantity(_currentLine(), quantity);
 
-                  // Solo si el campo se tocó: si no, la promoción o el mayoreo
-                  // que ya traía la línea se conservan tal cual.
-                  if (canEditPrices && _discount != _initialDiscount) {
-                    controller.setDiscountPerUnit(_currentLine(), _discount);
-                  }
+                    // Solo si el campo se tocó: si no, la promoción o el mayoreo
+                    // que ya traía la línea se conservan tal cual.
+                    if (canEditPrices && _discount != _initialDiscount) {
+                      controller.setDiscountPerUnit(_currentLine(), _discount);
+                    }
 
-                  Navigator.of(context).pop();
-                },
+                    Navigator.of(context).pop();
+                  },
+                ),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// «Cancelar» del pie del editor (§8): un tercio del ancho, 50 px de alto y el
+/// gris interior del sistema —no compite con el CTA de marca—.
+class _CancelButton extends StatelessWidget {
+  const _CancelButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
+    return GestureDetector(
+      onTap: onPressed,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 50,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: surfaces.panelInner,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: surfaces.borderStrong),
+        ),
+        child: Text(
+          'Cancelar',
+          style: EzyTextStyles.bodyStrong.copyWith(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color: surfaces.textSecondary,
+          ),
+        ),
+      ),
     );
   }
 }

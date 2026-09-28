@@ -4,6 +4,7 @@ import 'package:ezyventas_app/core/theme/app_theme.dart';
 import 'package:ezyventas_app/core/widgets/ezy_action_bar.dart';
 import 'package:ezyventas_app/core/widgets/ezy_button.dart';
 import 'package:ezyventas_app/core/widgets/ezy_dialog.dart';
+import 'package:ezyventas_app/core/widgets/ezy_primary_3d_button.dart';
 import 'package:ezyventas_app/features/auth/application/auth_controller.dart';
 import 'package:ezyventas_app/features/cash/data/models/active_cash_session.dart';
 import 'package:ezyventas_app/features/catalog/data/models/product.dart';
@@ -103,6 +104,18 @@ Future<ProviderContainer> _pumpSheet(
   return container;
 }
 
+/// «Vaciar» del encabezado de líneas: `true` cuando se puede tocar.
+///
+/// El botón es una pieza propia del carrito (`GestureDetector` sin relleno) y no
+/// un `EzyButton`, así que su estado se lee del gesto que abre la confirmación.
+bool _clearCartEnabled(WidgetTester tester) {
+  final gesture = find
+      .ancestor(of: find.text('Vaciar'), matching: find.byType(GestureDetector))
+      .first;
+
+  return tester.widget<GestureDetector>(gesture).onTap != null;
+}
+
 void main() {
   setUpAll(() async {
     // Igual que `main()` de la app: sin esto `NumberFormat` de es-MX puede
@@ -121,26 +134,27 @@ void main() {
     expect(find.textContaining('135.00'), findsWidgets);
 
     // §1: la lista se anuncia como `ARTÍCULOS EN ORDEN` y el cliente va arriba
-    // de las líneas, con el prefijo del diseño.
+    // de las líneas, con su rótulo y el nombre en su propio renglón.
     expect(find.text('ARTÍCULOS EN ORDEN'), findsOneWidget);
-    expect(find.text('Cliente: Público general'), findsOneWidget);
+    expect(find.text('CLIENTE'), findsOneWidget);
+    expect(find.text('Público general'), findsOneWidget);
 
     // §4: un solo bloque de totales. La franja duplicada que vivía arriba del
-    // todo (`TOTAL A COBRAR`) ya no existe.
-    expect(find.text('RESUMEN DE VENTA'), findsOneWidget);
+    // todo (`TOTAL A COBRAR`) ya no existe, y el desglose vive en su card.
     expect(find.text('Subtotal'), findsOneWidget);
-    expect(find.text('Total a pagar'), findsOneWidget);
+    expect(find.text('TOTAL A PAGAR'), findsOneWidget);
     expect(find.text('TOTAL A COBRAR'), findsNothing);
 
-    final finalizar = find.widgetWithText(EzyButton, 'Finalizar compra');
+    // El cierre de venta es el CTA 3D compartido y no un `EzyButton`: la cara
+    // del botón la pinta `EzyPrimary3dButton`.
+    final finalizar = find.byType(EzyPrimary3dButton);
     expect(finalizar, findsOneWidget);
-    expect(tester.widget<EzyButton>(finalizar).onPressed, isNotNull);
     expect(
-      tester
-          .widget<EzyButton>(find.widgetWithText(EzyButton, 'Vaciar'))
-          .onPressed,
-      isNotNull,
+      find.descendant(of: finalizar, matching: find.text('Finalizar compra')),
+      findsOneWidget,
     );
+    expect(tester.widget<EzyPrimary3dButton>(finalizar).onPressed, isNotNull);
+    expect(_clearCartEnabled(tester), isTrue);
   });
 
   testWidgets('el pie cierra la venta con un botón y su menú (§5)', (
@@ -150,13 +164,19 @@ void main() {
 
     // Las tres formas de cerrar la venta ya no caben en el pie: la principal se
     // queda sola, a 2/3 del ancho y centrada, y las otras dos salen del menú.
-    final finalizar = find.widgetWithText(EzyButton, 'Finalizar compra');
+    final finalizar = find.byType(EzyPrimary3dButton);
+    // La geometría se mide en el recuadro del botón (el `Center` que lo centra
+    // ocupa todo el ancho de la barra).
+    final finalizarBox = find.descendant(
+      of: finalizar,
+      matching: find.byType(AnimatedContainer),
+    );
     expect(finalizar, findsOneWidget);
     expect(
-      tester.widget<EzyButton>(finalizar).variant,
-      EzyButtonVariant.primary,
+      find.descendant(of: finalizar, matching: find.text('Finalizar compra')),
+      findsOneWidget,
     );
-    expect(find.widgetWithText(EzyButton, 'Pago al contado'), findsNothing);
+    expect(find.text('Pago al contado'), findsNothing);
 
     await tester.tap(finalizar);
     await tester.pumpAndSettle();
@@ -165,23 +185,24 @@ void main() {
     final apartar = find.text('Apartar');
     final pedido = find.text('Pedido');
 
-    // Las tres salen como **opciones de lista** —texto en el color de marca, sin
-    // botón—, y no como los tres botones que cabían en el pie.
+    // Las tres salen como **opciones de lista** —título en el tono principal y el
+    // color semántico de la acción en su icono—, y no como los tres botones que
+    // cabían en el pie.
     expect(contado, findsOneWidget);
     expect(apartar, findsOneWidget);
     expect(pedido, findsOneWidget);
-    expect(find.widgetWithText(EzyButton, 'Pago al contado'), findsNothing);
-    expect(find.widgetWithText(EzyButton, 'Apartar'), findsNothing);
-    expect(find.widgetWithText(EzyButton, 'Pedido'), findsNothing);
 
     for (final option in <Finder>[contado, apartar, pedido]) {
-      expect(tester.widget<Text>(option).style?.color, EzyColors.primary);
+      expect(
+        tester.widget<Text>(option).style?.color,
+        EzyColors.textPrimaryDark,
+      );
     }
 
     // Apiladas **arriba** del botón que las abre, empezando por la que cobra.
     expect(
       tester.getBottomLeft(contado).dy,
-      lessThan(tester.getTopLeft(finalizar).dy),
+      lessThan(tester.getTopLeft(finalizarBox).dy),
     );
     expect(
       tester.getTopLeft(apartar).dy,
@@ -192,10 +213,11 @@ void main() {
       greaterThan(tester.getTopLeft(apartar).dy),
     );
 
-    // A 2/3 del ancho de la barra (16 px de aire por lado) y centrado.
+    // A 3/4 del ancho de la barra (16 px de aire por lado), con el tope de
+    // 280 px del CTA, y centrado.
     final barWidth = tester.getSize(find.byType(EzyActionBar)).width;
-    final button = tester.getRect(finalizar);
-    expect(button.width, closeTo((barWidth - 32) * 2 / 3, 1));
+    final button = tester.getRect(finalizarBox);
+    expect(button.width, closeTo(((barWidth - 32) * 0.75).clamp(0, 280), 1));
     expect(
       button.center.dx,
       closeTo(tester.getCenter(find.byType(EzyActionBar)).dx, 1),
@@ -208,8 +230,10 @@ void main() {
     await _pumpSheet(tester);
     expect(find.byType(CartLineTile), findsOneWidget);
 
-    // El botón del encabezado ya no limpia en seco: abre el diálogo del sistema.
-    await tester.tap(find.widgetWithText(EzyButton, 'Vaciar'));
+    // El «Vaciar» del encabezado ya no limpia en seco: abre el diálogo del
+    // sistema (el del diálogo y el de la lista se llaman igual, así que el del
+    // encabezado se busca por el texto, que en ese momento es el único).
+    await tester.tap(find.text('Vaciar'));
     await tester.pumpAndSettle();
 
     expect(find.byType(EzyDialog), findsOneWidget);
@@ -223,9 +247,8 @@ void main() {
     expect(find.byType(EzyDialog), findsNothing);
     expect(find.byType(CartLineTile), findsOneWidget);
 
-    // Confirmar sí lo limpia. El botón del diálogo se busca dentro del diálogo:
-    // el del encabezado se llama igual (`Vaciar`).
-    await tester.tap(find.widgetWithText(EzyButton, 'Vaciar'));
+    // Confirmar sí lo limpia.
+    await tester.tap(find.text('Vaciar'));
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
@@ -246,21 +269,15 @@ void main() {
 
     expect(find.text('El carrito está vacío'), findsOneWidget);
     expect(find.text('ARTÍCULOS EN ORDEN'), findsOneWidget);
-    expect(find.text('RESUMEN DE VENTA'), findsOneWidget);
-    expect(find.text('Total a pagar'), findsOneWidget);
+    expect(find.text('TOTAL A PAGAR'), findsOneWidget);
 
-    final finalizar = find.widgetWithText(EzyButton, 'Finalizar compra');
-    expect(tester.widget<EzyButton>(finalizar).onPressed, isNull);
-    expect(
-      tester
-          .widget<EzyButton>(find.widgetWithText(EzyButton, 'Vaciar'))
-          .onPressed,
-      isNull,
-    );
+    final finalizar = find.byType(EzyPrimary3dButton);
+    expect(tester.widget<EzyPrimary3dButton>(finalizar).onPressed, isNull);
+    expect(_clearCartEnabled(tester), isFalse);
     // Apartar y pedido viven en el menú del botón: sin líneas el botón está
     // apagado y el menú no se abre, así que no hay nada más que apagar.
-    expect(find.widgetWithText(EzyButton, 'Apartar'), findsNothing);
-    expect(find.widgetWithText(EzyButton, 'Pedido'), findsNothing);
+    expect(find.text('Apartar'), findsNothing);
+    expect(find.text('Pedido'), findsNothing);
   });
 
   testWidgets('sin turno de caja: avisa y bloquea el cobro', (tester) async {
@@ -273,7 +290,7 @@ void main() {
     expect(find.text('Ir a Caja'), findsWidgets);
     expect(
       tester
-          .widget<EzyButton>(find.widgetWithText(EzyButton, 'Finalizar compra'))
+          .widget<EzyPrimary3dButton>(find.byType(EzyPrimary3dButton))
           .onPressed,
       isNull,
     );
@@ -288,6 +305,6 @@ void main() {
       find.text('Tu usuario no tiene permiso para esta acción.'),
       findsOneWidget,
     );
-    expect(find.widgetWithText(EzyButton, 'Finalizar compra'), findsNothing);
+    expect(find.text('Finalizar compra'), findsNothing);
   });
 }
