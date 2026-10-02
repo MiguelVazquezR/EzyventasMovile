@@ -1,7 +1,4 @@
 import 'package:ezyventas_app/core/theme/app_theme.dart';
-import 'package:ezyventas_app/core/widgets/ezy_button.dart';
-import 'package:ezyventas_app/core/widgets/ezy_bottom_sheet.dart';
-import 'package:ezyventas_app/core/widgets/section_card.dart';
 import 'package:ezyventas_app/features/printing/presentation/widgets/whatsapp_ticket_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -55,17 +52,14 @@ void main() {
   ) async {
     await _pumpSheet(tester, phone: '4771234567');
 
-    expect(
-      find.widgetWithText(EzySheetHeader, 'Enviar por WhatsApp'),
-      findsOneWidget,
-    );
+    expect(find.text('Enviar por WhatsApp'), findsOneWidget);
     expect(
       find.textContaining('mensaje listo para 4771234567'),
       findsOneWidget,
     );
     expect(find.textContaining('» *TICKET DE VENTA* «'), findsOneWidget);
-    expect(find.widgetWithText(EzyButton, 'Abrir WhatsApp'), findsOneWidget);
-    expect(find.widgetWithText(EzyButton, 'Copiar mensaje'), findsOneWidget);
+    expect(find.text('Abrir WhatsApp'), findsOneWidget);
+    expect(find.text('Copiar mensaje'), findsOneWidget);
     expect(find.byTooltip('Cerrar'), findsOneWidget);
   });
 
@@ -86,10 +80,7 @@ void main() {
       subtitle: 'Corte de caja · Turno del 18/09',
     );
 
-    expect(
-      find.widgetWithText(EzySheetHeader, 'Enviar el corte por WhatsApp'),
-      findsOneWidget,
-    );
+    expect(find.text('Enviar el corte por WhatsApp'), findsOneWidget);
     expect(find.text('Corte de caja · Turno del 18/09'), findsOneWidget);
   });
 
@@ -114,9 +105,10 @@ void main() {
 
     await _pumpSheet(tester, phone: '4771234567');
 
-    // El texto completo, seleccionable, dentro de la card `MENSAJE`.
-    expect(find.widgetWithText(SectionCard, _message), findsOneWidget);
-    expect(find.text('MENSAJE'), findsOneWidget);
+    // El texto completo, seleccionable, dentro de la card de vista previa.
+    expect(find.widgetWithText(SelectableText, _message), findsOneWidget);
+    expect(find.text('VISTA PREVIA DEL TICKET'), findsOneWidget);
+    expect(find.text('Texto seleccionable'), findsOneWidget);
 
     await tester.tap(find.text('Copiar mensaje'));
     await tester.pump();
