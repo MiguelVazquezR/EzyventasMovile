@@ -62,17 +62,15 @@ class CartSheet extends ConsumerWidget {
     final result = cart.result;
 
     if (result != null) {
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        children: <Widget>[
-          SaleResultView(
-            result: result,
-            onDone: () {
-              controller.consumeResult();
-              Navigator.of(context).pop();
-            },
-          ),
-        ],
+      // El resultado del cobro trae su propio scroll con el CTA fijo al pie: la
+      // hoja no vuelve a envolverlo en otra lista (dos scrollables anidados) y
+      // el botón no depende de haber bajado hasta el final.
+      return SaleResultView(
+        result: result,
+        onDone: () {
+          controller.consumeResult();
+          Navigator.of(context).pop();
+        },
       );
     }
 
@@ -706,7 +704,6 @@ class _CheckoutSectionState extends ConsumerState<_CheckoutSection> {
 /// `_buildMenu` lo mide para colgarle el menú arriba.
 const double _checkoutButtonHeight = 52;
 const double _checkoutButtonMaxWidth = 280;
-
 
 
 
