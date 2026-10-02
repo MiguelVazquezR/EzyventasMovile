@@ -10,13 +10,13 @@ import '../../../../core/theme/theme_mode_controller.dart';
 import '../../../../core/widgets/ezy_dialog.dart';
 import '../../../../core/widgets/ezy_header_band.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
-import '../../../../core/widgets/ezy_list_tile.dart';
 import '../../../../core/widgets/user_avatar.dart';
 import '../../../account/application/account_providers.dart';
 import '../../../account/presentation/account_labels.dart';
 import '../../../account/presentation/logout_flow.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../pos/application/cart_controller.dart';
+import 'drawer_tiles.dart';
 
 /// Menú lateral del cascarón: la navegación de la app desde que la barra
 /// inferior dejó de existir.
@@ -42,6 +42,12 @@ class EzyAppDrawer extends ConsumerWidget {
 
   /// Etiqueta del botón de cierre de la cabecera del panel.
   static const String closeTooltip = 'Cerrar menú';
+
+  /// Versión y build que firma el pie del panel. Se mantienen al día con
+  /// `version:` de `pubspec.yaml` (`0.1.0+1`): la app no lleva paquete de
+  /// versión —una dependencia más para un texto— y el dato solo se usa aquí.
+  static const String appVersion = '0.1.0';
+  static const String buildNumber = '1';
 
 
   @override
@@ -80,11 +86,12 @@ class EzyAppDrawer extends ConsumerWidget {
     final actionRows = <_DrawerRow>[
       if (permissions.isTabVisible(AppTab.sell))
         _DrawerRow(
-          icon: Icons.add_shopping_cart_outlined,
+          icon: Icons.add,
           title: canCreateSale ? 'Nueva venta' : 'Abrir el punto de venta',
           subtitle: canCreateSale
-              ? 'Lleva a Vender con el carrito listo para cobrar.'
+              ? 'Abrir terminal POS'
               : 'Revisa el catálogo y los precios de la sucursal.',
+          isPrimaryAction: true,
           onTap: canCreateSale
               ? () => _startNewSale(context, ref)
               : () => _goToTab(context, AppTab.sell),
@@ -133,6 +140,9 @@ class EzyAppDrawer extends ConsumerWidget {
       ),
     ];
 
+    // El pie no debe quedar bajo la barra de gestos del sistema.
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
     return Drawer(
       width: width,
       backgroundColor: surfaces.background,
@@ -144,52 +154,54 @@ class EzyAppDrawer extends ConsumerWidget {
             photoUrl: user?.profilePhotoUrl,
             subtitle: headerSubtitle,
           ),
-          const _SectionLabel('Navegación'),
-          ..._rows(navRows),
+          const DrawerSectionLabel('Navegación'),
+          DrawerSectionCard(children: _rows(navRows)),
           if (actionRows.isNotEmpty) ...<Widget>[
-            const _SectionLabel('Acciones'),
-            ..._rows(actionRows),
+            const DrawerSectionLabel('Acciones rápidas'),
+            DrawerSectionCard(children: _rows(actionRows)),
           ],
-          const _SectionLabel('Cuenta'),
-          ..._rows(accountRows),
-          const _SectionLabel('Preferencias'),
-          EzyListTile(
-            icon: Icons.dark_mode_outlined,
-            title: AccountLabels.darkMode,
-            subtitle: AccountLabels.darkModeSubtitle,
-            trailing: Switch(
-              value: isDark,
-              onChanged: (value) => ref
-                  .read(themeModeProvider.notifier)
-                  .setMode(value ? ThemeMode.dark : ThemeMode.light),
-            ),
-            onTap: () => ref.read(themeModeProvider.notifier).toggle(),
+          const DrawerSectionLabel('Cuenta'),
+          DrawerSectionCard(children: _rows(accountRows)),
+          const DrawerSectionLabel('Preferencias'),
+          DrawerSectionCard(
+            children: <Widget>[
+              DrawerNavTile(
+                icon: Icons.dark_mode_outlined,
+                title: AccountLabels.darkMode,
+                subtitle: AccountLabels.darkModeSubtitle,
+                trailing: Switch.adaptive(
+                  value: isDark,
+                  onChanged: (value) => ref
+                      .read(themeModeProvider.notifier)
+                      .setMode(value ? ThemeMode.dark : ThemeMode.light),
+                ),
+                onTap: () => ref.read(themeModeProvider.notifier).toggle(),
+              ),
+            ],
           ),
-          EzyListTile(
+          DrawerDestructiveTile(
             icon: Icons.logout,
             title: AccountLabels.logout,
-            isDestructive: true,
-            showDivider: false,
             onTap: () => confirmAndLogout(context, ref),
           ),
-          const SizedBox(height: 20),
+          _DrawerFooter(bottomInset: bottomInset),
         ],
       ),
     );
   }
 
-  /// Filas de una sección con el divisor solo **entre** ellas: la última de cada
-  /// bloque la separa el rótulo de la sección siguiente.
+  /// Filas de una sección con el divisor solo **entre** ellas: de eso se encarga
+  /// la tarjeta (`DrawerSectionCard`), así que aquí solo se traducen los datos.
   List<Widget> _rows(List<_DrawerRow> rows) => <Widget>[
-    for (var index = 0; index < rows.length; index++)
-      EzyListTile(
-        icon: rows[index].icon,
-        title: rows[index].title,
-        subtitle: rows[index].subtitle,
-        badgeCount: rows[index].badgeCount,
-        isSelected: rows[index].isSelected,
-        showDivider: index < rows.length - 1,
-        onTap: rows[index].onTap,
+    for (final row in rows)
+      DrawerNavTile(
+        icon: row.icon,
+        title: row.title,
+        subtitle: row.subtitle,
+        badgeCount: row.badgeCount,
+        isSelected: row.isSelected,
+        isPrimary: row.isPrimaryAction,
+        onTap: row.onTap,
       ),
   ];
 
@@ -261,80 +273,105 @@ class _DrawerHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final trimmed = name.trim();
+    // El panel cuelga del `Scaffold` a pantalla completa (cubre el hueco del
+    // `AppBar`), así que la banda arranca en el borde superior de la pantalla —
+    // el degradado sí llega arriba— y el contenido baja lo que mida la barra de
+    // notificaciones: la hora, la batería y el notch no se pisan nunca.
+    final topInset = MediaQuery.paddingOf(context).top;
 
     return EzyHeaderBand(
-      padding: const EdgeInsets.fromLTRB(16, 16, 12, 20),
-      child: Row(
-        children: <Widget>[
-          Container(
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: EzyColors.white.withValues(alpha: 0.65)),
-            ),
-            child: UserAvatar(
-              name: name,
-              photoUrl: photoUrl,
-              size: 44,
-              onBrand: true,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  trimmed.isEmpty ? 'Tu sesión' : trimmed,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: EzyTextStyles.bodyStrong.copyWith(
-                    fontSize: 15,
-                    color: EzyColors.white,
-                  ),
+      decoration: EzyHeaderBandDecoration.circles,
+      padding: EdgeInsets.fromLTRB(16, topInset + 14, 12, 18),
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: Row(
+          children: <Widget>[
+            Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  width: 2,
+                  color: EzyColors.white.withValues(alpha: 0.65),
                 ),
-                if (subtitle.isNotEmpty) ...<Widget>[
-                  const SizedBox(height: 3),
+              ),
+              child: UserAvatar(
+                name: name,
+                photoUrl: photoUrl,
+                size: 44,
+                onBrand: true,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
                   Text(
-                    subtitle,
-                    maxLines: 2,
+                    trimmed.isEmpty ? 'Tu sesión' : trimmed,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: EzyTextStyles.secondary.copyWith(
-                      color: EzyColors.white.withValues(alpha: 0.85),
+                    style: EzyTextStyles.bodyStrong.copyWith(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: EzyColors.white,
                     ),
                   ),
+                  if (subtitle.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: EzyTextStyles.secondary.copyWith(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: EzyColors.white.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          EzyIconButton(
-            icon: Icons.close,
-            tooltip: EzyAppDrawer.closeTooltip,
-            color: EzyColors.white,
-            background: EzyColors.white.withValues(alpha: 0.18),
-            borderColor: EzyColors.white.withValues(alpha: 0.32),
-            onTap: () => Scaffold.maybeOf(context)?.closeDrawer(),
-          ),
-        ],
+            const SizedBox(width: 8),
+            EzyIconButton(
+              icon: Icons.close,
+              tooltip: EzyAppDrawer.closeTooltip,
+              size: 30,
+              iconSize: 14,
+              color: EzyColors.white,
+              background: EzyColors.white.withValues(alpha: 0.18),
+              borderColor: EzyColors.white.withValues(alpha: 0.32),
+              onTap: () => Scaffold.maybeOf(context)?.closeDrawer(),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Rótulo de sección del panel: micro-etiqueta en MAYÚSCULAS sobre el fondo.
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.label);
+/// Pie del panel: firma de versión centrada al final del recorrido.
+class _DrawerFooter extends StatelessWidget {
+  const _DrawerFooter({required this.bottomInset});
 
-  final String label;
+  /// Alto de la barra de gestos del sistema, para no escribir debajo de ella.
+  final double bottomInset;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
       child: Text(
-        label.toUpperCase(),
+        'EZY POS V${EzyAppDrawer.appVersion} · '
+        'BUILD ${EzyAppDrawer.buildNumber}',
+        textAlign: TextAlign.center,
         style: EzyTextStyles.microLabel.copyWith(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.8,
           color: context.surfaces.textMuted,
         ),
       ),
@@ -342,7 +379,7 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-/// Fila del panel antes de convertirse en `EzyListTile`.
+/// Fila del panel antes de convertirse en `DrawerNavTile`.
 class _DrawerRow {
   const _DrawerRow({
     required this.icon,
@@ -351,6 +388,7 @@ class _DrawerRow {
     this.subtitle,
     this.badgeCount,
     this.isSelected = false,
+    this.isPrimaryAction = false,
   });
 
   final IconData icon;
@@ -359,5 +397,8 @@ class _DrawerRow {
   final VoidCallback onTap;
   final int? badgeCount;
   final bool isSelected;
+
+  /// Acción de marca (`Nueva venta`): icono en cuadro naranja y título primario.
+  final bool isPrimaryAction;
 }
 

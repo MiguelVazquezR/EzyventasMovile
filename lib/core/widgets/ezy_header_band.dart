@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 
+/// Adorno de la banda: las ondas concéntricas de siempre o los círculos
+/// geométricos del menú lateral (esquinas derechas).
+enum EzyHeaderBandDecoration { waves, circles }
+
 /// Cabecera curva con el degradado de marca.
 ///
 /// Bloque a ancho completo con el naranja de EzyVentas (`primary400` →
@@ -20,9 +24,13 @@ class EzyHeaderBand extends StatelessWidget {
     required this.child,
     this.curveRadius = 28,
     this.padding = const EdgeInsets.fromLTRB(16, 14, 16, 14),
+    this.decoration = EzyHeaderBandDecoration.waves,
   });
 
   final Widget child;
+
+  /// Adorno translúcido de fondo; no captura toques (`IgnorePointer`).
+  final EzyHeaderBandDecoration decoration;
 
   /// Radio de las esquinas inferiores.
   final double curveRadius;
@@ -51,8 +59,15 @@ class EzyHeaderBand extends StatelessWidget {
         ),
         child: Stack(
           children: <Widget>[
-            const Positioned.fill(
-              child: IgnorePointer(child: CustomPaint(painter: _HeaderWaves())),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: switch (decoration) {
+                    EzyHeaderBandDecoration.waves => const _HeaderWaves(),
+                    EzyHeaderBandDecoration.circles => const _HeaderCircles(),
+                  },
+                ),
+              ),
             ),
             Padding(padding: padding, child: child),
           ],
@@ -60,6 +75,27 @@ class EzyHeaderBand extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Círculos geométricos de la cabecera del menú lateral: uno grande de 140 px
+/// entrando por la esquina superior derecha y otro de 90 px por la inferior.
+///
+/// Van en blanco translúcido (10 % y 7 %) sobre el degradado: son textura, no
+/// dibujo, y no compiten con el avatar ni con el botón de cerrar.
+class _HeaderCircles extends CustomPainter {
+  const _HeaderCircles();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final large = Paint()..color = EzyColors.white.withValues(alpha: 0.10);
+    canvas.drawCircle(Offset(size.width - 30, 8), 70, large);
+
+    final small = Paint()..color = EzyColors.white.withValues(alpha: 0.07);
+    canvas.drawCircle(Offset(size.width - 4, size.height - 6), 45, small);
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeaderCircles oldDelegate) => false;
 }
 
 /// Ondas de adorno de la cabecera: arcos concéntricos que entran por la esquina

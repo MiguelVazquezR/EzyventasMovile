@@ -2,12 +2,12 @@ import 'package:ezyventas_app/core/api/api_client.dart';
 import 'package:ezyventas_app/core/storage/local_cache.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
 import 'package:ezyventas_app/core/theme/theme_mode_controller.dart';
-import 'package:ezyventas_app/core/widgets/ezy_list_tile.dart';
 import 'package:ezyventas_app/features/account/application/account_providers.dart';
 import 'package:ezyventas_app/features/account/data/account_repository.dart';
 import 'package:ezyventas_app/features/account/data/models/notification_counters.dart';
 import 'package:ezyventas_app/features/auth/application/auth_controller.dart';
 import 'package:ezyventas_app/features/shell/presentation/widgets/app_drawer.dart';
+import 'package:ezyventas_app/features/shell/presentation/widgets/drawer_tiles.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -174,8 +174,8 @@ void main() {
     }
 
     // Vender está seleccionada: la fila táctil lleva el estado activo.
-    final sellTile = tester.widget<EzyListTile>(
-      find.ancestor(of: _row('Vender'), matching: find.byType(EzyListTile)),
+    final sellTile = tester.widget<DrawerNavTile>(
+      find.ancestor(of: _row('Vender'), matching: find.byType(DrawerNavTile)),
     );
     expect(sellTile.isSelected, isTrue);
 
