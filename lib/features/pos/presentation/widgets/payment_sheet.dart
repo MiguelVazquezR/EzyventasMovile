@@ -85,6 +85,11 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
     final cart = ref.watch(cartControllerProvider);
     final controller = ref.read(cartControllerProvider.notifier);
     final banks = ref.watch(bankAccountsProvider);
+    // Sin cliente no se puede dejar saldo pendiente: el aviso contextual del
+    // desglose ya lo cuenta con su título, así que el motivo genérico del
+    // carrito —exactamente el mismo texto— no se repite.
+    final pendingWithoutCustomer =
+        cart.remaining > 0.01 && cart.customer == null;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -100,7 +105,7 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             children: <Widget>[
-              _AmountsCard(cart: cart),
+              _AmountsCard(cart: cart, isLayaway: _isLayaway),
               if (cart.customer?.hasBalanceInFavor ?? false) ...<Widget>[
                 const SizedBox(height: 12),
                 _BalanceSwitch(
@@ -123,6 +128,9 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
               if (cart.remaining > 0.01) ...<Widget>[
                 const SizedBox(height: 12),
                 NoticeBanner(
+                  title: cart.customer == null
+                      ? 'Saldo pendiente'
+                      : 'Cuenta por cobrar',
                   message: cart.customer == null
                       ? 'Selecciona un cliente para dejar saldo pendiente.'
                       : 'Quedarán ${Money.format(cart.remaining)} a crédito del '
@@ -131,7 +139,8 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
                   tone: EzySeverity.warn,
                 ),
               ],
-              if (cart.blockerMessage != null) ...<Widget>[
+              if (cart.blockerMessage != null &&
+                  !pendingWithoutCustomer) ...<Widget>[
                 const SizedBox(height: 12),
                 NoticeBanner(message: cart.blockerMessage!),
               ],
@@ -206,51 +215,228 @@ class _PaymentSheetState extends ConsumerState<_PaymentSheet> {
   }
 }
 
-/// Total de la venta, saldo a favor usado y restante/cambio.
+/// Desglose financiero del cobro: total, cobertura, saldo a favor, pagos y
+/// restante, con el color de estatus del estado final.
 class _AmountsCard extends StatelessWidget {
-  const _AmountsCard({required this.cart});
+  const _AmountsCard({required this.cart, required this.isLayaway});
 
   final CartState cart;
+  final bool isLayaway;
 
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
     final isChange = cart.remaining < -0.01;
-    final highlight = StatusPalette.text(
-      context,
-      isChange ? EzySeverity.success : EzySeverity.warn,
-    );
+    final success = StatusPalette.text(context, EzySeverity.success);
 
     return SectionCard(
       title: 'Total de la venta',
-      // Flota sobre el lienzo gris de la hoja, como las tarjetas del carrito.
       boxShadow: EzyColors.cardShadow,
+      trailing: EzyChip(
+        label: isLayaway ? 'Apartado' : 'Venta',
+        tone: isLayaway ? EzySeverity.warn : null,
+        selected: !isLayaway,
+        compact: true,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           EzyAmount(value: cart.total, size: EzyAmountSize.hero),
-          if (cart.balanceUsed > 0)
-            SectionRow(
+          const SizedBox(height: 16),
+          _CoverageBar(paid: cart.paidTotal, total: cart.total),
+          if (cart.balanceUsed > 0) ...<Widget>[
+            const SizedBox(height: 12),
+            _LedgerRow(
               label: 'Saldo a favor aplicado',
               value: '-${Money.format(cart.balanceUsed)}',
+              dotColor: EzyColors.success,
+              valueColor: success,
             ),
-          if (cart.paymentsTotal > 0)
-            SectionRow(
+          ],
+          if (cart.paymentsTotal > 0) ...<Widget>[
+            SizedBox(height: cart.balanceUsed > 0 ? 6 : 12),
+            _LedgerRow(
               label: 'Pagos capturados',
               value: Money.format(cart.paymentsTotal),
             ),
-          const Divider(height: 24),
-          SectionRow(
+          ],
+          Divider(height: 24, color: surfaces.border),
+          _StateBlock(
             label: isChange ? 'Su cambio' : 'Restante',
             value: Money.format(isChange ? -cart.remaining : cart.remaining),
-            emphasized: true,
-            valueStyle: EzyTextStyles.moneyMedium.copyWith(color: highlight),
+            tone: isChange ? EzySeverity.success : EzySeverity.warn,
           ),
-          if (isChange)
+          if (isChange) ...<Widget>[
+            const SizedBox(height: 10),
             Text(
               'El cambio lo calcula y devuelve el servidor al registrar la venta.',
               style: EzyTextStyles.caption.copyWith(color: surfaces.textMuted),
             ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Barra de cobertura: qué parte del total ya está cubierta con pagos y saldo.
+class _CoverageBar extends StatelessWidget {
+  const _CoverageBar({required this.paid, required this.total});
+
+  final double paid;
+  final double total;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    if (total <= 0) {
+      return const SizedBox.shrink();
+    }
+
+    // Se redondea a puntos porcentuales: la barra es un indicador de un vistazo.
+    final filled = (paid / total * 100).round().clamp(0, 100).toInt();
+    final complete = filled >= 100;
+    final color = complete ? EzyColors.success : EzyColors.primary;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: SizedBox(
+            height: 6,
+            child: Row(
+              children: <Widget>[
+                if (filled > 0)
+                  Expanded(
+                    flex: filled,
+                    child: ColoredBox(color: color),
+                  ),
+                if (filled < 100)
+                  Expanded(
+                    flex: 100 - filled,
+                    child: ColoredBox(color: surfaces.borderStrong),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                'Cubierto',
+                style: EzyTextStyles.microLabel.copyWith(
+                  color: surfaces.textMuted,
+                ),
+              ),
+            ),
+            Text(
+              '${Money.format(paid)} de ${Money.format(total)}',
+              style: EzyTextStyles.moneyList.copyWith(
+                fontSize: 12,
+                color: complete ? EzyColors.success : surfaces.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Renglón del desglose: concepto a la izquierda y monto en cifras tabulares.
+class _LedgerRow extends StatelessWidget {
+  const _LedgerRow({
+    required this.label,
+    required this.value,
+    this.dotColor,
+    this.valueColor,
+  });
+
+  final String label;
+  final String value;
+  final Color? dotColor;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final dot = dotColor;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        if (dot != null) ...<Widget>[
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+        Expanded(
+          child: Text(
+            label,
+            style: EzyTextStyles.body.copyWith(color: surfaces.textSecondary),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          value,
+          style: EzyTextStyles.moneyList.copyWith(
+            color: valueColor ?? surfaces.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Bloque de estado del cobro: el restante o el cambio, con su color de estatus.
+class _StateBlock extends StatelessWidget {
+  const _StateBlock({
+    required this.label,
+    required this.value,
+    required this.tone,
+  });
+
+  final String label;
+  final String value;
+  final EzySeverity tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = StatusPalette.text(context, tone);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: StatusPalette.soft(tone),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: StatusPalette.border(tone)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              label.toUpperCase(),
+              style: EzyTextStyles.microLabel.copyWith(color: color),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            value,
+            style: EzyTextStyles.moneyMedium.copyWith(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
         ],
       ),
     );
@@ -274,23 +460,20 @@ class _BalanceSwitch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
+    final success = StatusPalette.text(context, EzySeverity.success);
 
     return SectionCard(
       title: 'Saldo a favor',
       boxShadow: EzyColors.cardShadow,
+      trailing: EzyChip(
+        icon: Icons.account_balance_wallet_outlined,
+        label: Money.format(customerBalance),
+        tone: EzySeverity.success,
+        compact: true,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Text(
-            'El cliente tiene ${Money.format(customerBalance)} a favor.',
-            style: EzyTextStyles.body.copyWith(color: surfaces.textSecondary),
-          ),
-          if (value)
-            SectionRow(
-              label: 'Se aplicará',
-              value: '-${Money.format(balanceUsed)}',
-              emphasized: true,
-            ),
           // `Material` transparente: el `SectionCard` pinta su propio fondo y sin
           // él el *ripple* del interruptor quedaría debajo del fondo.
           Material(
@@ -307,6 +490,19 @@ class _BalanceSwitch extends StatelessWidget {
               ),
             ),
           ),
+          Text(
+            'El cliente tiene ${Money.format(customerBalance)} a favor.',
+            style: EzyTextStyles.body.copyWith(color: surfaces.textSecondary),
+          ),
+          if (value) ...<Widget>[
+            const SizedBox(height: 10),
+            _LedgerRow(
+              label: 'Se aplicará',
+              value: '-${Money.format(balanceUsed)}',
+              dotColor: EzyColors.success,
+              valueColor: success,
+            ),
+          ],
         ],
       ),
     );
@@ -328,6 +524,12 @@ class _PaymentsCard extends ConsumerWidget {
     return SectionCard(
       title: 'Pagos',
       boxShadow: EzyColors.cardShadow,
+      trailing: EzyChip(
+        icon: Icons.receipt_long_outlined,
+        label: 'Métodos',
+        count: cart.payments.length,
+        compact: true,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -347,7 +549,7 @@ class _PaymentsCard extends ConsumerWidget {
               index: index,
               payment: cart.payments[index],
               banks: banks,
-              errorText: cart.errorFor('payments.$index.bank_account_id'),
+              errorText: _bankError(cart, index, cart.payments[index]),
             ),
           _AddPaymentRow(
             used: cart.payments.map((payment) => payment.method).toSet(),
@@ -357,9 +559,22 @@ class _PaymentsCard extends ConsumerWidget {
       ),
     );
   }
+
+  /// Error del servidor o el motivo local para el selector de cuenta destino.
+  String? _bankError(CartState cart, int index, PaymentDraft payment) {
+    final serverError = cart.errorFor('payments.$index.bank_account_id');
+    if (serverError != null) {
+      return serverError;
+    }
+
+    return payment.needsBankAccount
+        ? 'Selecciona la cuenta destino para los pagos con tarjeta o '
+              'transferencia.'
+        : null;
+  }
 }
 
-/// Un pago: método, monto y cuenta destino si es tarjeta o transferencia.
+/// Un pago capturado: método, monto y cuenta destino si el método la exige.
 class _PaymentTile extends ConsumerWidget {
   const _PaymentTile({
     required this.index,
@@ -375,17 +590,19 @@ class _PaymentTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final surfaces = context.surfaces;
     final controller = ref.read(cartControllerProvider.notifier);
+    final severity = _methodSeverity(payment.method);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        // El pago es una pieza blanca que flota dentro de su sección, con la
+        // Cada pago es una pieza blanca que flota dentro de su sección, con la
         // misma sombra que las tarjetas del carrito.
-        color: context.surfaces.panel,
+        color: surfaces.panel,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.surfaces.border),
+        border: Border.all(color: surfaces.border),
         boxShadow: EzyColors.cardShadow,
       ),
       child: Column(
@@ -393,23 +610,70 @@ class _PaymentTile extends ConsumerWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
+              Container(
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: StatusPalette.soft(severity),
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: StatusPalette.border(severity)),
+                ),
+                child: Icon(
+                  _methodIcon(payment.method),
+                  size: 16,
+                  color: StatusPalette.text(context, severity),
+                ),
+              ),
+              const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  payment.method.label,
-                  style: EzyTextStyles.bodyStrong.copyWith(
-                    color: context.surfaces.textPrimary,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      'Pago ${index + 1}',
+                      style: EzyTextStyles.microLabel.copyWith(
+                        color: surfaces.textMuted,
+                      ),
+                    ),
+                    Text(
+                      payment.method.label,
+                      style: EzyTextStyles.bodyStrong.copyWith(
+                        color: surfaces.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Tooltip(
+                message: 'Quitar método',
+                child: GestureDetector(
+                  onTap: () => controller.removePayment(index),
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: surfaces.panelInner,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: surfaces.border),
+                    ),
+                    child: Icon(
+                      Icons.close,
+                      size: 16,
+                      color: StatusPalette.text(context, EzySeverity.danger),
+                    ),
                   ),
                 ),
               ),
-              IconButton(
-                onPressed: () => controller.removePayment(index),
-                tooltip: 'Quitar método',
-                icon: const Icon(Icons.close, size: 18),
-              ),
             ],
           ),
+          const SizedBox(height: 12),
           PaymentAmountField(
             payment: payment,
+            suffixText: 'MXN',
             onChanged: (value) => controller.setPaymentAmount(index, value),
           ),
           if (payment.method.requiresBankAccount) ...<Widget>[
@@ -431,6 +695,20 @@ class _PaymentTile extends ConsumerWidget {
   }
 }
 
+/// Severidad que tiñe la pieza de un pago según su método.
+EzySeverity _methodSeverity(PosPaymentMethod method) => switch (method) {
+  PosPaymentMethod.cash => EzySeverity.success,
+  PosPaymentMethod.card => EzySeverity.info,
+  PosPaymentMethod.transfer => EzySeverity.neutral,
+};
+
+/// Icono que identifica el método de pago.
+IconData _methodIcon(PosPaymentMethod method) => switch (method) {
+  PosPaymentMethod.cash => Icons.payments_outlined,
+  PosPaymentMethod.card => Icons.credit_card,
+  PosPaymentMethod.transfer => Icons.account_balance_outlined,
+};
+
 /// Monto del pago: mantiene su controlador para no perder el cursor y refleja
 /// los cambios de monto hechos desde el carrito (por ejemplo al agregar otro
 /// método de pago).
@@ -439,10 +717,14 @@ class PaymentAmountField extends StatefulWidget {
     super.key,
     required this.payment,
     required this.onChanged,
+    this.suffixText,
   });
 
   final PaymentDraft payment;
   final ValueChanged<double> onChanged;
+
+  /// Unidad monetaria al final del campo (`MXN` en esta hoja).
+  final String? suffixText;
 
   @override
   State<PaymentAmountField> createState() => _PaymentAmountFieldState();
@@ -474,6 +756,7 @@ class _PaymentAmountFieldState extends State<PaymentAmountField> {
     label: 'Monto',
     controller: _controller,
     fillColor: context.surfaces.panel,
+    suffixText: widget.suffixText,
     onChanged: widget.onChanged,
   );
 }
@@ -508,6 +791,7 @@ class _AddPaymentRow extends StatelessWidget {
               EzyChip(
                 label: method.label,
                 icon: Icons.add,
+                compact: true,
                 onTap: () => onAdd(method),
               ),
           ],
