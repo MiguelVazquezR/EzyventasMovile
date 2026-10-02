@@ -4,6 +4,7 @@ import 'package:ezyventas_app/core/api/api_client.dart';
 import 'package:ezyventas_app/core/api/api_exception.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
 import 'package:ezyventas_app/core/widgets/ezy_bottom_sheet.dart';
+import 'package:ezyventas_app/core/widgets/ezy_primary_3d_button.dart';
 import 'package:ezyventas_app/core/widgets/ezy_selectable_tile.dart';
 import 'package:ezyventas_app/features/printing/application/printing_providers.dart';
 import 'package:ezyventas_app/features/printing/data/models/print_document.dart';
@@ -224,10 +225,12 @@ void main() {
     // En el entorno de pruebas no hay plugin de Bluetooth: la hoja lo avisa.
     expect(find.textContaining('Bluetooth'), findsWidgets);
 
-    final button = tester.widget<FilledButton>(
+    // El CTA de la hoja es el botón con relieve del cobro: sin impresora lista
+    // su acción queda nula.
+    final button = tester.widget<EzyPrimary3dButton>(
       find.ancestor(
         of: find.text('Imprimir ticket'),
-        matching: find.byType(FilledButton),
+        matching: find.byType(EzyPrimary3dButton),
       ),
     );
 
@@ -345,4 +348,3 @@ void main() {
     expect(tester.widget<EzySelectableTile>(tiles.at(1)).isSelected, isTrue);
   });
 }
-

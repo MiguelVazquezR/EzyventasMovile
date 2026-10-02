@@ -48,6 +48,17 @@ enum PrintContextType {
 
   final String wire;
 
+  /// Contexto a partir del `context_type` de la API (`null` si no viene).
+  static PrintContextType? fromWire(String? value) {
+    for (final context in PrintContextType.values) {
+      if (context.wire == value) {
+        return context;
+      }
+    }
+
+    return null;
+  }
+
   String get label => switch (this) {
     PrintContextType.pos => 'Punto de venta',
     PrintContextType.transaction => 'Venta',
@@ -100,6 +111,13 @@ class PrintTemplate {
   final Map<String, dynamic> config;
 
   PrintTemplateType? get templateType => PrintTemplateType.fromWire(type);
+
+  /// Nombre legible del contexto (`Venta`, `Punto de venta`, `General`).
+  ///
+  /// Un `context_type` ausente es la plantilla que aplica a cualquier contexto:
+  /// se anuncia como «General», igual que el contexto `general` del servidor.
+  String get contextLabel =>
+      PrintContextType.fromWire(contextType)?.label ?? 'General';
 
   bool get isLabel => type == PrintTemplateType.label.wire;
 

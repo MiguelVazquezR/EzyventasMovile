@@ -8,9 +8,9 @@ import '../../../core/theme/status_palette.dart';
 import '../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../core/widgets/ezy_button.dart';
 import '../../../core/widgets/ezy_icon_button.dart';
+import '../../../core/widgets/ezy_primary_3d_button.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../../../core/widgets/section_card.dart';
-import '../../../core/widgets/status_badge.dart';
 import '../application/printing_providers.dart';
 import '../application/printer_controller.dart';
 import '../data/models/print_document.dart';
@@ -24,6 +24,8 @@ import 'widgets/whatsapp_ticket_sheet.dart';
 enum PrintSheetAction {
   /// Solo muestra las opciones (impresión y WhatsApp).
   print,
+
+  /// Abre directamente la previsualización de WhatsApp.
   whatsApp,
 }
 
@@ -42,10 +44,12 @@ Future<void> showPrintSheet(
     return Future<void>.value();
   }
 
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
+  return EzyBottomSheet.show<void>(
+    context,
+    // La hoja es larga (impresora, plantillas, cajón y etiqueta): se acota al
+    // 96 % para que el pie con el CTA siga a la vista. El asa, el panel de fondo
+    // y las esquinas las pinta el tema.
+    maxHeightFactor: 0.96,
     builder: (sheetContext) => PrintSheet(
       document: document,
       allowLabels: allowLabels,
@@ -134,12 +138,10 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
     final templates = widget.document.selectTemplates(
       templatesAsync.asData?.value ?? const <PrintTemplate>[],
     );
-    final labelTemplates =
-        labelTemplatesAsync?.asData?.value == null
+    final labelValues = labelTemplatesAsync?.asData?.value;
+    final labelTemplates = labelValues == null
         ? const <PrintTemplate>[]
-        : widget.document.selectLabelTemplates(
-            labelTemplatesAsync!.asData!.value,
-          );
+        : widget.document.selectLabelTemplates(labelValues);
 
     final templateId = resolvePrintTemplateId(
       templates,
@@ -152,17 +154,19 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
       _savedLabelTemplateId,
     );
 
+    // Sin plantilla, sin Bluetooth o con un trabajo en curso no hay nada que
+    // enviar: el CTA queda apagado y el pie lo deja ver.
     final canSubmit = printer.isAdapterOn && templateId != null && !job.isBusy;
+    final canSubmitLabel =
+        printer.isAdapterOn && labelTemplateId != null && !job.isBusy;
+    final isLabel = widget.document.templateType == PrintTemplateType.label;
 
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.92,
-      maxChildSize: 0.96,
-      builder: (context, scrollController) => ListView(
-        controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+    return SizedBox(
+      // La hoja ocupa el 85 % de la pantalla: el resto se toca para cerrarla.
+      // El contenido se desplaza por dentro, así que el pie nunca se mueve.
+      height: MediaQuery.sizeOf(context).height * 0.85,
+      child: Column(
         children: <Widget>[
-          const SizedBox(height: 8),
           EzySheetHeader(
             title: 'Imprimir y compartir',
             subtitle: <String>[
@@ -174,146 +178,147 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
               tooltip: 'Cerrar',
               onTap: () => Navigator.of(context).pop(),
             ),
-            padding: EdgeInsets.zero,
+            padding: const EdgeInsets.fromLTRB(16, 0, 12, 14),
           ),
-          const SizedBox(height: 4),
-          _FeedbackSection(
-            job: job,
-            printer: printer,
-            extraMessage: _whatsAppNotice,
-          ),
-          const SizedBox(height: 16),
-          SectionCard(
-            title: 'Impresora',
-            trailing: _PrinterBadge(isConnected: printer.isConnected),
-            child: const PrinterStatusCard(),
-          ),
-          const SizedBox(height: 12),
-          SectionCard(
-            title: widget.document.templateType == PrintTemplateType.label
-                ? 'Plantilla de etiqueta'
-                : 'Plantilla de impresión',
-            child: templatesAsync.when(
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              ),
-              error: (error, _) => ErrorNotice(
-                message: error is ApiException
-                    ? error.message
-                    : 'No se pudieron cargar las plantillas de impresión.',
-                onRetry: () => ref.invalidate(
-                  printTemplatesProvider(widget.document.templateType),
-                ),
-              ),
-              data: (_) => PrintTemplatePicker(
-                templates: templates,
-                selectedId: templateId,
-                onSelected: _selectTemplate,
-                emptyMessage:
-                    'El negocio no tiene una plantilla de '
-                    '${widget.document.templateType.displayName.toLowerCase()} '
-                    'para este documento. Se configura en la web.',
-              ),
-            ),
-          ),
-          if (templates.isNotEmpty &&
-              widget.document.templateType ==
-                  PrintTemplateType.saleTicket) ...<Widget>[
-            const SizedBox(height: 12),
-            SectionCard(
-              title: 'Cajón de dinero',
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          'Abrir el cajón al imprimir',
-                          style: EzyTextStyles.bodyStrong.copyWith(
-                            color: surfaces.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Envía el pulso de apertura junto con el ticket.',
-                          style: EzyTextStyles.caption.copyWith(
-                            color: surfaces.textMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Switch(
-                    value: _openDrawer,
-                    onChanged: (value) => setState(() => _openDrawer = value),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (widget.allowLabels && labelTemplates.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 12),
-            SectionCard(
-              title: 'Etiqueta',
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  PrintTemplatePicker(
-                    templates: labelTemplates,
-                    selectedId: labelTemplateId,
-                    onSelected: _selectLabelTemplate,
+                  _FeedbackSection(
+                    job: job,
+                    printer: printer,
+                    extraMessage: _whatsAppNotice,
+                  ),
+                  // El estado de la impresora va primero: sin ella no hay nada
+                  // que enviar. Es contenido plano, la caja la pone la card.
+                  SectionCard(
+                    inner: true,
+                    padding: const EdgeInsets.all(14),
+                    title: 'Impresora',
+                    child: const PrinterStatusCard(),
                   ),
                   const SizedBox(height: 12),
-                  EzyButton(
-                    label: 'Imprimir etiqueta',
-                    icon: Icons.qr_code_2_outlined,
-                    variant: EzyButtonVariant.outline,
-                    isLoading: job.isSubmitting,
-                    onPressed:
-                        printer.isAdapterOn &&
-                            labelTemplateId != null &&
-                            !job.isBusy
-                        ? () => _printLabel(labelTemplateId)
-                        : null,
+                  // La lista de plantillas no lleva card: cada fila del design
+                  // system ya es una tarjeta con su contenedor y su borde.
+                  templatesAsync.when(
+                    loading: () => const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    ),
+                    error: (error, _) => ErrorNotice(
+                      message: error is ApiException
+                          ? error.message
+                          : 'No se pudieron cargar las plantillas de '
+                                'impresión.',
+                      onRetry: () => ref.invalidate(
+                        printTemplatesProvider(widget.document.templateType),
+                      ),
+                    ),
+                    data: (_) => PrintTemplatePicker(
+                      templates: templates,
+                      selectedId: templateId,
+                      onSelected: _selectTemplate,
+                      title: isLabel
+                          ? 'PLANTILLA DE ETIQUETA'
+                          : 'PLANTILLA DE IMPRESIÓN',
+                      emptyMessage:
+                          'El negocio no tiene una plantilla de '
+                          '${widget.document.templateType.displayName.toLowerCase()} '
+                          'para este documento. Se configura en la web.',
+                    ),
                   ),
+                  if (templates.isNotEmpty &&
+                      widget.document.templateType ==
+                          PrintTemplateType.saleTicket) ...<Widget>[
+                    const SizedBox(height: 12),
+                    SectionCard(
+                      inner: true,
+                      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+                      title: 'Cajón de dinero',
+                      child: Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  'Abrir el cajón al imprimir',
+                                  style: EzyTextStyles.bodyStrong.copyWith(
+                                    color: surfaces.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Envía el pulso de apertura junto con el '
+                                  'ticket.',
+                                  style: EzyTextStyles.caption.copyWith(
+                                    color: surfaces.textMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Switch(
+                            value: _openDrawer,
+                            onChanged: (value) =>
+                                setState(() => _openDrawer = value),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (widget.allowLabels &&
+                      labelTemplates.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 12),
+                    SectionCard(
+                      inner: true,
+                      padding: const EdgeInsets.all(14),
+                      title: 'Etiqueta',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          // Las etiquetas viven dentro de su card: filas
+                          // compactas para no anidar contenedores.
+                          PrintTemplatePicker(
+                            templates: labelTemplates,
+                            selectedId: labelTemplateId,
+                            onSelected: _selectLabelTemplate,
+                            title: null,
+                            compact: true,
+                          ),
+                          const SizedBox(height: 6),
+                          EzyButton(
+                            label: 'Imprimir etiqueta',
+                            icon: Icons.qr_code_2_outlined,
+                            variant: EzyButtonVariant.outline,
+                            isLoading: job.isSubmitting,
+                            onPressed: canSubmitLabel
+                                ? () => _printLabel(labelTemplateId)
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-          ],
-          if (!printer.isAdapterOn) ...<Widget>[
-            const SizedBox(height: 12),
-            const NoticeBanner(
-              message: 'Enciende el Bluetooth para imprimir el ticket.',
-              tone: EzySeverity.warn,
-            ),
-          ],
-          const SizedBox(height: 16),
-          EzyButton(
-            label: widget.document.templateType == PrintTemplateType.label
-                ? 'Imprimir etiqueta'
-                : 'Imprimir ticket',
-            icon: Icons.print_outlined,
-            isLoading: job.isSubmitting,
-            // La impresión es la acción principal de la hoja.
-            height: 56,
-            onPressed: canSubmit ? () => _printTicket(templateId) : null,
           ),
-          const SizedBox(height: 8),
-          EzyButton(
-            label: 'Enviar por WhatsApp',
-            icon: Icons.chat_outlined,
-            variant: EzyButtonVariant.whatsApp,
-            isLoading: job.isFetchingWhatsApp,
-            onPressed: job.isBusy ? null : _sendWhatsApp,
+          _SheetActionBar(
+            label: isLabel ? 'Imprimir etiqueta' : 'Imprimir ticket',
+            isPrinting: job.isSubmitting,
+            onPrint: canSubmit ? () => _printTicket(templateId) : null,
+            isSendingWhatsApp: job.isFetchingWhatsApp,
+            onWhatsApp: job.isBusy ? null : _sendWhatsApp,
           ),
         ],
       ),
@@ -365,9 +370,7 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
     final warning = ref.read(printJobProvider).warningMessage;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(warning ?? 'Etiqueta enviada a la impresora.'),
-      ),
+      SnackBar(content: Text(warning ?? 'Etiqueta enviada a la impresora.')),
     );
   }
 
@@ -436,6 +439,9 @@ int? resolvePrintTemplateId(
 }
 
 /// Avisos del trabajo de impresión y de la impresora.
+///
+/// Van arriba del todo, cuando los hay: es lo único que el usuario tiene que
+/// leer antes de volver a pulsar el CTA. Sin avisos no ocupa nada.
 class _FeedbackSection extends ConsumerWidget {
   const _FeedbackSection({
     required this.job,
@@ -454,16 +460,20 @@ class _FeedbackSection extends ConsumerWidget {
 
     final messages = <Widget>[];
 
+    // Un aviso tras otro con su aire, sin depender de que sean uno o varios.
+    void add(Widget banner) {
+      if (messages.isNotEmpty) {
+        messages.add(const SizedBox(height: 12));
+      }
+      messages.add(banner);
+    }
+
     if (extraMessage != null) {
-      messages.add(const SizedBox(height: 12));
-      messages.add(
-        NoticeBanner(message: extraMessage!, tone: EzySeverity.info),
-      );
+      add(NoticeBanner(message: extraMessage!, tone: EzySeverity.info));
     }
 
     if (job.notice != null) {
-      messages.add(const SizedBox(height: 12));
-      messages.add(
+      add(
         NoticeBanner(
           message: job.notice!,
           tone: EzySeverity.success,
@@ -475,8 +485,7 @@ class _FeedbackSection extends ConsumerWidget {
     }
 
     if (job.warningMessage != null) {
-      messages.add(const SizedBox(height: 12));
-      messages.add(
+      add(
         NoticeBanner(
           message: job.warningMessage!,
           tone: EzySeverity.warn,
@@ -487,8 +496,7 @@ class _FeedbackSection extends ConsumerWidget {
     }
 
     if (job.errorMessage != null) {
-      messages.add(const SizedBox(height: 12));
-      messages.add(
+      add(
         NoticeBanner(
           message: job.errorMessage!,
           actionLabel: 'Ocultar',
@@ -498,8 +506,7 @@ class _FeedbackSection extends ConsumerWidget {
     }
 
     if (printer.errorMessage != null) {
-      messages.add(const SizedBox(height: 12));
-      messages.add(
+      add(
         NoticeBanner(
           message: printer.errorMessage!,
           actionLabel: 'Ocultar',
@@ -512,23 +519,69 @@ class _FeedbackSection extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: messages,
+    // El bloque se separa él solo de la primera tarjeta de la hoja.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: messages,
+      ),
     );
   }
 }
 
-/// Badge del estado de la impresora en la cabecera del panel.
-class _PrinterBadge extends StatelessWidget {
-  const _PrinterBadge({required this.isConnected});
+/// Pie fijo de la hoja: el CTA de la impresión y el envío por WhatsApp.
+///
+/// No se desplaza con el contenido: con la hoja llena de plantillas el botón
+/// que cierra la tarea tiene que seguir a la vista.
+class _SheetActionBar extends StatelessWidget {
+  const _SheetActionBar({
+    required this.label,
+    required this.onPrint,
+    required this.isPrinting,
+    required this.onWhatsApp,
+    required this.isSendingWhatsApp,
+  });
 
-  final bool isConnected;
+  final String label;
+  final VoidCallback? onPrint;
+  final bool isPrinting;
+  final VoidCallback? onWhatsApp;
+  final bool isSendingWhatsApp;
 
   @override
-  Widget build(BuildContext context) => StatusBadge(
-    label: isConnected ? 'Conectada' : 'Sin conectar',
-    severity: isConnected ? EzySeverity.success : EzySeverity.neutral,
-  );
-}
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
 
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      decoration: BoxDecoration(
+        color: surfaces.panel,
+        border: Border(top: BorderSide(color: surfaces.border)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          // El CTA de la hoja es el mismo botón con relieve del cobro, a lo
+          // ancho de la hoja.
+          EzyPrimary3dButton(
+            label: label,
+            icon: Icons.print_outlined,
+            height: 56,
+            maxWidth: double.infinity,
+            isLoading: isPrinting,
+            onPressed: onPrint,
+          ),
+          const SizedBox(height: 8),
+          EzyButton(
+            label: 'Enviar por WhatsApp',
+            icon: Icons.chat_outlined,
+            variant: EzyButtonVariant.whatsApp,
+            isLoading: isSendingWhatsApp,
+            onPressed: onWhatsApp,
+          ),
+        ],
+      ),
+    );
+  }
+}
