@@ -144,6 +144,11 @@ class NotificationCounters {
       .where(isCategoryVisible)
       .toList(growable: false);
 
+  /// Suma de los contadores de las categorías visibles; excluye los módulos que
+  /// el negocio no tiene contratados (su contador viene en `0`).
+  int get visibleTotal =>
+      visibleCategories.fold(0, (sum, category) => sum + countFor(category));
+
   /// Cuerpo tal como lo entrega el servidor (se guarda en la caché local).
   Map<String, dynamic> toJson() => <String, dynamic>{
     'expiring_debts': expiringDebts,

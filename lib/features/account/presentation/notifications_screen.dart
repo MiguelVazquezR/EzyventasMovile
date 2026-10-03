@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/permissions_service.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/status_palette.dart';
-import '../../../core/widgets/empty_state.dart';
-import '../../../core/widgets/ezy_list_tile.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../auth/application/auth_controller.dart';
@@ -14,7 +14,8 @@ import '../../sales/presentation/widgets/sales_labels.dart';
 import '../application/account_providers.dart';
 import '../data/models/notification_counters.dart';
 import 'account_labels.dart';
-import 'widgets/account_scaffold.dart';
+import 'widgets/notification_category_tile.dart';
+import 'widgets/notification_empty_state.dart';
 
 /// Notificaciones de la campana (`GET /notifications`, contrato §11b.2).
 ///
@@ -29,57 +30,119 @@ class NotificationsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(notificationsControllerProvider);
     final controller = ref.read(notificationsControllerProvider.notifier);
-    final categories = state.counters.visibleCategories;
+    final hasSalesPermission = ref
+        .watch(permissionsProvider)
+        .can('transactions.access');
 
-    return AccountScaffold(
-      title: AccountLabels.notificationsTitle,
-      onRefresh: controller.refresh,
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: <Widget>[
-          if (state.errorMessage != null) ...<Widget>[
-            ErrorNotice(
-              message: state.errorMessage!,
-              onRetry: controller.refresh,
-            ),
-            const SizedBox(height: 12),
-          ],
-          if (state.hasCachedValue) ...<Widget>[
-            const NoticeBanner(
-              message: AccountLabels.notificationsCached,
-              tone: EzySeverity.info,
-            ),
-            const SizedBox(height: 12),
-          ],
-          if (state.isLoading && state.counters.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 48),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (state.counters.isEmpty)
-            const EmptyState(
-              icon: Icons.notifications_off_outlined,
-              title: AccountLabels.notificationsEmpty,
-            )
-          else
-            SectionCard(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(
-                children: <Widget>[
-                  for (int i = 0; i < categories.length; i++)
-                    _CategoryRow(
-                      category: categories[i],
-                      count: state.countFor(categories[i]),
-                      showDivider: i < categories.length - 1,
-                      onTap: () => _openCategory(context, ref, categories[i]),
-                    ),
-                ],
+    final counters = state.counters;
+    final categories = counters.visibleCategories;
+    final hasError = state.errorMessage != null;
+    final totalVisible = counters.visibleTotal;
+    final showEmpty = totalVisible == 0 && !hasError;
+
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: <Widget>[
+            _Header(total: hasError ? 0 : totalVisible),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: controller.refresh,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+                  children: <Widget>[
+                    if (hasError) ...<Widget>[
+                      NoticeBanner(
+                        title: AccountLabels.notificationsSyncFailed,
+                        message: state.errorMessage!,
+                        icon: Icons.error_outline,
+                        tone: EzySeverity.danger,
+                        actionLabel: AccountLabels.notificationsRetry,
+                        onAction: controller.refresh,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (state.hasCachedValue) ...<Widget>[
+                      const NoticeBanner(
+                        message: AccountLabels.notificationsCached,
+                        icon: Icons.wifi_off_outlined,
+                        tone: EzySeverity.info,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (state.isLoading && counters.isEmpty)
+                      const _LoadingState()
+                    else if (showEmpty)
+                      const NotificationEmptyState()
+                    else
+                      SectionCard(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Column(
+                          children: <Widget>[
+                            for (int i = 0; i < categories.length; i++)
+                              NotificationCategoryTile(
+                                icon: _iconFor(categories[i]),
+                                title: categories[i].label,
+                                subtitle: _subtitleFor(categories[i]),
+                                count: counters.countFor(categories[i]),
+                                showDivider: i < categories.length - 1,
+                                onTap:
+                                    _canOpen(
+                                      categories[i],
+                                      counters,
+                                      hasSalesPermission,
+                                    )
+                                    ? () => _openCategory(
+                                        context,
+                                        ref,
+                                        categories[i],
+                                      )
+                                    : null,
+                              ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }
+
+  /// La fila navega solo si hay elementos y el usuario puede ver ventas.
+  bool _canOpen(
+    NotificationCategory category,
+    NotificationCounters counters,
+    bool hasSalesPermission,
+  ) {
+    if (!hasSalesPermission || counters.countFor(category) <= 0) {
+      return false;
+    }
+
+    return category == NotificationCategory.expiringDebts ||
+        category == NotificationCategory.upcomingDeliveries;
+  }
+
+  IconData _iconFor(NotificationCategory category) => switch (category) {
+    NotificationCategory.expiringDebts => Icons.schedule_outlined,
+    NotificationCategory.upcomingDeliveries => Icons.local_shipping_outlined,
+    NotificationCategory.unreadUpdates => Icons.campaign_outlined,
+    NotificationCategory.pendingOrders => Icons.shopping_bag_outlined,
+  };
+
+  /// Descripción del contador o la explicación de la categoría de solo lectura.
+  String _subtitleFor(NotificationCategory category) => switch (category) {
+    NotificationCategory.expiringDebts => category.description,
+    NotificationCategory.upcomingDeliveries => category.description,
+    NotificationCategory.unreadUpdates =>
+      AccountLabels.notificationsReleaseNotes,
+    NotificationCategory.pendingOrders =>
+      AccountLabels.notificationsOnlineStore,
+  };
 
   /// Lleva al listado correspondiente con el filtro que sí admite el servidor.
   void _openCategory(
@@ -87,9 +150,7 @@ class NotificationsScreen extends ConsumerWidget {
     WidgetRef ref,
     NotificationCategory category,
   ) {
-    final permissions = ref.read(permissionsProvider);
-
-    if (!permissions.can('transactions.access')) {
+    if (!ref.read(permissionsProvider).can('transactions.access')) {
       return;
     }
 
@@ -113,59 +174,123 @@ class NotificationsScreen extends ConsumerWidget {
   }
 }
 
-/// Fila de una categoría de avisos, con el conteo del servidor como badge.
-class _CategoryRow extends StatelessWidget {
-  const _CategoryRow({
-    required this.category,
-    required this.count,
-    required this.showDivider,
-    required this.onTap,
-  });
+/// Cabecera limpia sin `AppBar`: botón de regreso, título con subtítulo y la
+/// pastilla del total pendiente.
+class _Header extends StatelessWidget {
+  const _Header({required this.total});
 
-  final NotificationCategory category;
-  final int count;
-  final bool showDivider;
-
-  /// `null` cuando no hay pantalla equivalente en la app: la fila se explica.
-  final VoidCallback? onTap;
+  /// Total de avisos visibles; `0` no pinta la pastilla.
+  final int total;
 
   @override
   Widget build(BuildContext context) {
-    final hasItems = count > 0;
+    final surfaces = context.surfaces;
 
-    return EzyListTile(
-      icon: _icon,
-      title: category.label,
-      subtitle: _subtitle,
-      badgeCount: count,
-      showDivider: showDivider,
-      onTap: hasItems ? onTap : null,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        children: <Widget>[
+          Tooltip(
+            message: AccountLabels.back,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: surfaces.panel,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: surfaces.border),
+                ),
+                child: Icon(
+                  Icons.arrow_back,
+                  size: 18,
+                  color: surfaces.textSecondary,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  AccountLabels.notificationsTitle,
+                  style: EzyTextStyles.bodyStrong.copyWith(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                    color: surfaces.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  AccountLabels.notificationsSubtitle,
+                  style: EzyTextStyles.caption.copyWith(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: surfaces.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (total > 0) ...<Widget>[
+            const SizedBox(width: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: EzyColors.danger,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '$total pendientes',
+                style: EzyTextStyles.badge.copyWith(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                  color: EzyColors.white,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
+}
 
-  IconData get _icon => switch (category) {
-    NotificationCategory.expiringDebts => Icons.schedule_outlined,
-    NotificationCategory.upcomingDeliveries => Icons.local_shipping_outlined,
-    NotificationCategory.unreadUpdates => Icons.campaign_outlined,
-    NotificationCategory.pendingOrders => Icons.shopping_bag_outlined,
-  };
+/// Spinner de marca mientras llegan los contadores por primera vez.
+class _LoadingState extends StatelessWidget {
+  const _LoadingState();
 
-  /// Descripción del contador y, si no hay pantalla equivalente, la explicación.
-  String get _subtitle => <String>[
-    _description,
-    if (onTap == null && count > 0) _futureAction ?? '',
-  ].where((line) => line.isNotEmpty).join(' ');
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
 
-  String get _description => onTap == null && count > 0
-      ? (_futureAction ?? category.description)
-      : category.description;
-
-  /// Explicación de por qué la categoría no abre una pantalla en la app.
-  String? get _futureAction => switch (category) {
-    NotificationCategory.unreadUpdates =>
-      AccountLabels.notificationsReleaseNotes,
-    NotificationCategory.pendingOrders =>
-      AccountLabels.notificationsOnlineStore,
-    _ => AccountLabels.notificationsOpenSales,
-  };
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
+      child: Column(
+        children: <Widget>[
+          const SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: EzyColors.primary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            AccountLabels.notificationsLoading,
+            style: EzyTextStyles.caption.copyWith(
+              color: surfaces.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

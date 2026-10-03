@@ -76,8 +76,17 @@ class AccountLabels {
 
   // Notificaciones (§14.6)
   static const String notificationsTitle = 'Notificaciones';
+  static const String notificationsSubtitle = 'Bandeja de pendientes';
   static const String notificationsEmpty =
       'No tienes notificaciones por ahora.';
+  static const String notificationsEmptyTitle =
+      'No tienes notificaciones por ahora';
+  static const String notificationsEmptyMessage =
+      'Todo se encuentra al día. Te notificaremos cuando haya deudas por vencer '
+      'o entregas pendientes.';
+  static const String notificationsLoading = 'Sincronizando notificaciones…';
+  static const String notificationsSyncFailed = 'Fallo al actualizar';
+  static const String notificationsRetry = 'Reintentar';
   static const String notificationsCached =
       'Sin conexión: se muestra el último valor guardado en el dispositivo.';
   static const String notificationsOpenSales = 'Abre el historial de ventas';
@@ -86,7 +95,6 @@ class AccountLabels {
   static const String notificationsOnlineStore =
       'Los pedidos de la tienda en línea se gestionan desde la versión web.';
 }
-
 
 /// Textos del Centro de soporte y de la suscripción (§14.4 y §14.5).
 class AccountMoreLabels {

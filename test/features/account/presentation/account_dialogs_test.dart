@@ -4,7 +4,6 @@ import 'package:ezyventas_app/core/storage/local_cache.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
 import 'package:ezyventas_app/core/widgets/ezy_button.dart';
 import 'package:ezyventas_app/core/widgets/ezy_dialog.dart';
-import 'package:ezyventas_app/core/widgets/ezy_list_tile.dart';
 import 'package:ezyventas_app/features/account/application/account_providers.dart';
 import 'package:ezyventas_app/features/account/data/account_repository.dart';
 import 'package:ezyventas_app/features/account/data/models/branch_switch_result.dart';
@@ -14,6 +13,7 @@ import 'package:ezyventas_app/features/account/data/models/subscription_overview
 import 'package:ezyventas_app/features/account/data/models/user_profile.dart';
 import 'package:ezyventas_app/features/account/presentation/branch_switch_screen.dart';
 import 'package:ezyventas_app/features/account/presentation/notifications_screen.dart';
+import 'package:ezyventas_app/features/account/presentation/widgets/notification_category_tile.dart';
 import 'package:ezyventas_app/features/account/presentation/profile_screen.dart';
 import 'package:ezyventas_app/features/auth/application/auth_controller.dart';
 import 'package:ezyventas_app/features/auth/data/auth_repository.dart';
@@ -372,7 +372,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Una sola lista sobre el panel, con los divisores del sistema.
-    expect(find.byType(EzyListTile), findsNWidgets(4));
+    expect(find.byType(NotificationCategoryTile), findsNWidgets(4));
     expect(find.text('Deudas por vencer'), findsOneWidget);
     expect(find.text('Entregas próximas'), findsOneWidget);
     expect(find.text('Novedades'), findsOneWidget);
