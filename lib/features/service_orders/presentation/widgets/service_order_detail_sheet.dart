@@ -24,6 +24,11 @@ import 'service_order_status_stepper.dart';
 
 /// Detalle completo de una orden: estatus, cliente, conceptos, evidencias,
 /// anticipos, historial y acciones.
+///
+/// La hoja ocupa el 94 % del alto (§12) con las esquinas superiores
+/// redondeadas a 24 px y una barra de arrastre de 40×4 px. El fondo del modal
+/// va transparente a propósito: las esquinas las pinta la propia hoja, si no
+/// el lienzo del `showModalBottomSheet` taparía el redondeo con un cuadrado.
 Future<void> showServiceOrderDetailSheet(
   BuildContext context, {
   required int serviceOrderId,
@@ -32,6 +37,7 @@ Future<void> showServiceOrderDetailSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    backgroundColor: Colors.transparent,
     builder: (sheetContext) =>
         _ServiceOrderDetailSheet(serviceOrderId: serviceOrderId),
   );
@@ -69,88 +75,98 @@ class _ServiceOrderDetailSheetState
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.94,
-      maxChildSize: 0.96,
-      builder: (context, scrollController) => ListView(
-        controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-        children: <Widget>[
-          if (detail == null)
-            ..._loadingChildren(state.errorMessage, controller)
-          else ...<Widget>[
-            _SheetHeader(
-              detail: detail,
-              onRefresh: controller.refresh,
-              onClose: () => Navigator.of(context).pop(),
-            ),
-            if (state.notice != null) ...<Widget>[
-              const SizedBox(height: 12),
-              NoticeBanner(
-                message: state.notice!,
-                tone: EzySeverity.success,
-                icon: Icons.check_circle_outline,
-                actionLabel: 'Ocultar',
-                onAction: controller.consumeNotice,
-              ),
+      maxChildSize: 0.94,
+      builder: (context, scrollController) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: ColoredBox(
+          color: context.surfaces.panel,
+          child: ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+            children: <Widget>[
+              const _DragHandle(),
+              if (detail == null)
+                ..._loadingChildren(state.errorMessage, controller)
+              else ...<Widget>[
+                _SheetHeader(
+                  detail: detail,
+                  onRefresh: controller.refresh,
+                  onClose: () => Navigator.of(context).pop(),
+                ),
+                if (state.notice != null) ...<Widget>[
+                  const SizedBox(height: 12),
+                  NoticeBanner(
+                    message: state.notice!,
+                    tone: EzySeverity.success,
+                    icon: Icons.check_circle_outline,
+                    actionLabel: 'Ocultar',
+                    onAction: controller.consumeNotice,
+                  ),
+                ],
+                if (state.errorMessage != null) ...<Widget>[
+                  const SizedBox(height: 12),
+                  NoticeBanner(
+                    message: state.errorMessage!,
+                    actionLabel: 'Ocultar',
+                    onAction: controller.consumeError,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                ServiceOrderStatusStepper(status: detail.status),
+                const SizedBox(height: 16),
+                ServiceOrderActionBar(detail: detail),
+                const SizedBox(height: 12),
+                SectionCard(
+                  title: 'Impresión',
+                  child: ServiceOrderPrintBar(detail: detail),
+                ),
+                const SizedBox(height: 16),
+                ServiceOrderCustomerCard(
+                  detail: detail,
+                  canSeeCustomerInfo: permissions.can(
+                    'services.orders.see_customer_info',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ServiceOrderDiagnosisCard(
+                  diagnosis: detail.technicianDiagnosis,
+                  onEdit:
+                      permissions.can('services.orders.edit') &&
+                          detail.isEditable
+                      ? () => showServiceOrderDiagnosisSheet(
+                          context,
+                          detail: detail,
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                ServiceOrderItemsCard(items: detail.items),
+                const SizedBox(height: 12),
+                ServiceOrderAmountsCard(
+                  detail: detail,
+                  canSeeFinancialInfo: permissions.can(
+                    'services.orders.see_financial_info',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ServiceOrderPaymentsCard(detail: detail),
+                if (detail.initialEvidence.isNotEmpty ||
+                    detail.closingEvidence.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 12),
+                  _EvidenceCard(detail: detail),
+                ],
+                if (detail.customFields.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 12),
+                  _CustomFieldsCard(detail: detail),
+                ],
+                if (detail.activities.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 12),
+                  _ActivitiesCard(activities: detail.activities),
+                ],
+              ],
             ],
-            if (state.errorMessage != null) ...<Widget>[
-              const SizedBox(height: 12),
-              NoticeBanner(
-                message: state.errorMessage!,
-                actionLabel: 'Ocultar',
-                onAction: controller.consumeError,
-              ),
-            ],
-            const SizedBox(height: 16),
-            ServiceOrderStatusStepper(status: detail.status),
-            const SizedBox(height: 16),
-            ServiceOrderActionBar(detail: detail),
-            const SizedBox(height: 12),
-            SectionCard(
-              title: 'Impresión',
-              child: ServiceOrderPrintBar(detail: detail),
-            ),
-            const SizedBox(height: 16),
-            ServiceOrderCustomerCard(
-              detail: detail,
-              canSeeCustomerInfo: permissions.can(
-                'services.orders.see_customer_info',
-              ),
-            ),
-            const SizedBox(height: 12),
-            ServiceOrderDiagnosisCard(
-              diagnosis: detail.technicianDiagnosis,
-              onEdit:
-                  permissions.can('services.orders.edit') && detail.isEditable
-                  ? () =>
-                        showServiceOrderDiagnosisSheet(context, detail: detail)
-                  : null,
-            ),
-            const SizedBox(height: 12),
-            ServiceOrderItemsCard(items: detail.items),
-            const SizedBox(height: 12),
-            ServiceOrderAmountsCard(
-              detail: detail,
-              canSeeFinancialInfo: permissions.can(
-                'services.orders.see_financial_info',
-              ),
-            ),
-            const SizedBox(height: 12),
-            ServiceOrderPaymentsCard(detail: detail),
-            if (detail.initialEvidence.isNotEmpty ||
-                detail.closingEvidence.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 12),
-              _EvidenceCard(detail: detail),
-            ],
-            if (detail.customFields.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 12),
-              _CustomFieldsCard(detail: detail),
-            ],
-            if (detail.activities.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 12),
-              _ActivitiesCard(activities: detail.activities),
-            ],
-          ],
-        ],
+          ),
+        ),
       ),
     );
   }
@@ -174,6 +190,31 @@ class _ServiceOrderDetailSheetState
         ErrorNotice(message: errorMessage, onRetry: controller.refresh),
       ],
     ];
+  }
+}
+
+/// Barra de arrastre de la hoja (40×4 px, §12).
+///
+/// Va como primera pieza del `ListView` para que acompañe al contenido y deje
+/// libres las esquinas redondeadas de 24 px.
+class _DragHandle extends StatelessWidget {
+  const _DragHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 4),
+      child: Center(
+        child: Container(
+          width: 40,
+          height: 4,
+          decoration: BoxDecoration(
+            color: context.surfaces.borderStrong,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+      ),
+    );
   }
 }
 

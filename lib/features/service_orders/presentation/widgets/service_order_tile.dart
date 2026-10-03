@@ -44,8 +44,9 @@ class ServiceOrderTile extends StatelessWidget {
                     serviceOrder.folio,
                     overflow: TextOverflow.ellipsis,
                     style: EzyTextStyles.moneyList.copyWith(
-                      fontSize: 16,
+                      fontSize: 14,
                       color: surfaces.textPrimary,
+                      letterSpacing: 0.3,
                     ),
                   ),
                 ),
@@ -57,6 +58,8 @@ class ServiceOrderTile extends StatelessWidget {
               serviceOrder.customerLabel,
               overflow: TextOverflow.ellipsis,
               style: EzyTextStyles.bodyStrong.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
                 color: surfaces.textPrimary,
               ),
             ),
@@ -70,36 +73,63 @@ class ServiceOrderTile extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            Text(
-              <String>[
-                ServiceOrderLabels.received(serviceOrder.receivedAt),
-                if (serviceOrder.technicianName != null)
-                  serviceOrder.technicianName!,
-              ].join(' · '),
-              overflow: TextOverflow.ellipsis,
-              style: EzyTextStyles.caption.copyWith(color: surfaces.textMuted),
-            ),
-            const SizedBox(height: 12),
+            // Fecha de recepción y técnico: la fecha nunca se esconde y lleva
+            // su icono para que la fila se lea de un golpe.
             Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
               children: <Widget>[
+                Icon(
+                  Icons.calendar_today_outlined,
+                  size: 13,
+                  color: surfaces.textMuted,
+                ),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    Money.format(serviceOrder.finalTotal),
-                    style: EzyTextStyles.moneyMedium.copyWith(
-                      color: surfaces.textPrimary,
+                    <String>[
+                      ServiceOrderLabels.received(serviceOrder.receivedAt),
+                      if (serviceOrder.technicianName != null)
+                        serviceOrder.technicianName!,
+                    ].join(' · '),
+                    overflow: TextOverflow.ellipsis,
+                    style: EzyTextStyles.caption.copyWith(
+                      color: surfaces.textMuted,
                     ),
                   ),
                 ),
+              ],
+            ),
+            // Divisor sutil: separa el bloque de texto del bloque de dinero.
+            Container(
+              height: 1,
+              margin: const EdgeInsets.only(top: 12),
+              color: surfaces.border,
+            ),
+            const SizedBox(height: 12),
+            // El saldo manda a la izquierda (es la deuda, lo accionable) y el
+            // total de la orden se alinea a la derecha de la fila.
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: <Widget>[
                 if (serviceOrder.hasPendingAmount)
-                  _PendingBadge(amount: serviceOrder.amountDue),
+                  _PendingBadge(amount: serviceOrder.amountDue)
+                else
+                  const _SettledBadge(),
+                const Spacer(),
+                Text(
+                  Money.format(serviceOrder.finalTotal),
+                  style: EzyTextStyles.moneyList.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: surfaces.textPrimary,
+                  ),
+                ),
               ],
             ),
             if (serviceOrder.promisedAt != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: _Footnote(
-                  icon: Icons.event_available_outlined,
+                  icon: Icons.schedule,
                   text: ServiceOrderLabels.promised(
                     serviceOrder.promisedAt,
                     serviceOrder.promiseDaysLeft,
@@ -135,6 +165,29 @@ class _PendingBadge extends StatelessWidget {
       ),
       child: Text(
         'Saldo ${Money.format(amount)}',
+        style: EzyTextStyles.badge.copyWith(color: color, letterSpacing: 0.4),
+      ),
+    );
+  }
+}
+
+/// Estado «pagada» de la tarjeta: sin saldo no se pinta una deuda en cero.
+class _SettledBadge extends StatelessWidget {
+  const _SettledBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = StatusPalette.text(context, EzySeverity.success);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: StatusPalette.soft(EzySeverity.success),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: StatusPalette.border(EzySeverity.success)),
+      ),
+      child: Text(
+        'Total liquidado',
         style: EzyTextStyles.badge.copyWith(color: color, letterSpacing: 0.4),
       ),
     );

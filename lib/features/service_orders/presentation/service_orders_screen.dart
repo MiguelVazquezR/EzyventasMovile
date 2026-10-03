@@ -7,7 +7,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_screen_header.dart';
 import '../../../core/widgets/empty_state.dart';
-import '../../../core/widgets/ezy_button.dart';
+import '../../../core/widgets/ezy_primary_3d_button.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../../auth/application/auth_controller.dart';
 import '../application/service_orders_controller.dart';
@@ -106,12 +106,7 @@ class _ServiceOrdersScreenState extends ConsumerState<ServiceOrdersScreen> {
                 if (canCreate)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: EzyButton(
-                      label: 'Nueva',
-                      icon: Icons.add,
-                      expand: false,
-                      onPressed: _createOrder,
-                    ),
+                    child: _NewOrderButton(onPressed: _createOrder),
                   ),
               ],
             ),
@@ -242,6 +237,100 @@ class _ServiceOrdersScreenState extends ConsumerState<ServiceOrdersScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Esqueleto de carga de la lista (sin spinner global, §12).
+/// Alta de orden: CTA 3D compacto de la cabecera.
+///
+/// Es el mismo relieve del CTA de cobro ([EzyPrimary3dButton]) reducido a 36 px
+/// con radio 12: la cabecera de la pestaña admite una pieza de acción, no un
+/// botón de 56 px. El degradado, el bisel y el hundido al pulsar se mantienen
+/// para que no parezca un botón de otro sistema.
+class _NewOrderButton extends StatefulWidget {
+  const _NewOrderButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  State<_NewOrderButton> createState() => _NewOrderButtonState();
+}
+
+class _NewOrderButtonState extends State<_NewOrderButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed != value && mounted) {
+      setState(() => _pressed = value);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (details) => _setPressed(true),
+      onTapUp: (details) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: widget.onPressed,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 90),
+        curve: Curves.easeOut,
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        // El botón se hunde 3 px: la base sólida queda a ras de la cabecera.
+        transform: Matrix4.translationValues(0, _pressed ? 3 : 0, 0),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: EzyPrimary3dButton.gradientColors,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: _pressed
+              ? const <BoxShadow>[]
+              : EzyPrimary3dButton.relief,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: const DecoratedBox(
+            // El bisel va sin radio dentro del recorte (ver [EzyPrimary3dButton]).
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(color: Color(0x66FFFFFF)),
+                bottom: BorderSide(color: Color(0xFF944000), width: 2),
+              ),
+            ),
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(Icons.add, size: 16, color: EzyColors.white),
+                  SizedBox(width: 6),
+                  _NewOrderLabel(),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Etiqueta del CTA de alta (`Nueva`), en blanco con el filo del relieve.
+class _NewOrderLabel extends StatelessWidget {
+  const _NewOrderLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Nueva',
+      style: EzyTextStyles.button.copyWith(
+        fontWeight: FontWeight.w900,
+        color: EzyColors.white,
+        shadows: EzyPrimary3dButton.labelShadow,
       ),
     );
   }

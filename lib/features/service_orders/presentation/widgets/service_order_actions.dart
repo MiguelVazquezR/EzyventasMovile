@@ -7,6 +7,7 @@ import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_dialog.dart';
+import '../../../../core/widgets/ezy_primary_3d_button.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../application/service_orders_controller.dart';
@@ -51,21 +52,23 @@ class ServiceOrderActionBar extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         if (showPayment) ...<Widget>[
-          EzyButton(
+          // El cobro es la acción principal del detalle: va con el CTA 3D del
+          // design system (mismo relieve que «Finalizar venta» del POS).
+          EzyPrimary3dButton(
             label: 'Cobrar ahora',
             icon: Icons.payments_outlined,
-            isLoading: isSubmitting,
             onPressed: session == null
                 ? null
                 : () =>
                       confirmServiceOrderPayment(context, ref, detail: detail),
+            isLoading: isSubmitting,
           ),
           if (session == null) ...<Widget>[
             const SizedBox(height: 8),
             NoticeBanner(
               message:
                   'Necesitas una sesión de caja abierta para registrar '
-                  'anticipos.',
+                  'anticipos o liquidaciones.',
               tone: EzySeverity.warn,
               actionLabel: 'Ir a caja',
               onAction: () => _goToCashRegister(context),
