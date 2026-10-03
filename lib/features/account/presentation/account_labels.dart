@@ -129,6 +129,23 @@ class AccountMoreLabels {
   static const String supportHelpCenterAction = 'Abrir centro de ayuda';
   static const String supportTopics = 'Temas de ayuda';
 
+  // Centro de soporte (rediseño: cabecera, canales directos y centro de ayuda)
+  static const String supportSubtitle = 'Atención al cliente y dudas';
+  static const String supportRefresh = 'Actualizar';
+  static const String supportChannelsDirect = 'Canales de contacto directo';
+  static const String supportHelpCenterGuides = 'Centro de ayuda y guías';
+  static const String supportSoonUpper = 'VIENE PRONTO';
+  static const String supportHelpCenterActionSoon =
+      'Abrir centro de ayuda (Viene pronto)';
+  static const String supportLoading = 'Consultando canales de soporte…';
+  static const String supportErrorTitle = 'No pudimos conectar con soporte';
+  static const String supportErrorSubtitle =
+      'Revisa tu conexión para cargar los canales actualizados.';
+  static const String supportHelpBanner =
+      'Estamos preparando la base de conocimientos interactiva con tutoriales '
+      'paso a paso y videos explicativos. Estará disponible en la próxima '
+      'actualización.';
+
   // Suscripción (§14.4)
   static const String subscriptionTitle = 'Mi suscripción';
   static const String subscriptionGeneralData = 'Datos generales';

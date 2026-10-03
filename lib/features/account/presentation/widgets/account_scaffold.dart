@@ -14,11 +14,16 @@ class AccountScaffold extends StatelessWidget {
     super.key,
     required this.title,
     required this.body,
+    this.subtitle,
     this.actions = const <Widget>[],
     this.onRefresh,
   });
 
   final String title;
+
+  /// Línea de apoyo bajo el título; opcional.
+  final String? subtitle;
+
   final Widget body;
   final List<Widget> actions;
 
@@ -47,11 +52,28 @@ class AccountScaffold extends StatelessWidget {
                     onTap: () => Navigator.of(context).pop(),
                   ),
                   Expanded(
-                    child: Text(
-                      title,
-                      style: EzyTextStyles.screenTitle.copyWith(
-                        color: surfaces.textPrimary,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          title,
+                          style: EzyTextStyles.screenTitle.copyWith(
+                            color: surfaces.textPrimary,
+                          ),
+                        ),
+                        if (subtitle != null) ...<Widget>[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle!,
+                            style: EzyTextStyles.caption.copyWith(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: surfaces.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   ...actions,

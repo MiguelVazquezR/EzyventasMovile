@@ -120,4 +120,16 @@ class SupportContent {
 
   bool get isEmpty =>
       message.isEmpty && channels.isEmpty && schedule.isEmpty;
+
+  /// Hay bienvenida que mostrar (mensaje o subtítulo del servidor).
+  bool get hasWelcome => message.isNotEmpty || subtitle.isNotEmpty;
+
+  /// Hay horario que mostrar.
+  bool get hasSchedule => schedule.isNotEmpty;
+
+  /// Hay canales de contacto que mostrar.
+  bool get hasChannels => channels.isNotEmpty;
+
+  /// Hay temas frecuentes del Centro de ayuda.
+  bool get hasTopics => helpTopics.isNotEmpty;
 }

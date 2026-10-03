@@ -101,14 +101,24 @@ class NoticeBanner extends StatelessWidget {
 
 /// Aviso de error con acción "Reintentar" (§12).
 class ErrorNotice extends StatelessWidget {
-  const ErrorNotice({super.key, required this.message, this.onRetry});
+  const ErrorNotice({
+    super.key,
+    required this.message,
+    this.title,
+    this.onRetry,
+  });
 
   final String message;
+
+  /// Título del aviso en negrita; opcional.
+  final String? title;
+
   final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
     return NoticeBanner(
+      title: title,
       message: message,
       tone: EzySeverity.danger,
       actionLabel: onRetry == null ? null : 'Reintentar',
