@@ -3,8 +3,12 @@
     <!-- Tema aplicado a la ventana de Android mientras arranca el proceso.
          El fondo ya no es el negro del sistema (`?android:colorBackground`)
          sino el de la marca con el logotipo: es el "estado de carga" que se ve
-         antes del primer frame de Flutter. -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+         antes del primer frame de Flutter.
+         El parent es AppCompat a proposito: `local_auth` abre `BiometricPrompt`
+         desde un fragmento y en Android 8 o anterior un tema que no descienda de
+         `Theme.AppCompat` revienta al pedir la huella. `NoActionBar` conserva el
+         `NoTitleBar` anterior: la ventana de arranque no lleva barra de titulo. -->
+    <style name="LaunchTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
         <item name="android:statusBarColor">@color/launch_background</item>
         <item name="android:navigationBarColor">@color/launch_background</item>
@@ -12,7 +16,7 @@
     </style>
     <!-- Tema de la ventana detrás de la UI de Flutter (una vez que arrancó).
          Se deja el mismo color para que no haya destello al cerrar el splash. -->
-    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+    <style name="NormalTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/launch_background</item>
         <item name="android:statusBarColor">@color/launch_background</item>
         <item name="android:navigationBarColor">@color/launch_background</item>

@@ -410,6 +410,9 @@ class _MessageCard extends StatelessWidget {
             ),
             child: Row(
               children: <Widget>[
+                // El punto de vista previa es fijo a propósito: el latido sin
+                // fin impediría que `pumpAndSettle` de los tests llegue a
+                // asentarse. El estado «vivo» lo comunica el propio texto.
                 Container(
                   width: 7,
                   height: 7,
@@ -505,8 +508,8 @@ class _WhatsAppCta extends StatefulWidget {
   /// Radio de las esquinas del CTA.
   static const double radius = 16;
 
-  /// Alto del botón.
-  static const double height = 50;
+  /// Alto del botón (el rediseño pide 44–48 px para el CTA de la hoja).
+  static const double height = 46;
 
   /// Caras del degradado: filo iluminado, verde oficial y base con profundidad.
   static const List<Color> gradientColors = <Color>[

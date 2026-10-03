@@ -4,6 +4,7 @@ import 'package:ezyventas_app/core/auth/session_store.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
 import 'package:ezyventas_app/core/widgets/brand_logo.dart';
 import 'package:ezyventas_app/core/widgets/ezy_button.dart';
+import 'package:ezyventas_app/core/widgets/ezy_primary_3d_button.dart';
 import 'package:ezyventas_app/features/auth/application/auth_controller.dart';
 import 'package:ezyventas_app/features/auth/data/auth_repository.dart';
 import 'package:ezyventas_app/features/auth/data/models/auth_session.dart';
@@ -149,8 +150,9 @@ void main() {
     await tester.pumpWidget(_wrap(repository));
     await tester.pumpAndSettle();
 
-    FilledButton submitButton() =>
-        tester.widget<FilledButton>(find.byType(FilledButton));
+    // El CTA del login es el botón 3D del design system, no un `FilledButton`.
+    EzyPrimary3dButton submitButton() =>
+        tester.widget<EzyPrimary3dButton>(find.byType(EzyPrimary3dButton));
 
     expect(submitButton().onPressed, isNull);
 

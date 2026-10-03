@@ -4,7 +4,7 @@
          sobre `windowSplashScreenBackground`, así que ese fondo también es el de
          la marca: el usuario ve el logo desde el primer instante (antes se veía
          el negro del tema, que era la "pantalla negra" del arranque). -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+    <style name="LaunchTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowSplashScreenBackground">@color/launch_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
         <item name="android:windowBackground">@color/launch_background</item>
@@ -12,7 +12,7 @@
         <item name="android:navigationBarColor">@color/launch_background</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
-    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+    <style name="NormalTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/launch_background</item>
         <item name="android:statusBarColor">@color/launch_background</item>
         <item name="android:navigationBarColor">@color/launch_background</item>

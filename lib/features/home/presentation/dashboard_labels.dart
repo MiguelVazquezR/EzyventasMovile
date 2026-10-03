@@ -26,8 +26,9 @@ class DashboardLabels {
   static String windowHint(int days) =>
       days == 1 ? 'Vencidos o de hoy' : 'Vencidos o en $days días';
   static const String upcomingDeliveriesTitle = 'Pedidos por entregar';
-  static String deliveriesHint(int days) =>
-      days == 1 ? 'Entregas vencidas o de hoy' : 'Entregas vencidas o en $days días';
+  static String deliveriesHint(int days) => days == 1
+      ? 'Entregas vencidas o de hoy'
+      : 'Entregas vencidas o en $days días';
   static const String receivablesTitle = 'Saldo por cobrar';
   static const String receivablesHint = 'Lo que te deben los clientes';
   static const String lowStockTitle = 'Stock crítico';
@@ -83,7 +84,8 @@ class DashboardLabels {
 
   // Listado: pedidos por entregar
   static const String upcomingDeliveriesListTitle = 'Pedidos por entregar';
-  static const String upcomingDeliveriesEmptyTitle = 'Ninguna entrega pendiente';
+  static const String upcomingDeliveriesEmptyTitle =
+      'Ninguna entrega pendiente';
   static const String upcomingDeliveriesListEmpty =
       'No hay entregas vencidas ni programadas en esta ventana.';
   static const String deliveryDate = 'Entrega';
@@ -113,4 +115,28 @@ class DashboardLabels {
   static String dayOption(int days) => days == 1 ? '1 día' : '$days días';
   static String windowTitle(int days) =>
       days == 1 ? 'Próximo 1 día' : 'Próximos $days días';
+
+  // Rediseño: cabecera, privacidad y accesos rápidos
+  /// Chip de la cabecera: los datos son los del último `GET /dashboard`.
+  static const String live = 'Live';
+  static const String liveHint = 'Datos del último resumen del servidor';
+
+  /// Acceso rápido a un monto: el inicio se usa de pie, con gente delante.
+  static const String hideAmount = 'Ocultar el monto';
+  static const String showAmount = 'Mostrar el monto';
+  static const String maskAmount = '••••••••';
+
+  /// Variación de la venta de hoy contra el cierre de ayer.
+  static String vsYesterday(String percent) => '$percent vs. ayer';
+
+  /// Accesos rápidos: los tres destinos que el mostrador toca todo el día.
+  static const String quickSell = 'Vender';
+  static const String quickLayaways = 'Apartados';
+  static const String quickDeliveries = 'Entregas';
+
+  // Rediseño: badges del grid de alertas
+  static const String badgeExpiring = 'Por vencer';
+  static const String badgeOnRoute = 'En ruta';
+  static const String badgePending = 'Pendiente';
+  static const String badgeCritical = 'Crítico';
 }

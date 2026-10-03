@@ -5,6 +5,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
+import '../../../../core/widgets/ezy_action_bar.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_chip.dart';
@@ -144,6 +145,10 @@ class _ServiceOrderPaymentSheetState
   bool get _canSubmit =>
       _covered > 0.005 && !_overpaid && !_hasIncompletePayment;
 
+  /// El CTA anuncia el efecto del cobro: cubrir todo el saldo liquida la orden.
+  String get _submitLabel =>
+      _leftToPay <= 0.005 ? 'Liquidar orden' : 'Registrar anticipo';
+
   void _addPayment(PosPaymentMethod method) {
     setState(() {
       _payments.add(
@@ -219,45 +224,22 @@ class _ServiceOrderPaymentSheetState
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
     final state = ref.watch(serviceOrderDetailControllerProvider);
     final receipt = state.receipt;
 
-    // El anticipo ya se registró: se muestra el ticket que devolvió el servidor.
+    // El anticipo ya se registró: la misma hoja se convierte en el ticket.
     if (receipt != null) {
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-        children: <Widget>[
-          const SizedBox(height: 8),
-          AbonoTicketView(
-            receipt: receipt,
-            onDone: () {
-              ref
-                  .read(serviceOrderDetailControllerProvider.notifier)
-                  .consumeReceipt();
-              Navigator.of(context).pop();
-            },
-          ),
-        ],
-      );
-    }
-
-    final banks = ref.watch(bankAccountsProvider);
-
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.92,
-      maxChildSize: 0.96,
-      builder: (context, scrollController) => ListView(
-        controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+      return _SheetBody(
+        footer: EzyButton(
+          label: 'Listo',
+          variant: EzyButtonVariant.outline,
+          onPressed: _finish,
+        ),
         children: <Widget>[
           const SizedBox(height: 8),
           EzySheetHeader(
-            title: 'Cobrar orden',
-            subtitle:
-                'Folio ${widget.detail.folio} · '
-                '${widget.detail.customerLabel}',
+            title: 'Anticipo registrado',
+            subtitle: 'Folio ${receipt.ticket.folio}',
             trailing: EzyIconButton(
               icon: Icons.close,
               tooltip: 'Cerrar',
@@ -266,105 +248,227 @@ class _ServiceOrderPaymentSheetState
             padding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
-          if (state.errorMessage != null) ...<Widget>[
-            NoticeBanner(
-              message: state.errorMessage!,
-              actionLabel: 'Ocultar',
-              onAction: ref
-                  .read(serviceOrderDetailControllerProvider.notifier)
-                  .consumeError,
-            ),
-            const SizedBox(height: 12),
-          ],
-          SectionCard(
-            title: 'Resumen de la orden',
-            child: Column(
-              children: <Widget>[
-                SectionRow(
-                  label: 'Total',
-                  value: Money.format(widget.detail.finalTotal),
-                ),
-                SectionRow(
-                  label: 'Pagado',
-                  value: Money.format(widget.detail.totalPaid),
-                ),
-                const Divider(height: 20),
-                SectionRow(
-                  label: 'Saldo pendiente',
-                  value: Money.format(_remaining),
-                  emphasized: true,
-                ),
-              ],
-            ),
+          // El `Listo` lo aporta el pie fijo de la hoja: el comprobante se queda
+          // con sus propias acciones (WhatsApp e imprimir el ticket).
+          AbonoTicketView(
+            receipt: receipt,
+            onDone: _finish,
+            showDoneButton: false,
+          ),
+        ],
+      );
+    }
+
+    final banks = ref.watch(bankAccountsProvider);
+
+    return _SheetBody(
+      footer: EzyButton(
+        label: _submitLabel,
+        icon: Icons.payments_outlined,
+        isLoading: state.isSubmitting,
+        onPressed: _canSubmit && !state.isSubmitting ? _submit : null,
+      ),
+      children: <Widget>[
+        const SizedBox(height: 8),
+        EzySheetHeader(
+          title: 'Cobrar orden',
+          subtitle:
+              'Folio ${widget.detail.folio} · '
+              '${widget.detail.customerLabel}',
+          trailing: EzyIconButton(
+            icon: Icons.close,
+            tooltip: 'Cerrar',
+            onTap: () => Navigator.of(context).pop(),
+          ),
+          padding: EdgeInsets.zero,
+        ),
+        const SizedBox(height: 16),
+        if (state.errorMessage != null) ...<Widget>[
+          NoticeBanner(
+            message: state.errorMessage!,
+            actionLabel: 'Ocultar',
+            onAction: ref
+                .read(serviceOrderDetailControllerProvider.notifier)
+                .consumeError,
           ),
           const SizedBox(height: 12),
-          _PaymentsCard(
-            payments: _payments,
-            banks: banks,
-            leftToPay: _leftToPay,
-            onAdd: _addPayment,
-            onRemove: _removePayment,
-            onAmountChanged: _setAmount,
-            onBankAccount: _setBankAccount,
-            onFillRemaining: _fillRemaining,
+        ],
+        SectionCard(
+          title: 'Resumen de la orden',
+          child: Column(
+            children: <Widget>[
+              SectionRow(
+                label: 'Total',
+                value: Money.format(widget.detail.finalTotal),
+              ),
+              SectionRow(
+                label: 'Pagado',
+                value: Money.format(widget.detail.totalPaid),
+              ),
+              const Divider(height: 20),
+              SectionRow(
+                label: 'Saldo pendiente',
+                value: Money.format(_remaining),
+                emphasized: true,
+              ),
+            ],
           ),
-          if (_balanceAvailable > 0) ...<Widget>[
-            const SizedBox(height: 12),
-            SectionCard(
-              title: 'Saldo a favor',
-              // `Material` transparente: sin él el *ripple* del interruptor se
-              // pinta debajo del fondo de la tarjeta.
-              child: Material(
-                type: MaterialType.transparency,
-                child: SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _useBalance,
-                  onChanged: _setUseBalance,
-                  title: Text(
-                    'Usar saldo a favor',
-                    style: EzyTextStyles.bodyStrong.copyWith(
-                      color: surfaces.textPrimary,
-                    ),
+        ),
+        const SizedBox(height: 12),
+        _PaymentsCard(
+          payments: _payments,
+          banks: banks,
+          leftToPay: _leftToPay,
+          onAdd: _addPayment,
+          onRemove: _removePayment,
+          onAmountChanged: _setAmount,
+          onBankAccount: _setBankAccount,
+          onFillRemaining: _fillRemaining,
+        ),
+        if (_balanceAvailable > 0) ...<Widget>[
+          const SizedBox(height: 12),
+          _BalanceCard(
+            available: _balanceAvailable,
+            used: _balanceUsed,
+            value: _useBalance,
+            onChanged: _setUseBalance,
+          ),
+        ],
+        const SizedBox(height: 12),
+        SectionCard(
+          title: 'Resultado del cobro',
+          child: Column(
+            children: <Widget>[
+              SectionRow(label: 'Cubierto', value: Money.format(_covered)),
+              SectionRow(
+                label: 'Queda pendiente',
+                value: Money.format(_leftToPay < 0 ? 0 : _leftToPay),
+                emphasized: _leftToPay > 0.005,
+              ),
+              if (_overpaid)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: NoticeBanner(
+                    message: 'El monto excede el saldo pendiente de la orden.',
+                    tone: EzySeverity.warn,
                   ),
-                  subtitle: Text(
-                    'Disponible ${Money.format(_balanceAvailable)}',
-                    style: EzyTextStyles.caption.copyWith(
-                      color: surfaces.textSecondary,
-                    ),
-                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  /// Cierra la hoja descartando el ticket: ya se envió o ya se imprimió.
+  void _finish() {
+    ref.read(serviceOrderDetailControllerProvider.notifier).consumeReceipt();
+    Navigator.of(context).pop();
+  }
+}
+
+/// Cuerpo de la hoja: contenido desplazable y CTA anclado al pie.
+///
+/// Mismo esqueleto que la hoja de cobro del POS (cabecera, `Flexible` sobre el
+/// `ListView` y `EzyActionBar` abajo): el anticipo es tan largo como aquella y su
+/// CTA no puede depender de haber bajado hasta el final. El `shrinkWrap` deja la
+/// hoja ajustada a su contenido y la vuelve desplazable solo cuando no cabe.
+class _SheetBody extends StatelessWidget {
+  const _SheetBody({required this.children, this.footer});
+
+  final List<Widget> children;
+
+  /// Acción anclada al pie; el área segura del sistema la resuelve
+  /// [EzyActionBar].
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Flexible(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: children,
+          ),
+        ),
+        if (footer != null) EzyActionBar(child: footer),
+      ],
+    );
+  }
+}
+
+/// Saldo a favor del cliente: se aplica con `use_balance: true`, no es un pago.
+///
+/// Va en violeta ([EzyColors.purple]): el crédito del cliente no es un estado de
+/// la orden (`success` / `warn`) ni una acción con color propio. El interruptor
+/// es el mismo de la hoja de abono y de la de cobro del POS.
+class _BalanceCard extends StatelessWidget {
+  const _BalanceCard({
+    required this.available,
+    required this.used,
+    required this.value,
+    required this.onChanged,
+  });
+
+  /// Saldo a favor disponible del cliente.
+  final double available;
+
+  /// Lo que se aplicaría: `min(disponible, saldo pendiente)`.
+  final double used;
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: EzyColors.purple.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: EzyColors.purple.withValues(alpha: 0.32)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            'SALDO A FAVOR',
+            style: EzyTextStyles.cardTitle.copyWith(color: EzyColors.purple),
+          ),
+          const SizedBox(height: 4),
+          // `Material` transparente: sin él el *ripple* del interruptor queda
+          // debajo del fondo de la tarjeta.
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: value,
+              onChanged: onChanged,
+              // El crédito es violeta también en el interruptor.
+              activeThumbColor: EzyColors.purple,
+              activeTrackColor: EzyColors.purple.withValues(alpha: 0.5),
+              title: Text(
+                'Usar saldo a favor',
+                style: EzyTextStyles.bodyStrong.copyWith(
+                  color: surfaces.textPrimary,
+                ),
+              ),
+              subtitle: Text(
+                value
+                    ? 'Disponible ${Money.format(available)} · se aplicarán '
+                          '${Money.format(used)}'
+                    : 'Disponible ${Money.format(available)}',
+                style: EzyTextStyles.secondary.copyWith(
+                  color: surfaces.textSecondary,
                 ),
               ),
             ),
-          ],
-          const SizedBox(height: 16),
-          SectionCard(
-            title: 'Resultado del cobro',
-            child: Column(
-              children: <Widget>[
-                SectionRow(label: 'Cubierto', value: Money.format(_covered)),
-                SectionRow(
-                  label: 'Queda pendiente',
-                  value: Money.format(_leftToPay < 0 ? 0 : _leftToPay),
-                  emphasized: _leftToPay > 0.005,
-                ),
-                if (_overpaid)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8),
-                    child: NoticeBanner(
-                      message:
-                          'El monto excede el saldo pendiente de la orden.',
-                      tone: EzySeverity.warn,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          EzyButton(
-            label: 'Registrar anticipo',
-            icon: Icons.payments_outlined,
-            isLoading: state.isSubmitting,
-            onPressed: _canSubmit && !state.isSubmitting ? _submit : null,
           ),
         ],
       ),
@@ -494,6 +598,9 @@ class _PaymentRow extends StatelessWidget {
           BankAccountSelector(
             banks: banks,
             selectedId: payment.bankAccountId,
+            // El cobro de una orden también acepta la terminal del negocio: el
+            // destino no es solo una cuenta bancaria.
+            label: 'Cuenta o terminal',
             errorText: payment.needsBankAccount
                 ? 'Selecciona la cuenta destino para los pagos con tarjeta o '
                       'transferencia.'

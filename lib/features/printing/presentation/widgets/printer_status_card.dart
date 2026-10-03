@@ -14,7 +14,8 @@ import 'printer_picker_sheet.dart';
 /// Es el **contenido** de la card «Impresora» de la hoja de impresión: el
 /// contenedor (color, radio y borde) lo pone la hoja, así que aquí no se anida
 /// ninguna caja. Todo lo que habla con la impresora va en azul Bluetooth
-/// ([EzyColors.bluetooth]): el color identifica la acción, no el estado.
+/// ([EzyColors.bluetooth]) porque el color identifica la acción, no el estado:
+/// el estado de conexión lo pinta el badge, en el verde de estatus (§7).
 class PrinterStatusCard extends ConsumerWidget {
   const PrinterStatusCard({super.key});
 
@@ -212,7 +213,8 @@ class _PrinterStatusRow extends StatelessWidget {
   }
 }
 
-/// Chip «Conectada» en azul Bluetooth (apagado cuando no hay impresora).
+/// Badge del estado de conexión (§7): verde «Conectada» con punto pulsante
+/// cuando hay impresora lista y gris neutro «Sin conexión» cuando no la hay.
 class _PrinterStatusChip extends StatelessWidget {
   const _PrinterStatusChip({required this.connected});
 
@@ -221,7 +223,7 @@ class _PrinterStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
-    final accent = EzyColors.bluetooth;
+    final accent = connected ? EzyColors.success : EzyColors.neutral;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -229,17 +231,66 @@ class _PrinterStatusChip extends StatelessWidget {
         color: connected ? accent.withValues(alpha: 0.12) : surfaces.panel,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: connected ? accent.withValues(alpha: 0.35) : surfaces.border,
+          color: connected ? accent.withValues(alpha: 0.3) : surfaces.border,
         ),
       ),
-      child: Text(
-        connected ? 'Conectada' : 'Sin conexión',
-        style: TextStyle(
-          fontFamily: EzyTextStyles.fontFamily,
-          fontSize: 9.5,
-          fontWeight: FontWeight.w800,
-          color: connected ? accent : surfaces.textMuted,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (connected) ...<Widget>[
+            const _LiveDot(color: EzyColors.success),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            connected ? 'Conectada' : 'Sin conexión',
+            style: TextStyle(
+              fontFamily: EzyTextStyles.fontFamily,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w800,
+              color: connected ? accent : surfaces.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Punto de actividad de 8 px que late mientras la impresora está conectada
+/// (`animate-pulse`: opacidad 1 → 0.4 → 1).
+///
+/// Solo se monta con la impresora lista: el latido es una animación sin fin y
+/// quien no esté conectado no la paga.
+class _LiveDot extends StatefulWidget {
+  const _LiveDot({required this.color});
+
+  final Color color;
+
+  @override
+  State<_LiveDot> createState() => _LiveDotState();
+}
+
+class _LiveDotState extends State<_LiveDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 1, end: 0.4).animate(_controller),
+      child: Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
       ),
     );
   }

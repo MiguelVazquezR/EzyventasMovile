@@ -10,6 +10,7 @@ import 'package:ezyventas_app/features/cash/data/cash_register_repository.dart';
 import 'package:ezyventas_app/features/cash/data/models/active_cash_session.dart';
 import 'package:ezyventas_app/features/cash/data/models/bank_account.dart';
 import 'package:ezyventas_app/features/pos/data/models/payment_draft.dart';
+import 'package:ezyventas_app/features/sales/data/models/sales_mutation_results.dart';
 import 'package:ezyventas_app/features/sales/data/models/transaction_detail.dart';
 import 'package:ezyventas_app/features/service_orders/application/service_orders_controller.dart';
 import 'package:ezyventas_app/features/service_orders/data/models/service_order_detail.dart';
@@ -33,17 +34,21 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// [customerBalance] va como texto decimal: negativo = deuda, positivo = saldo a
 /// favor del cliente (lo usa la hoja de anticipo para ofrecer `use_balance`).
+///
+/// [customerPhone] en `null` deja la ficha sin teléfono, que es cuando las
+/// acciones de contacto (`Llamar` / `WhatsApp`) no se pintan.
 Map<String, dynamic> orderDetailFixture({
   String status = 'pendiente',
   String customerBalance = '-350.00',
   bool hasTransaction = true,
   double paidAmount = 700.0,
   double amountDue = 700.0,
+  String? customerPhone = '4771112233',
 }) => <String, dynamic>{
   'id': 314,
   'folio': 'OS-014',
   'customer_name': 'Ana Ramírez',
-  'customer_phone': '4771112233',
+  'customer_phone': customerPhone,
   'item_description': 'iPhone 13, pantalla rota',
   'status': status,
   'technician_name': 'Luis Torres',
@@ -59,7 +64,7 @@ Map<String, dynamic> orderDetailFixture({
   'customer': <String, dynamic>{
     'id': 8,
     'name': 'Ana Ramírez',
-    'phone': '4771112233',
+    'phone': customerPhone,
     'email': 'ana@correo.com',
     'balance': customerBalance,
   },
@@ -149,6 +154,34 @@ TransactionDetail orderTransactionFixture() =>
       'is_paid': false,
     });
 
+/// `print` de `POST /service-orders/{id}/payments`: el mismo ticket de abono de
+/// la venta (`kind = order_payment`), ya formateado por el servidor.
+///
+/// El anticipo liquidó la orden vinculada: el comprobante sale en verde y sin
+/// punto pulsante, así que la hoja queda estable para las pruebas.
+Map<String, dynamic> orderReceiptFixture() => <String, dynamic>{
+  'type': 'order_payment',
+  'payload': <String, dynamic>{
+    'kind': 'order_payment',
+    'scope': 'service_order',
+    'businessName': 'Refaccionaria Aponte',
+    'date': '18/09/2026 - 15:10',
+    'customer': 'Ana Ramírez',
+    'folio': 'V-014',
+    'total': r'$1400.00 MXN',
+    'previousDue': r'$1400.00 MXN',
+    'abonado': r'$1400.00 MXN',
+    'remainingDue': r'$0.00 MXN',
+    'liquidated': true,
+    'estado': 'Pendiente',
+    'paymentMethod': r'Efectivo: $1400.00',
+    'finalMessage': 'Gracias por su anticipo.',
+  },
+  'transaction_id': 1201,
+  'customer_phone': '4771112233',
+  'customer_id': 8,
+};
+
 /// Repositorio falso de órdenes: sirve el detalle y deja provocar el fallo de
 /// cada acción sin tocar la red.
 class FakeServiceOrdersRepository extends ServiceOrdersRepository {
@@ -158,8 +191,10 @@ class FakeServiceOrdersRepository extends ServiceOrdersRepository {
     this.diagnosisFailure,
     this.deleteFailure,
     bool isLegacy = false,
+    this.rememberStatus = false,
     String status = 'pendiente',
     String customerBalance = '-350.00',
+    this.receipt,
   }) : _json = isLegacy
            ? legacyOrderDetailFixture()
            : orderDetailFixture(
@@ -169,10 +204,22 @@ class FakeServiceOrdersRepository extends ServiceOrdersRepository {
        super(api: ApiClient(baseUrl: 'https://api.test/api/v1'));
 
   final Map<String, dynamic> _json;
+
+  /// Cuando es `true`, `updateStatus` deja el nuevo estatus en el detalle que
+  /// devuelve `fetchServiceOrder` (el `refresh()` que sigue al `PATCH`): así una
+  /// prueba puede recorrer varios pasos del stepper; si no, el estatus volvería
+  /// al del fixture en cada refresco.
+  final bool rememberStatus;
+
   final ApiException? statusFailure;
   final ApiException? paymentFailure;
   final ApiException? diagnosisFailure;
   final ApiException? deleteFailure;
+
+  /// `print` que devuelve el anticipo, tal como llega del servidor. `null` (por
+  /// defecto) es la respuesta sin comprobante, que deja la hoja en el formulario
+  /// de cobro.
+  final Map<String, dynamic>? receipt;
 
   int statusCalls = 0;
   int paymentCalls = 0;
@@ -224,6 +271,10 @@ class FakeServiceOrdersRepository extends ServiceOrdersRepository {
       throw failure;
     }
 
+    if (rememberStatus) {
+      _json['status'] = status;
+    }
+
     return ServiceOrderStatusResult(
       message: 'Estatus de la orden actualizado correctamente.',
       summary: ServiceOrderSummary.fromJson(<String, dynamic>{
@@ -271,10 +322,12 @@ class FakeServiceOrdersRepository extends ServiceOrdersRepository {
       throw failure;
     }
 
+    final print = receipt;
+
     return ServiceOrderPaymentResult(
       detail: detail,
       transaction: orderTransactionFixture(),
-      receipt: null,
+      receipt: print == null ? null : AbonoReceipt.fromJson(print),
     );
   }
 

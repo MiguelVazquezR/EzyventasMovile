@@ -148,4 +148,30 @@ void main() {
     expect(find.text('Ocultar'), findsOneWidget);
     expect(find.text('EVIDENCIAS DE CIERRE'), findsOneWidget);
   });
+
+  testWidgets('las sugerencias rellenan el diagnóstico vacío', (tester) async {
+    final orders = FakeServiceOrdersRepository();
+
+    await pumpDiagnosisSheet(tester, repository: orders);
+
+    // Con el diagnóstico guardado a la vista, las sugerencias estorban.
+    expect(find.text('Sugerencias'), findsNothing);
+
+    await tester.enterText(diagnosisField(), '');
+    await settleSheet(tester);
+
+    expect(find.text('Sugerencias'), findsOneWidget);
+    expect(find.text('Se reemplaza la pieza dañada'), findsOneWidget);
+
+    await tester.tap(find.text('Se reemplaza la pieza dañada'));
+    await settleSheet(tester);
+
+    // La sugerencia entra entera en el campo y el técnico la guarda tal cual.
+    expect(find.text('Sugerencias'), findsNothing);
+
+    await tester.tap(find.widgetWithText(EzyButton, 'Guardar diagnóstico'));
+    await settleSheet(tester);
+
+    expect(orders.lastDiagnosis, 'Se reemplaza la pieza dañada');
+  });
 }

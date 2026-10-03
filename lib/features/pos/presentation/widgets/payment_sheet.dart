@@ -841,12 +841,17 @@ class BankAccountSelector extends StatelessWidget {
     required this.selectedId,
     required this.onSelected,
     this.errorText,
+    this.label = 'Cuenta destino',
   });
 
   final AsyncValue<List<BankAccount>> banks;
   final int? selectedId;
   final ValueChanged<BankAccount> onSelected;
   final String? errorText;
+
+  /// Título del selector: la hoja de un pago mixto lo deja en «Cuenta destino»
+  /// y el cobro de una orden lo abre a «Cuenta o terminal».
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -855,7 +860,7 @@ class BankAccountSelector extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const FieldLabel('Cuenta destino', isRequired: true),
+        FieldLabel(label, isRequired: true),
         const SizedBox(height: 8),
         banks.when(
           loading: () => const Padding(

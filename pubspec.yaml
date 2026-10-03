@@ -37,6 +37,10 @@ dependencies:
   cupertino_icons: ^1.0.8
   mobile_scanner: ^7.4.2
 
+  # Login biometrico (huella / Face ID). Fijado en la rama 2.x: la 3.x cambia
+  # la API de `AuthenticationOptions` que usa la pantalla de inicio de sesion.
+  local_auth: ^2.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

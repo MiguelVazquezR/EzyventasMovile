@@ -5,7 +5,6 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/money.dart';
-import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../../core/widgets/status_badge.dart';
 import '../../../sales/data/models/transaction_detail.dart';
@@ -77,13 +76,13 @@ class ServiceOrderPaymentsCard extends StatelessWidget {
     final transaction = detail.transaction;
 
     if (transaction == null) {
-      return const SectionCard(
+      // El aviso de que el cobro crea la venta vive en el dock, junto al CTA
+      // `Cobrar ahora`; aquí solo queda el vacío del historial.
+      return SectionCard(
         title: 'Anticipos y pagos',
-        child: NoticeBanner(
-          message:
-              'Esta orden no tiene venta vinculada: al cobrar se creará '
-              'automáticamente.',
-          tone: EzySeverity.info,
+        child: Text(
+          'La orden todavía no tiene anticipos registrados.',
+          style: EzyTextStyles.body.copyWith(color: surfaces.textMuted),
         ),
       );
     }

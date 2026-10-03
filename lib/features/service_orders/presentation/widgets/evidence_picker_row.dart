@@ -13,7 +13,8 @@ import 'service_order_labels.dart';
 ///
 /// El servidor acepta como máximo `AppConfig.maxEvidenceImages` fotos de
 /// `AppConfig.maxEvidenceImageKb` KB cada una; [remaining] es cuántas caben
-/// todavía en la petición.
+/// todavía. Toda foto que siga pesando más de `maxEvidenceImageKb` después de
+/// comprimirse se descarta aquí (nunca se envía) y se avisa en un `SnackBar`.
 Future<List<EvidenceImage>> captureEvidence(
   BuildContext context, {
   required ImageSource source,
@@ -39,16 +40,33 @@ Future<List<EvidenceImage>> captureEvidence(
     return const <EvidenceImage>[];
   }
 
-  if (context.mounted && result.skipped > 0) {
+  // Guardia de peso: el servidor responde `422` con más de `maxEvidenceImageKb`
+  // KB, así que una foto que no bajó del límite se descarta antes de salir.
+  final accepted = <EvidenceImage>[];
+  var skipped = result.skipped;
+
+  for (final image in result.images) {
+    if (image.isTooLarge) {
+      skipped++;
+      continue;
+    }
+
+    accepted.add(image);
+  }
+
+  if (context.mounted && skipped > 0) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ServiceOrderLabels.photosSkipped(result.skipped))),
+      SnackBar(content: Text(ServiceOrderLabels.photosSkipped(skipped))),
     );
   }
 
-  return result.images;
+  return accepted;
 }
 
 /// Acciones para agregar evidencias (cámara / galería) con el cupo restante.
+///
+/// Los dos chips y el contador son del design system; con el cupo agotado
+/// ([remaining] `<= 0`) los chips dejan paso al aviso «Ya adjuntaste 5 fotos.».
 class EvidencePickerRow extends StatelessWidget {
   const EvidencePickerRow({
     super.key,

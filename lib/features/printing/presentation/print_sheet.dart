@@ -245,6 +245,24 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
                       title: 'Cajón de dinero',
                       child: Row(
                         children: <Widget>[
+                          // Cuadro del icono (gaveta), como en las filas del
+                          // design system: identifica la sección de un vistazo.
+                          Container(
+                            width: 34,
+                            height: 34,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: surfaces.panel,
+                              borderRadius: BorderRadius.circular(11),
+                              border: Border.all(color: surfaces.border),
+                            ),
+                            child: Icon(
+                              Icons.point_of_sale_outlined,
+                              size: 17,
+                              color: surfaces.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,6 +287,12 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
                           const SizedBox(width: 12),
                           Switch(
                             value: _openDrawer,
+                            // El interruptor se enciende con el naranja de
+                            // marca: es la acción destacada de la card.
+                            activeThumbColor: Colors.white,
+                            activeTrackColor: EzyColors.primary,
+                            inactiveThumbColor: Colors.white,
+                            inactiveTrackColor: surfaces.borderStrong,
                             onChanged: (value) =>
                                 setState(() => _openDrawer = value),
                           ),
@@ -282,10 +306,13 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
                     SectionCard(
                       inner: true,
                       padding: const EdgeInsets.all(14),
-                      title: 'Etiqueta',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: <Widget>[
+                          // Cabecera propia: el título de card no admite ni el
+                          // sello QR ni el badge del material.
+                          const _LabelSectionHeader(),
+                          const SizedBox(height: 12),
                           // Las etiquetas viven dentro de su card: filas
                           // compactas para no anidar contenedores.
                           PrintTemplatePicker(
@@ -297,7 +324,7 @@ class _PrintSheetState extends ConsumerState<PrintSheet> {
                           ),
                           const SizedBox(height: 6),
                           EzyButton(
-                            label: 'Imprimir etiqueta',
+                            label: 'Imprimir etiqueta QR',
                             icon: Icons.qr_code_2_outlined,
                             variant: EzyButtonVariant.outline,
                             isLoading: job.isSubmitting,
@@ -530,6 +557,65 @@ class _FeedbackSection extends ConsumerWidget {
   }
 }
 
+/// Cabecera de la sección «Etiqueta»: sello QR, micro-etiqueta y badge del
+/// material (adhesiva).
+///
+/// El título de [SectionCard] no admite iconos ni insignias, así que la fila se
+/// pinta aquí y la card queda sin cabecera.
+class _LabelSectionHeader extends StatelessWidget {
+  const _LabelSectionHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
+    return Row(
+      children: <Widget>[
+        Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: EzyColors.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: EzyColors.primary.withValues(alpha: 0.3)),
+          ),
+          child: const Icon(
+            Icons.qr_code_2_outlined,
+            size: 16,
+            color: EzyColors.primary,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'ETIQUETA ADHESIVA',
+            overflow: TextOverflow.ellipsis,
+            style: EzyTextStyles.microLabel.copyWith(color: surfaces.textBody),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // El material no es un estado: se marca con el naranja de marca, como
+        // el resto de las insignias de la hoja.
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: EzyColors.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: EzyColors.primary.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Text(
+            'ADHESIVA',
+            style: EzyTextStyles.badge.copyWith(color: EzyColors.primary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Pie fijo de la hoja: el CTA de la impresión y el envío por WhatsApp.
 ///
 /// No se desplaza con el contenido: con la hoja llena de plantillas el botón
@@ -556,7 +642,9 @@ class _SheetActionBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
       decoration: BoxDecoration(
-        color: surfaces.panel,
+        // Panel «glass»: el pie se pega al borde inferior de la hoja dejando
+        // traslucir el tono del panel que hay detrás.
+        color: surfaces.panel.withValues(alpha: 0.96),
         border: Border(top: BorderSide(color: surfaces.border)),
       ),
       child: Column(

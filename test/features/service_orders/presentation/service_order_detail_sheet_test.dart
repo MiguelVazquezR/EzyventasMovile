@@ -66,7 +66,7 @@ void main() {
     },
   );
 
-  testWidgets('el detalle pinta stepper, conceptos, saldo y anticipos', (
+  testWidgets('la pestaña Orden pinta el stepper, los conceptos y el dock', (
     tester,
   ) async {
     await pumpOrderDetailSheet(tester);
@@ -76,21 +76,50 @@ void main() {
     // Stepper completo (el estatus actual también sale en el badge).
     expect(find.text('PENDIENTE'), findsWidgets);
     expect(find.text('ENTREGADO'), findsOneWidget);
+    // Pestaña por defecto: diagnóstico, conceptos y la ficha del cliente.
     expect(find.text('Display dañado'), findsOneWidget);
-    // Acciones visibles con todos los permisos.
+    expect(find.text('Mica templada'), findsOneWidget);
+    // El tipo de concepto se pinta en una etiqueta aparte (`Refacción`).
+    expect(find.text('Refacción'.toUpperCase()), findsOneWidget);
+    expect(find.text('Llamar'), findsOneWidget);
+    expect(find.text('WhatsApp'), findsOneWidget);
+    // El dock vive al pie: saldo, CTA y píldoras de acción.
+    expect(find.text('SALDO POR COBRAR'), findsOneWidget);
     expect(find.text('Cobrar ahora'), findsOneWidget);
     expect(find.text('Cambiar estatus'), findsOneWidget);
     expect(find.text('Editar orden'), findsOneWidget);
     expect(find.text('Eliminar orden'), findsOneWidget);
-    // Conceptos, panel financiero (con utilidad) y anticipos de la venta.
-    expect(find.text('Mica templada'), findsOneWidget);
-    // El tipo de concepto se pinta en una etiqueta aparte (`Refacción`).
-    expect(find.text('Refacción'.toUpperCase()), findsOneWidget);
+    // Las otras dos pestañas no se construyen hasta que se tocan.
+    expect(find.text('Utilidad neta'), findsNothing);
+    expect(find.text('HISTORIAL'), findsNothing);
+  });
+
+  testWidgets('la pestaña Cobros reúne el panel financiero y los anticipos', (
+    tester,
+  ) async {
+    await pumpOrderDetailSheet(tester);
+
+    await tester.tap(find.text('Cobros'));
+    await settleSheet(tester);
+
+    // Comisión del técnico, utilidad y el anticipo de la venta vinculada.
     expect(find.text('Comisión del técnico'), findsOneWidget);
     expect(find.text('Utilidad neta'), findsOneWidget);
     expect(find.text('OS-V-006'), findsOneWidget);
     expect(find.text('Efectivo'), findsOneWidget);
-    // Historial de cambios (el título de la tarjeta va en micro-mayúsculas).
+    // El contenido de la pestaña anterior se desmonta.
+    expect(find.text('Display dañado'), findsNothing);
+  });
+
+  testWidgets('la pestaña Historial lista los movimientos de la orden', (
+    tester,
+  ) async {
+    await pumpOrderDetailSheet(tester);
+
+    await tester.tap(find.text('Historial'));
+    await settleSheet(tester);
+
+    // El título de la tarjeta va en micro-mayúsculas.
     expect(find.text('HISTORIAL'), findsOneWidget);
     expect(
       find.text('La orden de servicio ha sido actualizada'),
@@ -98,15 +127,39 @@ void main() {
     );
   });
 
+  testWidgets('entregar con saldo pendiente encadena el cobro', (tester) async {
+    final repository = FakeServiceOrdersRepository(rememberStatus: true);
+    await pumpOrderDetailSheet(tester, repository: repository);
+
+    // Con `services.orders.change_status` el stepper es táctil: cuatro avances
+    // llevan la orden de `pendiente` a `entregado` (el flujo son cinco pasos).
+    for (var step = 0; step < 4; step++) {
+      await tester.tap(find.byTooltip('Avanzar'));
+      await settleSheet(tester);
+    }
+
+    expect(repository.statusCalls, 4);
+    expect(repository.lastStatus, 'entregado');
+    // Al quedar entregada con saldo pendiente, el cobro se abre solo.
+    expect(find.text('Cobrar orden'), findsOneWidget);
+  });
+
   testWidgets('sin permisos la hoja no ofrece ninguna acción', (tester) async {
     await pumpOrderDetailSheet(tester, permissions: const <String>[]);
 
     expect(find.text('OS-014'), findsOneWidget);
+    // Sin `change_status` el stepper es de solo lectura y el dock no pinta
+    // nada: ni saldo, ni CTA, ni píldoras.
+    expect(find.byTooltip('Avanzar'), findsNothing);
+    expect(find.text('SALDO POR COBRAR'), findsNothing);
     expect(find.text('Cobrar ahora'), findsNothing);
     expect(find.text('Cambiar estatus'), findsNothing);
     expect(find.text('Editar orden'), findsNothing);
     expect(find.text('Eliminar orden'), findsNothing);
-    // Sin `see_financial_info` tampoco se muestra la utilidad.
+    // Sin `see_financial_info` tampoco se muestran comisión ni utilidad.
+    await tester.tap(find.text('Cobros'));
+    await settleSheet(tester);
+    expect(find.text('Comisión del técnico'), findsNothing);
     expect(find.text('Utilidad neta'), findsNothing);
   });
 
@@ -132,6 +185,32 @@ void main() {
     await tester.tap(find.text('En progreso').last);
     await settleSheet(tester);
 
+    // El mensaje lo pintan las dos capas: la hoja de estatus (arriba) y el
+    // detalle que queda detrás, que también pinta `state.statusMessage`.
+    expect(find.text('El estatus ya es el seleccionado.'), findsNWidgets(2));
+    expect(find.text('Ocultar'), findsNWidgets(2));
+  });
+
+  testWidgets('el 422 de un avance del stepper se queda en el detalle', (
+    tester,
+  ) async {
+    await pumpOrderDetailSheet(
+      tester,
+      repository: FakeServiceOrdersRepository(
+        statusFailure: ApiException.fromResponse(422, <String, dynamic>{
+          'message': 'El estatus ya es el seleccionado.',
+          'errors': <String, dynamic>{
+            'status': <String>['El estatus ya es el seleccionado.'],
+          },
+        }),
+      ),
+    );
+
+    // El stepper avanza aquí mismo, sin abrir `Cambiar estatus`: el aviso tiene
+    // que pintarse en el detalle (si no, el rechazo pasaría en silencio).
+    await tester.tap(find.byTooltip('Avanzar'));
+    await settleSheet(tester);
+
     expect(find.text('El estatus ya es el seleccionado.'), findsOneWidget);
     expect(find.text('Ocultar'), findsOneWidget);
   });
@@ -145,6 +224,7 @@ void main() {
     );
 
     expect(find.text('OS-014'), findsOneWidget);
+    // El aviso vive en el dock, junto al CTA que crea la venta.
     expect(
       find.text(
         'Esta orden no tiene venta vinculada: al cobrar se creará '

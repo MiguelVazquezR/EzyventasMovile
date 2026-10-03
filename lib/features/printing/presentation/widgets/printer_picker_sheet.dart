@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/printing/bluetooth_printer_service.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
@@ -46,7 +48,7 @@ class _PrinterPickerSheetState extends ConsumerState<_PrinterPickerSheet> {
 
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.7,
+      initialChildSize: 0.76,
       maxChildSize: 0.92,
       builder: (context, scrollController) => ListView(
         controller: scrollController,
@@ -93,6 +95,11 @@ class _PrinterPickerSheetState extends ConsumerState<_PrinterPickerSheet> {
                   _PrinterTile(
                     device: state.devices[index],
                     isConnecting: state.isBusy,
+                    // La impresora que ya está en uso se marca «ACTIVA»: es la
+                    // que recibirá los trabajos si no se cambia.
+                    isActive:
+                        state.isConnected &&
+                        state.savedPrinter?.id == state.devices[index].id,
                     showDivider: index < state.devices.length - 1,
                     onSelected: () => _connect(state.devices[index]),
                   ),
@@ -137,17 +144,20 @@ class _PrinterPickerSheetState extends ConsumerState<_PrinterPickerSheet> {
 ///
 /// Fila del design system: el cuadro del icono, el nombre, los datos del
 /// dispositivo y el chevron los pinta [EzyListTile]. Mientras hay una conexión
-/// en curso la fila no navega y su chevron se cambia por el indicador.
+/// en curso la fila no navega y su chevron se cambia por el indicador; si la
+/// impresora ya está en uso, el chevron deja paso al badge «ACTIVA».
 class _PrinterTile extends StatelessWidget {
   const _PrinterTile({
     required this.device,
     required this.isConnecting,
+    required this.isActive,
     required this.showDivider,
     required this.onSelected,
   });
 
   final PrinterDevice device;
   final bool isConnecting;
+  final bool isActive;
   final bool showDivider;
   final VoidCallback onSelected;
 
@@ -168,9 +178,40 @@ class _PrinterTile extends StatelessWidget {
               height: 18,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
+          : isActive
+          ? const _ActiveBadge()
           : null,
       showDivider: showDivider,
       onTap: isConnecting ? null : onSelected,
+    );
+  }
+}
+
+/// Badge «ACTIVA» de la impresora que ya está conectada.
+///
+/// Va en el azul Bluetooth de la sección: el color identifica lo que habla con
+/// la impresora, no el estado de la fila.
+class _ActiveBadge extends StatelessWidget {
+  const _ActiveBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: EzyColors.bluetooth.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: EzyColors.bluetooth.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        'ACTIVA',
+        style: TextStyle(
+          fontFamily: EzyTextStyles.fontFamily,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          color: EzyColors.bluetooth,
+        ),
+      ),
     );
   }
 }

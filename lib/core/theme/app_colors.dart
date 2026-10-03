@@ -37,6 +37,11 @@ class EzyColors {
   /// Azul de Bluetooth: botones de impresora (buscar, conectar, cambiar).
   static const Color bluetooth = Color(0xFF3B82F6);
 
+  /// Violeta del saldo a favor: el crédito del cliente no es un estado de la
+  /// venta (`success` / `warn`) ni una acción con color propio (WhatsApp,
+  /// Bluetooth), así que tiene el suyo en el desglose del cobro.
+  static const Color purple = Color(0xFF8B5CF6);
+
   // Neutros
   static const Color grayF2 = Color(0xFFF2F2F2);
   static const Color grayD9 = Color(0xFFD9D9D9);

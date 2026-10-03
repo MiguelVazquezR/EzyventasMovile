@@ -2,6 +2,7 @@ import 'package:ezyventas_app/core/api/api_exception.dart';
 import 'package:ezyventas_app/core/widgets/ezy_bottom_sheet.dart';
 import 'package:ezyventas_app/core/widgets/ezy_button.dart';
 import 'package:ezyventas_app/core/widgets/ezy_chip.dart';
+import 'package:ezyventas_app/core/widgets/money_field.dart';
 import 'package:ezyventas_app/features/cash/data/models/bank_account.dart';
 import 'package:ezyventas_app/features/pos/data/models/payment_draft.dart';
 import 'package:ezyventas_app/features/service_orders/application/service_orders_controller.dart';
@@ -59,8 +60,23 @@ Future<ProviderContainer> pumpPaymentSheet(
 
 /// El botón principal del anticipo, que solo se habilita cuando el cobro es
 /// válido (cubre algo, no sobra y los pagos están completos).
-EzyButton submitButton(WidgetTester tester) => tester.widget<EzyButton>(
-  find.widgetWithText(EzyButton, 'Registrar anticipo'),
+///
+/// El CTA anuncia lo que hará el anticipo: «Liquidar orden» cuando el cobro
+/// cubre todo el saldo pendiente y «Registrar anticipo» cuando queda saldo.
+EzyButton submitButton(
+  WidgetTester tester, {
+  bool settlesOrder = true,
+}) => tester.widget<EzyButton>(
+  find.widgetWithText(
+    EzyButton,
+    settlesOrder ? 'Liquidar orden' : 'Registrar anticipo',
+  ),
+);
+
+/// Campo del monto del efectivo precargado (`MoneyField`).
+Finder cashAmountField() => find.descendant(
+  of: find.byType(MoneyField),
+  matching: find.byType(TextField),
 );
 
 void main() {
@@ -121,13 +137,13 @@ void main() {
     // Ya no queda ningún pago capturado y el cobro no se puede enviar.
     expect(find.byTooltip('Quitar método'), findsNothing);
     expect(find.text('MONTO'), findsNothing);
-    expect(submitButton(tester).onPressed, isNull);
+    expect(submitButton(tester, settlesOrder: false).onPressed, isNull);
     // El método retirado vuelve a estar disponible como chip.
     expect(find.byType(EzyChip), findsNWidgets(3));
     expect(find.text('Efectivo'), findsOneWidget);
   });
 
-  testWidgets('tarjeta exige la cuenta destino (FieldLabel en mayúsculas)', (
+  testWidgets('tarjeta exige el destino del cobro (FieldLabel en mayúsculas)', (
     tester,
   ) async {
     await pumpPaymentSheet(tester);
@@ -135,7 +151,8 @@ void main() {
     await tester.tap(find.text('Tarjeta'));
     await settleSheet(tester);
 
-    expect(find.text('CUENTA DESTINO *'), findsOneWidget);
+    // El destino puede ser una cuenta del negocio o su terminal.
+    expect(find.text('CUENTA O TERMINAL *'), findsOneWidget);
     // Sin cuentas asignadas el servidor no puede recibir el pago.
     expect(
       find.text('No tienes cuentas bancarias asignadas para este método.'),
@@ -152,7 +169,7 @@ void main() {
     await tester.tap(find.text('Tarjeta'));
     await settleSheet(tester);
 
-    expect(find.text('CUENTA DESTINO *'), findsOneWidget);
+    expect(find.text('CUENTA O TERMINAL *'), findsOneWidget);
 
     // La cuenta se elige en el desplegable (los ítems se construyen al abrirlo).
     await tester.tap(find.byType(DropdownButtonFormField<int>));
@@ -169,7 +186,8 @@ void main() {
 
     await pumpPaymentSheet(tester, repository: orders);
 
-    await tester.tap(find.widgetWithText(EzyButton, 'Registrar anticipo'));
+    // El efectivo precargado cubre el saldo: el CTA liquida la orden.
+    await tester.tap(find.widgetWithText(EzyButton, 'Liquidar orden'));
     await settleSheet(tester);
     await tester.pump();
 
@@ -186,7 +204,7 @@ void main() {
 
     await pumpPaymentSheet(tester, repository: orders, withShift: false);
 
-    await tester.tap(find.widgetWithText(EzyButton, 'Registrar anticipo'));
+    await tester.tap(find.widgetWithText(EzyButton, 'Liquidar orden'));
     await settleSheet(tester);
 
     expect(orders.paymentCalls, 0);
@@ -222,7 +240,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.widgetWithText(EzyButton, 'Registrar anticipo'));
+    await tester.tap(find.widgetWithText(EzyButton, 'Liquidar orden'));
     await settleSheet(tester);
     await tester.pump();
 
@@ -231,5 +249,62 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Ocultar'), findsOneWidget);
+  });
+
+  testWidgets('el CTA anuncia el efecto del anticipo', (tester) async {
+    await pumpPaymentSheet(tester);
+
+    // El efectivo precargado cubre todo el saldo: el cobro liquida la orden.
+    expect(find.widgetWithText(EzyButton, 'Liquidar orden'), findsOneWidget);
+
+    // Un abono parcial deja saldo: el CTA vuelve a «Registrar anticipo».
+    await tester.enterText(cashAmountField(), '100');
+    await settleSheet(tester);
+
+    expect(find.widgetWithText(EzyButton, 'Registrar anticipo'), findsOneWidget);
+    expect(find.widgetWithText(EzyButton, 'Liquidar orden'), findsNothing);
+
+    // «Liquidar saldo» completa el anticipo y el CTA anuncia otra vez la
+    // liquidación de la orden.
+    await tester.tap(find.text('Liquidar saldo'));
+    await settleSheet(tester);
+
+    expect(find.widgetWithText(EzyButton, 'Liquidar orden'), findsOneWidget);
+  });
+
+  testWidgets('el anticipo registrado convierte la hoja en el ticket', (
+    tester,
+  ) async {
+    final orders = FakeServiceOrdersRepository(receipt: orderReceiptFixture());
+
+    final container = await pumpPaymentSheet(tester, repository: orders);
+
+    await tester.tap(find.widgetWithText(EzyButton, 'Liquidar orden'));
+    await settleSheet(tester);
+    await tester.pump();
+
+    expect(orders.paymentCalls, 1);
+
+    // La misma hoja pasa al comprobante: cabecera, ticket térmico y un solo
+    // «Listo», el del pie fijo (`showDoneButton: false`).
+    final header = tester.widget<EzySheetHeader>(find.byType(EzySheetHeader));
+    expect(header.title, 'Anticipo registrado');
+    expect(header.subtitle, 'Folio V-014');
+    expect(find.text('TICKET DE ABONO'), findsOneWidget);
+    expect(find.text('ACCIONES DE TICKET'), findsOneWidget);
+    expect(find.text(r'$1400.00 MXN'), findsWidgets);
+    // El badge del comprobante pinta su etiqueta en mayúsculas.
+    expect(find.text('LIQUIDADA'), findsOneWidget);
+    expect(find.widgetWithText(EzyButton, 'Listo'), findsOneWidget);
+
+    // «Listo» cierra el comprobante y limpia la hoja para el siguiente cobro.
+    await tester.tap(find.widgetWithText(EzyButton, 'Listo'));
+    await settleSheet(tester);
+
+    expect(
+      container.read(serviceOrderDetailControllerProvider).receipt,
+      isNull,
+    );
+    expect(find.byType(EzySheetHeader), findsNothing);
   });
 }

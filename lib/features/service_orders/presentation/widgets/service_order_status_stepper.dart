@@ -8,16 +8,35 @@ import 'service_order_labels.dart';
 
 /// Stepper de estatus de la orden (§8.2 y §7 del design system).
 ///
-/// Cinco pasos con círculos de 46 px: los cumplidos llevan el check en verde, el
-/// actual es una esfera de marca con halo, y los que faltan se quedan en el tono
-/// apagado de la superficie. El conector se pinta del color del paso alcanzado,
-/// así el avance se lee de un vistazo. Una orden cancelada se pinta como banda
-/// roja (bloquea los cambios de estatus).
+/// Cinco pasos con círculos de 46 px sobre un riel: los cumplidos llevan el
+/// check en verde, el actual es una esfera de marca con halo y los que faltan se
+/// quedan en el tono apagado de la superficie. Bajo el riel corre una barra de
+/// progreso naranja que anima su ancho de forma proporcional al paso alcanzado,
+/// así el avance se lee de un vistazo.
+///
+/// Con [onStatusSelected] el stepper es **interactivo**: cada paso se vuelve
+/// táctil y aparece la cabecera con los botones «Atrás»/«Avanzar», de modo que el
+/// detalle cambia el estatus sin abrir una segunda hoja. Sin el callback (la hoja
+/// de estatus) queda de solo lectura, como hasta ahora. Una orden cancelada se
+/// pinta como banda roja (bloquea los cambios).
 class ServiceOrderStatusStepper extends StatelessWidget {
-  const ServiceOrderStatusStepper({super.key, required this.status});
+  const ServiceOrderStatusStepper({
+    super.key,
+    required this.status,
+    this.onStatusSelected,
+    this.isSubmitting = false,
+  });
 
   /// Valor del servidor (`pendiente`, `en_progreso`, ...).
   final String status;
+
+  /// Se dispara al tocar un paso o los botones de la cabecera.
+  ///
+  /// `null` = stepper de solo lectura (sin toques ni cabecera de controles).
+  final ValueChanged<ServiceOrderStatus>? onStatusSelected;
+
+  /// Mientras el `PATCH` está en vuelo el stepper no acepta toques.
+  final bool isSubmitting;
 
   @override
   Widget build(BuildContext context) {
@@ -31,44 +50,97 @@ class ServiceOrderStatusStepper extends StatelessWidget {
       );
     }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final flow = ServiceOrderStatus.flow;
+    final index = current.flowIndex;
+    final isInteractive = onStatusSelected != null;
+    final canTap = isInteractive && !isSubmitting;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        for (var index = 0; index < ServiceOrderStatus.flow.length; index++)
-          Expanded(
-            child: _Step(
-              status: ServiceOrderStatus.flow[index],
-              isCurrent: ServiceOrderStatus.flow[index] == current,
-              isDone: index < current.flowIndex,
-              isFirst: index == 0,
-              isLast: index == ServiceOrderStatus.flow.length - 1,
-            ),
+        if (isInteractive) ...<Widget>[
+          _StepperHeader(
+            canGoBack: canTap && index > 0,
+            canGoForward: canTap && index < flow.length - 1,
+            isLoading: isSubmitting,
+            onBack: () => onStatusSelected!(flow[index - 1]),
+            onForward: () => onStatusSelected!(flow[index + 1]),
           ),
+          const SizedBox(height: 14),
+        ],
+        // El riel y la barra se miden con el ancho real de la caja: la barra
+        // cubre exactamente la distancia entre el centro del primer paso y el
+        // del último, multiplicada por el avance.
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final count = flow.length;
+            final cell = constraints.maxWidth / count;
+            final railTop = _Step.halo / 2 - 1;
+            final progress = count <= 1 ? 0.0 : index / (count - 1);
+
+            return Stack(
+              children: <Widget>[
+                Positioned(
+                  left: cell / 2,
+                  right: cell / 2,
+                  top: railTop,
+                  child: Container(height: 2, color: context.surfaces.border),
+                ),
+                Positioned(
+                  left: cell / 2,
+                  top: railTop,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 320),
+                    curve: Curves.easeOutCubic,
+                    height: 2,
+                    width: (constraints.maxWidth - cell) * progress,
+                    color: EzyColors.primary,
+                  ),
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    for (var i = 0; i < count; i++)
+                      Expanded(
+                        child: _Step(
+                          status: flow[i],
+                          isCurrent: flow[i] == current,
+                          isDone: i < index,
+                          onTap: canTap ? () => onStatusSelected!(flow[i]) : null,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
       ],
     );
   }
 }
 
+/// Un paso del flujo: círculo (con halo si es el actual) y etiqueta.
 class _Step extends StatelessWidget {
   const _Step({
     required this.status,
     required this.isCurrent,
     required this.isDone,
-    required this.isFirst,
-    required this.isLast,
+    this.onTap,
   });
 
   final ServiceOrderStatus status;
   final bool isCurrent;
   final bool isDone;
-  final bool isFirst;
-  final bool isLast;
+
+  /// `null` = paso de solo lectura.
+  final VoidCallback? onTap;
 
   /// Lado del círculo del paso (§7).
-  static const double _size = 46;
+  static const double size = 46;
 
   /// Lado del halo del paso actual: 16 px más que el círculo.
-  static const double _halo = _size + 16;
+  static const double halo = size + 16;
 
   /// Icono del paso (§7 del design system).
   static IconData _iconFor(ServiceOrderStatus status) => switch (status) {
@@ -90,42 +162,18 @@ class _Step extends StatelessWidget {
         : (isCurrent ? EzyColors.primary : surfaces.textMuted);
     final label = ServiceOrderLabels.status(status.value).toUpperCase();
 
-    return Column(
+    final content = Column(
       children: <Widget>[
         SizedBox(
-          height: _halo,
-          child: Row(
-            children: <Widget>[
-              // El primer paso no tiene conector a la izquierda y el último no lo
-              // tiene a la derecha: la línea no puede salirse del riel.
-              Expanded(
-                child: _Connector(
-                  color: isFirst
-                      ? Colors.transparent
-                      : (isDone || isCurrent
-                            ? color.withValues(alpha: 0.45)
-                            : surfaces.border),
-                ),
-              ),
-              _Circle(
-                size: _size,
-                halo: _halo,
-                isCurrent: isCurrent,
-                isDone: isDone,
-                color: color,
-                icon: isDone ? Icons.check : _iconFor(status),
-                surfaces: surfaces,
-              ),
-              Expanded(
-                child: _Connector(
-                  color: isLast
-                      ? Colors.transparent
-                      : (isDone
-                            ? color.withValues(alpha: 0.45)
-                            : surfaces.border),
-                ),
-              ),
-            ],
+          height: halo,
+          child: _Circle(
+            size: size,
+            halo: halo,
+            isCurrent: isCurrent,
+            isDone: isDone,
+            color: color,
+            icon: isDone ? Icons.check : _iconFor(status),
+            surfaces: surfaces,
           ),
         ),
         const SizedBox(height: 8),
@@ -141,18 +189,17 @@ class _Step extends StatelessWidget {
         ),
       ],
     );
-  }
-}
 
-/// Riel entre dos pasos: 2 px del color del tramo recorrido.
-class _Connector extends StatelessWidget {
-  const _Connector({required this.color});
+    if (onTap == null) {
+      return content;
+    }
 
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(height: 2, color: color);
+    // Área táctil = la celda completa del paso (círculo + etiqueta).
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: content,
+    );
   }
 }
 
@@ -220,7 +267,7 @@ class _Circle extends StatelessWidget {
     }
 
     // Halo del paso actual: un aro translúcido de marca 16 px mayor que el
-    // círculo. Sin sombra: el relieve lo sigue dando el botón 3D.
+    // círculo. Sin sombra: el relieve lo sigue dando el gradiente.
     return Center(
       child: Container(
         width: halo,
@@ -291,6 +338,102 @@ class _CancelledBand extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Cabecera del stepper interactivo: micro-etiqueta y salto de un paso.
+class _StepperHeader extends StatelessWidget {
+  const _StepperHeader({
+    required this.canGoBack,
+    required this.canGoForward,
+    required this.isLoading,
+    required this.onBack,
+    required this.onForward,
+  });
+
+  final bool canGoBack;
+  final bool canGoForward;
+  final bool isLoading;
+  final VoidCallback onBack;
+  final VoidCallback onForward;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
+    return Row(
+      children: <Widget>[
+        Icon(Icons.commit, size: 16, color: surfaces.textMuted),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            'LÍNEA DE ESTATUS · TOCA UN PASO PARA CAMBIAR',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: EzyTextStyles.microLabel.copyWith(
+              color: surfaces.textSecondary,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (isLoading)
+          const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        else ...<Widget>[
+          _StepControl(
+            icon: Icons.chevron_left,
+            tooltip: 'Atrás',
+            onTap: canGoBack ? onBack : null,
+          ),
+          const SizedBox(width: 8),
+          _StepControl(
+            icon: Icons.chevron_right,
+            tooltip: 'Avanzar',
+            onTap: canGoForward ? onForward : null,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Botón redondo de 34 px para retroceder o avanzar un paso.
+class _StepControl extends StatelessWidget {
+  const _StepControl({required this.icon, required this.tooltip, this.onTap});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: surfaces.panelInner,
+        shape: CircleBorder(side: BorderSide(color: surfaces.border)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 34,
+            height: 34,
+            child: Icon(
+              icon,
+              size: 20,
+              color: onTap == null
+                  ? surfaces.textMuted.withValues(alpha: 0.5)
+                  : surfaces.textPrimary,
+            ),
+          ),
+        ),
       ),
     );
   }
