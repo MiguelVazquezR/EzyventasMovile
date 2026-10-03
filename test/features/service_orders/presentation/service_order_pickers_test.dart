@@ -1,7 +1,6 @@
 import 'package:ezyventas_app/core/api/paginated.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
 import 'package:ezyventas_app/core/widgets/ezy_bottom_sheet.dart';
-import 'package:ezyventas_app/core/widgets/ezy_list_tile.dart';
 import 'package:ezyventas_app/core/widgets/ezy_search_field.dart';
 import 'package:ezyventas_app/core/widgets/ezy_selectable_tile.dart';
 import 'package:ezyventas_app/core/widgets/ezy_text_field.dart';
@@ -164,13 +163,15 @@ void main() {
       },
     );
 
-    final header = tester.widget<EzySheetHeader>(find.byType(EzySheetHeader));
+    final header = tester.widget<SoSheetHeader>(find.byType(SoSheetHeader));
     expect(header.title, 'Elegir variante');
     expect(header.subtitle, 'Cambio de pantalla');
     expect(find.byTooltip('Cerrar'), findsOneWidget);
 
-    // Cada variante es una opción seleccionable con su precio.
-    expect(find.byType(EzySelectableTile), findsNWidgets(2));
+    // Cada variante es una fila del sistema con su precio: el micro-label
+    // resume cuántas hay y el renglón lleva el radio sin marcar.
+    expect(find.text('2 VARIANTES DISPONIBLES'), findsOneWidget);
+    expect(find.byIcon(Icons.radio_button_unchecked), findsNWidgets(2));
     expect(find.text('Original'), findsOneWidget);
     expect(find.text('Pantalla OLED'), findsOneWidget);
     expect(find.text(r'$850.00'), findsOneWidget);
@@ -200,19 +201,19 @@ void main() {
       },
     );
 
-    final header = tester.widget<EzySheetHeader>(find.byType(EzySheetHeader));
+    final header = tester.widget<SoSheetHeader>(find.byType(SoSheetHeader));
     expect(header.title, 'Agregar concepto');
-    expect(header.subtitle, 'Elige del catálogo o captura un concepto libre.');
+    expect(header.subtitle, 'Elige un servicio o refacción del catálogo.');
     expect(find.byTooltip('Cerrar'), findsOneWidget);
 
     // Buscador del sistema (con su *debounce* y botón de limpiar).
     final search = tester.widget<EzySearchField>(find.byType(EzySearchField));
     expect(search.hint, 'Buscar en el catálogo…');
 
-    // Tipo de concepto y fila del sistema con el precio de lista.
+    // Tipo de concepto y fila del sistema (con chevron) y precio de lista.
     expect(find.text('Mano de obra'), findsOneWidget);
     expect(find.text('Refacciones'), findsOneWidget);
-    expect(find.byType(EzyListTile), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_right), findsOneWidget);
     expect(find.text('Cambio de pantalla'), findsOneWidget);
     expect(find.text(r'$850.00'), findsOneWidget);
     expect(find.textContaining('Precio de lista'), findsOneWidget);
@@ -279,8 +280,8 @@ void main() {
     await settleSheet(tester);
 
     // El selector de variante se abre encima del catálogo.
-    final header = tester.widget<EzySheetHeader>(
-      find.byType(EzySheetHeader).last,
+    final header = tester.widget<SoSheetHeader>(
+      find.byType(SoSheetHeader).last,
     );
     expect(header.title, 'Elegir variante');
     expect(header.subtitle, 'Cambio de pantalla');
@@ -368,9 +369,7 @@ void main() {
     );
     await settleSheet(tester);
 
-    await tester.tap(
-      find.widgetWithText(SoPrimaryButton, 'Usar estos datos'),
-    );
+    await tester.tap(find.widgetWithText(SoPrimaryButton, 'Usar estos datos'));
     await settleSheet(tester);
     await tester.pump();
 
@@ -414,9 +413,7 @@ void main() {
     await tester.enterText(find.byType(EzyTextField).last, '1500');
     await settleSheet(tester);
 
-    await tester.tap(
-      find.widgetWithText(SoPrimaryButton, 'Usar estos datos'),
-    );
+    await tester.tap(find.widgetWithText(SoPrimaryButton, 'Usar estos datos'));
     await settleSheet(tester);
     await tester.pump();
 

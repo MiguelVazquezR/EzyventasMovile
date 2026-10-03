@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/paginated.dart';
+import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
-import '../../../../core/widgets/ezy_bottom_sheet.dart';
-import '../../../../core/widgets/ezy_icon_button.dart';
-import '../../../../core/widgets/ezy_list_tile.dart';
 import '../../../../core/widgets/ezy_search_field.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../catalog/application/catalog_pickers.dart';
@@ -34,6 +32,11 @@ Future<ServiceOrderItemDraft?> showServiceOrderCatalogPicker(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    backgroundColor: SoColors.canvas(context),
+    clipBehavior: Clip.antiAlias,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
     builder: (sheetContext) => const _CatalogPickerSheet(),
   );
 }
@@ -59,24 +62,20 @@ class _CatalogPickerSheetState extends ConsumerState<_CatalogPickerSheet> {
 
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.9,
+      initialChildSize: 0.92,
+      minChildSize: 0.5,
       maxChildSize: 0.96,
       builder: (context, scrollController) => ListView(
         controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         children: <Widget>[
           const SizedBox(height: 8),
-          EzySheetHeader(
+          SoSheetHeader(
             title: 'Agregar concepto',
-            subtitle: 'Elige del catálogo o captura un concepto libre.',
-            trailing: EzyIconButton(
-              icon: Icons.close,
-              tooltip: 'Cerrar',
-              onTap: () => Navigator.of(context).pop(),
-            ),
-            padding: EdgeInsets.zero,
+            subtitle: 'Elige un servicio o refacción del catálogo.',
+            onClose: () => Navigator.of(context).pop(),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           ServiceOrderSegmentedControl<ServiceOrderCatalogKind>(
             values: const <ServiceOrderCatalogKind>[
               ServiceOrderCatalogKind.service,
@@ -91,6 +90,8 @@ class _CatalogPickerSheetState extends ConsumerState<_CatalogPickerSheet> {
           const SizedBox(height: 12),
           EzySearchField(
             hint: 'Buscar en el catálogo…',
+            fillColor: SoColors.card(context),
+            borderColor: SoColors.structuralBorder(context),
             onChanged: (value) => setState(() => _search = value.trim()),
           ),
           const SizedBox(height: 16),
@@ -204,12 +205,7 @@ class _ServicesList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return services.when(
-      loading: () => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      ),
+      loading: () => const _PickerLoading(),
       error: (error, stackTrace) => const NoticeBanner(
         message: 'No se pudo cargar el catálogo de servicios.',
       ),
@@ -221,7 +217,7 @@ class _ServicesList extends StatelessWidget {
           );
         }
 
-        return Column(
+        return _CatalogList(
           children: <Widget>[
             for (final service in page.items)
               _CatalogTile(
@@ -253,12 +249,7 @@ class _ProductsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return products.when(
-      loading: () => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      ),
+      loading: () => const _PickerLoading(),
       error: (error, stackTrace) => const NoticeBanner(
         message: 'No se pudo cargar el catálogo de productos.',
       ),
@@ -270,7 +261,7 @@ class _ProductsList extends StatelessWidget {
           );
         }
 
-        return Column(
+        return _CatalogList(
           children: <Widget>[
             for (final product in page.items)
               _CatalogTile(
@@ -291,8 +282,50 @@ class _ProductsList extends StatelessWidget {
   }
 }
 
+/// Lista de conceptos con separación uniforme de 8 px.
+class _CatalogList extends StatelessWidget {
+  const _CatalogList({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        for (var index = 0; index < children.length; index++) ...<Widget>[
+          if (index > 0) const SizedBox(height: 8),
+          children[index],
+        ],
+      ],
+    );
+  }
+}
+
+/// Espera del catálogo: spinner naranja centrado con aire arriba y abajo.
+class _PickerLoading extends StatelessWidget {
+  const _PickerLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 48),
+      child: Center(
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.4,
+            color: SoColors.primary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Concepto del catálogo (servicio o refacción) como fila del design system.
-class _CatalogTile extends StatelessWidget {
+class _CatalogTile extends StatefulWidget {
   const _CatalogTile({
     required this.title,
     required this.subtitle,
@@ -306,12 +339,87 @@ class _CatalogTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_CatalogTile> createState() => _CatalogTileState();
+}
+
+class _CatalogTileState extends State<_CatalogTile> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed != value && mounted) {
+      setState(() => _pressed = value);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return EzyListTile(
-      title: title,
-      subtitle: subtitle,
-      value: price,
-      onTap: onTap,
+    return GestureDetector(
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 90),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        decoration: BoxDecoration(
+          color: SoColors.card(context),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: _pressed
+                ? SoColors.primary
+                : SoColors.structuralBorder(context),
+          ),
+        ),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    widget.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: EzyTextStyles.bodyStrong.copyWith(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: SoColors.textPrimary(context),
+                    ),
+                  ),
+                  if (widget.subtitle.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 3),
+                    Text(
+                      widget.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: EzyTextStyles.caption.copyWith(
+                        color: SoColors.textMuted(context),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              widget.price,
+              style: EzyTextStyles.moneyList.copyWith(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                color: SoColors.primary,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: SoColors.textMuted(context),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

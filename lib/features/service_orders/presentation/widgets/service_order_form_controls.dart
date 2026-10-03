@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/widgets/ezy_icon_button.dart';
 
 /// Tokens del prototipo validado "Tesla UI / EzyColors" **solo** para la pantalla
 /// de alta/edición de órdenes de servicio.
@@ -503,7 +504,6 @@ class ServiceOrderSegmentedControl<T> extends StatelessWidget {
   }
 }
 
-
 /// Card del prototipo: radio 24, borde estructural y micro-título opcional.
 class SoCard extends StatelessWidget {
   const SoCard({
@@ -586,3 +586,88 @@ class SoInfoRow extends StatelessWidget {
   }
 }
 
+/// Asa de arrastre compartida por las hojas inferiores del módulo.
+class SoSheetGrabber extends StatelessWidget {
+  const SoSheetGrabber({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 40,
+        height: 4,
+        decoration: BoxDecoration(
+          color: SoColors.isDark(context)
+              ? const Color(0xFF525252)
+              : const Color(0xFFD1D5DB),
+          borderRadius: BorderRadius.circular(999),
+        ),
+      ),
+    );
+  }
+}
+
+/// Cabecera de hoja inferior: asa, título fuerte, subtítulo tenue y cierre.
+class SoSheetHeader extends StatelessWidget {
+  const SoSheetHeader({
+    super.key,
+    required this.title,
+    required this.onClose,
+    this.subtitle,
+  });
+
+  final String title;
+  final String? subtitle;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        const SoSheetGrabber(),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    title,
+                    style: EzyTextStyles.bodyStrong.copyWith(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: SoColors.textPrimary(context),
+                    ),
+                  ),
+                  if (subtitle != null) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle!,
+                      style: EzyTextStyles.caption.copyWith(
+                        fontSize: 11.5,
+                        color: SoColors.textSecondary(context),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            EzyIconButton(
+              icon: Icons.close,
+              tooltip: 'Cerrar',
+              size: 40,
+              iconSize: 18,
+              background: SoColors.inner(context),
+              borderColor: SoColors.structuralBorder(context),
+              onTap: onClose,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
