@@ -7,6 +7,7 @@ class AccountLabels {
 
   // Menú principal (§14.2)
   static const String title = 'Mi cuenta';
+  static const String subtitle = 'Configuración del usuario';
   static const String profile = 'Mi perfil';
   static const String profileSubtitle = 'Foto, nombre, correo y contraseña';
   static const String subscription = 'Mi suscripción';
@@ -25,7 +26,7 @@ class AccountLabels {
   static const String preferences = 'Preferencias';
   static const String darkMode = 'Modo oscuro';
   static const String darkModeSubtitle =
-      'La app abre en modo oscuro por defecto.';
+      'Ahorra batería y mejora el confort visual en interiores.';
   static const String logout = 'Cerrar sesión';
   static const String logoutTitle = '¿Quieres cerrar sesión?';
   static const String logoutMessage =
@@ -33,6 +34,26 @@ class AccountLabels {
       'conectados.';
   static const String cancel = 'Cancelar';
   static const String back = 'Regresar';
+
+  // Pantalla Cuenta (rediseño: cabecera, perfil, sucursal, módulos y salida)
+  static const String owner = 'Propietario';
+  static const String emailUnverified = 'Correo sin verificar';
+  static const String branchActive = 'Sucursal activa';
+  static const String singleBranchRegistered =
+      'Esta es la única sucursal registrada de tu negocio.';
+  static const String active = 'ACTIVO';
+  static const String modulesEmpty = 'Tu suscripción no tiene módulos activos.';
+  static const String subscriptionExpiringBadge = 'POR VENCER';
+  static const String logoutConfirmTitle = '¿Cerrar sesión?';
+  static const String logoutConfirmMessage =
+      'Se cerrará la sesión de este dispositivo. Deberás ingresar tus '
+      'credenciales nuevamente para acceder.';
+  static const String logoutConfirmAction = 'Sí, salir';
+  static const String appVersion = 'EzyVentas POS v0.1.0 · Compilación 1';
+
+  /// `Tu negocio tiene N sucursales registradas.`
+  static String branchCountLegend(int count) =>
+      'Tu negocio tiene $count sucursales registradas.';
 
   // Perfil (§14.3)
   static const String profileTitle = 'Mi perfil';
