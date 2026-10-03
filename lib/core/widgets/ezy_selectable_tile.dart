@@ -23,6 +23,7 @@ class EzySelectableTile extends StatelessWidget {
     this.caption,
     this.captionColor,
     this.value,
+    this.trailing,
     this.child,
     this.accent,
     this.compact = false,
@@ -42,6 +43,10 @@ class EzySelectableTile extends StatelessWidget {
 
   /// Dato numérico a la derecha en cifras tabulares (precio de la variante).
   final String? value;
+
+  /// Contenido a la derecha de [value]: el badge de estado de la tarjeta
+  /// («REEMBOLSO» / «RETENCIÓN» en la anulación).
+  final Widget? trailing;
 
   /// Contenido extra bajo las líneas: las opciones del reembolso o la cuenta
   /// destino que aparecen al elegir la tarjeta.
@@ -130,6 +135,7 @@ class EzySelectableTile extends StatelessWidget {
             ),
           ),
         ],
+        if (trailing != null) ...<Widget>[const SizedBox(width: 12), trailing!],
       ],
     );
 
