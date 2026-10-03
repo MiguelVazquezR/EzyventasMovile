@@ -1,7 +1,6 @@
 import 'package:ezyventas_app/core/api/paginated.dart';
 import 'package:ezyventas_app/core/theme/app_theme.dart';
 import 'package:ezyventas_app/core/widgets/ezy_bottom_sheet.dart';
-import 'package:ezyventas_app/core/widgets/ezy_button.dart';
 import 'package:ezyventas_app/core/widgets/ezy_list_tile.dart';
 import 'package:ezyventas_app/core/widgets/ezy_search_field.dart';
 import 'package:ezyventas_app/core/widgets/ezy_selectable_tile.dart';
@@ -16,6 +15,7 @@ import 'package:ezyventas_app/features/service_orders/data/models/service_order_
 import 'package:ezyventas_app/features/service_orders/data/models/service_order_item_draft.dart';
 import 'package:ezyventas_app/features/service_orders/presentation/widgets/service_order_catalog_picker.dart';
 import 'package:ezyventas_app/features/service_orders/presentation/widgets/service_order_customer_picker.dart';
+import 'package:ezyventas_app/features/service_orders/presentation/widgets/service_order_form_controls.dart';
 import 'package:ezyventas_app/features/service_orders/presentation/widgets/service_order_variant_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -352,7 +352,9 @@ void main() {
     // Sin nombre no se puede aplicar lo capturado.
     expect(
       tester
-          .widget<EzyButton>(find.widgetWithText(EzyButton, 'Usar estos datos'))
+          .widget<SoPrimaryButton>(
+            find.widgetWithText(SoPrimaryButton, 'Usar estos datos'),
+          )
           .onPressed,
       isNull,
     );
@@ -366,7 +368,9 @@ void main() {
     );
     await settleSheet(tester);
 
-    await tester.tap(find.widgetWithText(EzyButton, 'Usar estos datos'));
+    await tester.tap(
+      find.widgetWithText(SoPrimaryButton, 'Usar estos datos'),
+    );
     await settleSheet(tester);
     await tester.pump();
 
@@ -410,7 +414,9 @@ void main() {
     await tester.enterText(find.byType(EzyTextField).last, '1500');
     await settleSheet(tester);
 
-    await tester.tap(find.widgetWithText(EzyButton, 'Usar estos datos'));
+    await tester.tap(
+      find.widgetWithText(SoPrimaryButton, 'Usar estos datos'),
+    );
     await settleSheet(tester);
     await tester.pump();
 

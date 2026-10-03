@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/api/paginated.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
-import '../../../../core/widgets/ezy_button.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
 import '../../../../core/widgets/ezy_search_field.dart';
 import '../../../../core/widgets/ezy_selectable_tile.dart';
@@ -40,9 +40,9 @@ class ServiceOrderCustomerSelection {
 
 /// Selector de cliente de la orden (`GET /customers?search=`).
 ///
-/// La hoja sigue el prototipo validado "Tesla UI / EzyColors": alto del 90 %,
-/// buscador del design system con *debounce*, resultados en una card compacta y
-/// la captura manual al pie con el alta al vuelo en verde.
+/// La hoja sigue el prototipo validado "Tesla UI / EzyColors": lienzo gris con
+/// las piezas en relieve —buscador, clientes y captura manual—, al 90 % del
+/// alto, y el CTA 3D del módulo, verde cuando la orden da de alta al cliente.
 Future<ServiceOrderCustomerSelection?> showServiceOrderCustomerPicker(
   BuildContext context, {
   String initialName = '',
@@ -53,6 +53,10 @@ Future<ServiceOrderCustomerSelection?> showServiceOrderCustomerPicker(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    // Lienzo del módulo: las piezas llevan relleno de panel (`SoColors.card`) y
+    // así se despegan del fondo gris; con el panel del tema —del mismo color
+    // que ellas— la hoja quedaría plana.
+    backgroundColor: SoColors.canvas(context),
     builder: (sheetContext) => _CustomerPickerSheet(
       initialName: initialName,
       initialEmail: initialEmail,
@@ -110,13 +114,15 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
 
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.9,
+      initialChildSize: 0.90,
+      minChildSize: 0.50,
       maxChildSize: 0.96,
       builder: (context, scrollController) => ListView(
         controller: scrollController,
+        // El asa de arrastre, el radio 24 y el recorte los pinta el tema de
+        // hojas; aquí solo se ajusta el aire interior.
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
-          const SizedBox(height: 8),
           EzySheetHeader(
             title: 'Cliente de la orden',
             subtitle:
@@ -132,47 +138,19 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
           const SizedBox(height: 16),
           EzySearchField(
             hint: 'Buscar cliente por nombre, correo o teléfono…',
+            height: 46,
+            radius: 12,
+            // Sobre el lienzo el campo necesita relleno de panel: el suyo por
+            // defecto (`panelInner`) es del color del lienzo en modo oscuro.
+            fillColor: SoColors.card(context),
+            borderColor: SoColors.structuralBorder(context),
             onChanged: (value) => setState(() => _search = value.trim()),
           ),
-          const SizedBox(height: 12),
-          SoCard(
-            title: 'Clientes registrados',
-            child: customers.when(
-              loading: () => const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-              error: (error, stackTrace) => const SoNote(
-                text: 'No se pudieron cargar los clientes.',
-                icon: Icons.error_outline,
-                color: SoColors.danger,
-              ),
-              data: (page) => page.items.isEmpty
-                  ? const SoNote(
-                      text: 'No hay clientes que coincidan con la búsqueda.',
-                      icon: Icons.person_search_outlined,
-                      color: SoColors.info,
-                    )
-                  : Column(
-                      children: <Widget>[
-                        for (
-                          var index = 0;
-                          index < page.items.length;
-                          index++
-                        ) ...<Widget>[
-                          if (index > 0) const SizedBox(height: 8),
-                          _CustomerTile(
-                            customer: page.items[index],
-                            onTap: () => _choose(page.items[index]),
-                          ),
-                        ],
-                      ],
-                    ),
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
+          _clientsHeader(customers),
+          const SizedBox(height: 10),
+          _clientsBody(customers),
+          const SizedBox(height: 20),
           _ManualCustomerCard(
             nameController: _nameController,
             phoneController: _phoneController,
@@ -188,6 +166,83 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Micro-título de la lista con el recuento de resultados a la derecha: la
+  /// señal de que la búsqueda corrió aunque no haya coincidencias.
+  Widget _clientsHeader(AsyncValue<Paginated<Customer>> customers) {
+    return SoMicroLabel(
+      'Clientes registrados',
+      trailing: customers.when(
+        loading: () => const SoTag(label: 'Buscando…', color: SoColors.info),
+        error: (error, stackTrace) =>
+            const SoTag(label: 'Sin datos', color: SoColors.danger),
+        data: (page) {
+          final total = page.total > 0 ? page.total : page.items.length;
+
+          return SoTag(
+            label: total == 0
+                ? 'Sin resultados'
+                : '$total ${total == 1 ? 'cliente' : 'clientes'}',
+            color: total == 0 ? SoColors.info : SoColors.primary,
+          );
+        },
+      ),
+    );
+  }
+
+  /// Los cuatro estados de la consulta (`GET /customers?search=`): cargando,
+  /// error, vacío y resultados. Los tres primeros van dentro de una pieza
+  /// (`SoCard`) para no dejar el lienzo gris sin contenido.
+  Widget _clientsBody(AsyncValue<Paginated<Customer>> customers) {
+    return customers.when(
+      loading: () => SoCard(
+        child: Row(
+          children: <Widget>[
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Buscando clientes…',
+                style: EzyTextStyles.caption.copyWith(
+                  fontSize: 12,
+                  color: SoColors.textSecondary(context),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      error: (error, stackTrace) => const SoCard(
+        child: SoNote(
+          text: 'No se pudieron cargar los clientes.',
+          icon: Icons.error_outline,
+          color: SoColors.danger,
+        ),
+      ),
+      data: (page) => page.items.isEmpty
+          ? const SoCard(
+              child: SoNote(
+                text: 'No hay clientes que coincidan con la búsqueda.',
+                icon: Icons.person_search_outlined,
+                color: SoColors.info,
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                for (final customer in page.items)
+                  _CustomerTile(
+                    customer: customer,
+                    onTap: () => _choose(customer),
+                  ),
+              ],
+            ),
     );
   }
 
@@ -226,7 +281,18 @@ class _CustomerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // El saldo se tiñe según el estado: rojo si debe, verde si trae saldo a
+    // favor, gris neutro si está en cero.
+    final Color? captionColor = customer.hasDebt
+        ? SoColors.tone(context, SoColors.danger)
+        : customer.hasBalanceInFavor
+        ? SoColors.tone(context, SoColors.success)
+        : null;
+
     return EzySelectableTile(
+      // Sobre el lienzo gris la fila se rellena de panel: así se lee como pieza
+      // y no como un hueco del fondo.
+      fillColor: SoColors.card(context),
       title: customer.displayName,
       subtitle: customer.phone,
       caption: <String>[
@@ -234,6 +300,7 @@ class _CustomerTile extends StatelessWidget {
         if (customer.hasCredit)
           'Crédito disponible ${Money.format(customer.availableCredit)}',
       ].join(' · '),
+      captionColor: captionColor,
       isSelected: false,
       onTap: onTap,
     );
@@ -267,6 +334,11 @@ class _ManualCustomerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Los campos van dentro de la pieza (`SoCard`): relleno interno y borde
+    // estructural, como los renglones de conceptos del módulo.
+    final fill = SoColors.inner(context);
+    final border = SoColors.structuralBorder(context);
+
     return SoCard(
       title: 'Capturar cliente',
       child: Column(
@@ -277,12 +349,23 @@ class _ManualCustomerCard extends StatelessWidget {
             controller: nameController,
             maxLength: 255,
             onChanged: onNameChanged,
+            textInputAction: TextInputAction.next,
+            fieldHeight: 46,
+            borderRadius: 12,
+            borderColor: border,
+            fillColor: fill,
           ),
           const SizedBox(height: 12),
           EzyTextField(
             label: 'Teléfono',
             controller: phoneController,
+            keyboardType: TextInputType.phone,
             maxLength: 255,
+            textInputAction: TextInputAction.next,
+            fieldHeight: 46,
+            borderRadius: 12,
+            borderColor: border,
+            fillColor: fill,
           ),
           const SizedBox(height: 12),
           EzyTextField(
@@ -290,39 +373,13 @@ class _ManualCustomerCard extends StatelessWidget {
             controller: emailController,
             keyboardType: TextInputType.emailAddress,
             maxLength: 255,
+            fieldHeight: 46,
+            borderRadius: 12,
+            borderColor: border,
+            fillColor: fill,
           ),
-          const SizedBox(height: 10),
-          // `Material` transparente: el `SoCard` pinta su propio fondo y sin él
-          // el *ripple* del interruptor quedaría debajo del fondo.
-          Material(
-            type: MaterialType.transparency,
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        'Dar de alta este cliente',
-                        style: EzyTextStyles.bodyStrong.copyWith(
-                          color: SoColors.textPrimary(context),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'El servidor crea el cliente al guardar la orden.',
-                        style: EzyTextStyles.caption.copyWith(
-                          color: SoColors.textSecondary(context),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SoSwitch(value: createCustomer, onChanged: onToggleCreate),
-              ],
-            ),
-          ),
+          const SizedBox(height: 12),
+          _createToggle(context),
           if (createCustomer) ...<Widget>[
             const SizedBox(height: 12),
             MoneyField(
@@ -331,6 +388,14 @@ class _ManualCustomerCard extends StatelessWidget {
               controller: creditController,
               onChanged: onCreditChanged,
               helperText: 'Requerido al dar de alta un cliente nuevo.',
+              // El `$` en verde ata el campo con el aviso y con la pieza: el
+              // cliente es nuevo.
+              prefixColor: SoColors.tone(context, SoColors.success),
+              suffixText: 'MXN',
+              fieldHeight: 46,
+              borderRadius: 12,
+              borderColor: border,
+              fillColor: fill,
             ),
             const SizedBox(height: 10),
             const SoNote(
@@ -341,13 +406,68 @@ class _ManualCustomerCard extends StatelessWidget {
               color: SoColors.success,
             ),
           ],
-          const SizedBox(height: 12),
-          EzyButton(
+          const SizedBox(height: 14),
+          // Botón 3D del módulo: naranja de marca y verde cuando la orden dará
+          // de alta al cliente nuevo.
+          SoPrimaryButton(
             label: 'Usar estos datos',
             icon: Icons.check,
+            baseColor: createCustomer ? SoColors.success : SoColors.primary,
             onPressed: onApply,
           ),
         ],
+      ),
+    );
+  }
+
+  /// Fila del alta al vuelo; se tiñe de verde al encenderse para que el cambio
+  /// se lea sin tener que mirar el interruptor.
+  Widget _createToggle(BuildContext context) {
+    return Material(
+      // `Material` transparente: el `SoCard` pinta su propio fondo y sin él el
+      // *ripple* del interruptor quedaría debajo del fondo.
+      type: MaterialType.transparency,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+        decoration: BoxDecoration(
+          color: createCustomer
+              ? SoColors.success.withValues(alpha: 0.12)
+              : SoColors.inner(context),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: createCustomer
+                ? SoColors.success.withValues(alpha: 0.40)
+                : SoColors.structuralBorder(context),
+          ),
+        ),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Dar de alta este cliente',
+                    style: EzyTextStyles.bodyStrong.copyWith(
+                      fontSize: 14,
+                      color: SoColors.textPrimary(context),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'El servidor crea el cliente al guardar la orden.',
+                    style: EzyTextStyles.caption.copyWith(
+                      fontSize: 11,
+                      color: SoColors.textSecondary(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            SoSwitch(value: createCustomer, onChanged: onToggleCreate),
+          ],
+        ),
       ),
     );
   }
