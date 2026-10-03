@@ -13,7 +13,9 @@ import '../../features/auth/application/auth_state.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
 import '../../features/cash/presentation/cash_register_screen.dart';
+import '../../features/home/presentation/expiring_layaways_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
+import '../../features/home/presentation/upcoming_deliveries_screen.dart';
 import '../../features/pos/presentation/point_of_sale_screen.dart';
 import '../../features/sales/presentation/sales_screen.dart';
 import '../../features/service_orders/presentation/service_order_form_screen.dart';
@@ -102,6 +104,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ),
       ),
+      GoRoute(
+        path: expiringLayawaysPath,
+        builder: (context, state) => const ExpiringLayawaysScreen(),
+      ),
+      GoRoute(
+        path: upcomingDeliveriesPath,
+        builder: (context, state) => const UpcomingDeliveriesScreen(),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             AppShell(navigationShell: navigationShell),
@@ -148,6 +158,12 @@ const String subscriptionPath = '/account/subscription';
 /// Ruta de edición de una orden concreta.
 String serviceOrderEditPath(int serviceOrderId) =>
     '/service-orders/$serviceOrderId/edit';
+
+/// Listados de alertas del inicio (pantalla completa, fuera del cascarón de
+/// pestañas). Se abren desde las tarjetas «Apartados por vencer» y «Pedidos por
+/// entregar» con la misma ventana de 3 días que usan sus contadores.
+const String expiringLayawaysPath = '/home/expiring-layaways';
+const String upcomingDeliveriesPath = '/home/upcoming-deliveries';
 
 StatefulShellBranch _branch(AppTab tab, Widget screen) {
   return StatefulShellBranch(

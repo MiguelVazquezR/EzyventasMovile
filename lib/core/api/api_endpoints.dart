@@ -10,6 +10,18 @@ class ApiEndpoints {
   static const String me = '/auth/me';
   static const String logout = '/auth/logout';
 
+  // Inicio de la app (dashboard, contrato §3b)
+  /// Resumen completo del inicio: una sola llamada arma toda la pantalla.
+  static const String dashboard = '/dashboard';
+
+  /// Apartados y créditos por vencer (`days` 1-30, por defecto 3).
+  static const String dashboardExpiringLayaways =
+      '/dashboard/expiring-layaways';
+
+  /// Pedidos por entregar (`days` 1-30, por defecto 3).
+  static const String dashboardUpcomingDeliveries =
+      '/dashboard/upcoming-deliveries';
+
   // Catálogo
   static const String products = '/catalog/products';
   static String product(int id) => '/catalog/products/$id';

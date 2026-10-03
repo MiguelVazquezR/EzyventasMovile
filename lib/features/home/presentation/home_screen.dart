@@ -3,28 +3,41 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/permissions_service.dart';
+import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/status_palette.dart';
+import '../../../core/utils/app_formatters.dart';
+import '../../../core/utils/money.dart';
 import '../../../core/widgets/app_screen_header.dart';
-import '../../../core/widgets/ezy_list_tile.dart';
+import '../../../core/widgets/ezy_amount.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../auth/application/auth_controller.dart';
+import '../application/dashboard_controller.dart';
+import '../data/models/mobile_dashboard.dart';
+import 'dashboard_labels.dart';
+import 'widgets/dashboard_cards.dart';
 
-/// Pestaña «Inicio».
+/// Pestaña «Inicio»: la pantalla de inicio del negocio (§4.2 del contexto).
 ///
-/// Es el destino por defecto tras el login. Hoy solo da la bienvenida y las
-/// pistas de por dónde empezar: el resumen con datos reales (ventas del día,
-/// apartados por vencer, órdenes abiertas) se monta cuando el servidor entregue
-/// ese resumen.
+/// Todo se arma con **una sola llamada** (`GET /dashboard`). Cada tarjeta se
+/// dibuja si su bloque tiene datos: un bloque en `null` significa que el usuario
+/// no tiene el permiso y no se pinta nada (ni una tarjeta en cero). El turno de
+/// caja viaja siempre, así que la barra de caja nunca falta.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(dashboardControllerProvider);
+    final controller = ref.read(dashboardControllerProvider.notifier);
     final accessContext = ref.watch(authControllerProvider).context;
     final permissions = ref.watch(permissionsProvider);
+
+    final dashboard = state.dashboard;
+    final generatedAt = dashboard?.generatedAt;
+    final error = state.errorMessage;
 
     return Scaffold(
       body: SafeArea(
@@ -32,29 +45,43 @@ class HomeScreen extends ConsumerWidget {
         child: Column(
           children: <Widget>[
             AppScreenHeader(
-              title: 'Inicio',
-              subtitle: accessContext?.businessName,
+              title: DashboardLabels.title,
+              subtitle: generatedAt == null
+                  ? accessContext?.businessName
+                  : DashboardLabels.updatedAt(AppFormatters.time(generatedAt)),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-                children: <Widget>[
-                  // Sin módulos contratados la bienvenida se quedaría sin nada
-                  // que ofrecer: se explica lo que falta y a quién pedirlo
-                  // (§11.4), sin botones que el servidor vaya a rechazar.
-                  if (permissions.moduleKeys.isEmpty) ...<Widget>[
-                    const NoticeBanner(
-                      message:
-                          'Tu suscripción no tiene módulos activos. Contacta '
-                          'al administrador para renovar el plan.',
-                      tone: EzySeverity.warn,
-                    ),
-                    const SizedBox(height: 12),
+              child: RefreshIndicator(
+                onRefresh: controller.refresh,
+                child: ListView(
+                  // El inicio puede ser más corto que la pantalla: sin física
+                  // propia el pull-to-refresh no tendría sobretirón que leer.
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                  children: <Widget>[
+                    if (permissions.moduleKeys.isEmpty) ...<Widget>[
+                      const NoticeBanner(
+                        message:
+                            'Tu suscripción no tiene módulos activos. '
+                            'Contacta al administrador para renovar el plan.',
+                        tone: EzySeverity.warn,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (error != null) ...<Widget>[
+                      ErrorNotice(message: error, onRetry: controller.refresh),
+                      const SizedBox(height: 12),
+                    ],
+                    if (state.isFirstLoad)
+                      const _LoadingState()
+                    else if (dashboard != null)
+                      ..._summaryCards(
+                        context,
+                        permissions: permissions,
+                        dashboard: dashboard,
+                      ),
                   ],
-                  _WelcomeCard(name: accessContext?.user.name ?? ''),
-                  const SizedBox(height: 20),
-                  const _NextStepsCard(),
-                ],
+                ),
               ),
             ),
           ],
@@ -64,58 +91,169 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-/// Tarjeta de bienvenida: pastilla de marca, saludo y qué va a vivir aquí
-/// (§11.1).
-class _WelcomeCard extends StatelessWidget {
-  const _WelcomeCard({required this.name});
+/// Tarjetas del inicio, en el orden de §4.2.
+List<Widget> _summaryCards(
+  BuildContext context, {
+  required PermissionsService permissions,
+  required MobileDashboard dashboard,
+}) {
+  final sales = dashboard.sales;
+  final inventory = dashboard.inventory;
+  final serviceOrders = dashboard.serviceOrders;
 
-  /// Nombre del usuario tal como lo entrega el servidor.
-  final String name;
+  return <Widget>[
+    if (sales != null) ...<Widget>[
+      _SalesCard(
+        sales: sales,
+        onTap: _tabAction(context, permissions, AppTab.sales),
+      ),
+      const SizedBox(height: 16),
+      _WeeklyTrendCard(sales: sales),
+      const SizedBox(height: 16),
+    ],
+    DashboardAlertsGrid(
+      dashboard: dashboard,
+      onExpiringLayaways: () => context.push(expiringLayawaysPath),
+      onUpcomingDeliveries: () => context.push(upcomingDeliveriesPath),
+      onInventory: _tabAction(context, permissions, AppTab.sell),
+    ),
+    if (inventory != null) ...<Widget>[
+      const SizedBox(height: 16),
+      DashboardInventoryCard(
+        inventory: inventory,
+        onTap: _tabAction(context, permissions, AppTab.sell),
+      ),
+    ],
+    if (serviceOrders != null) ...<Widget>[
+      const SizedBox(height: 16),
+      DashboardServiceOrdersCard(
+        summary: serviceOrders,
+        onTap: _tabAction(context, permissions, AppTab.serviceOrders),
+      ),
+    ],
+    const SizedBox(height: 16),
+    DashboardCashBar(
+      state: dashboard.cashRegister,
+      onTap: _tabAction(context, permissions, AppTab.cashRegister),
+    ),
+  ];
+}
+
+/// Acción que abre una pestaña del cascarón.
+///
+/// Si el usuario no tiene esa pestaña (permiso o módulo) se devuelve `null` y la
+/// tarjeta se dibuja sin acceso, en lugar de ofrecer algo que el servidor va a
+/// rechazar (§11.4).
+VoidCallback? _tabAction(
+  BuildContext context,
+  PermissionsService permissions,
+  AppTab tab,
+) {
+  if (!permissions.isTabVisible(tab)) {
+    return null;
+  }
+
+  return () => context.go(tab.path);
+}
+
+/// Venta de hoy con su ticket promedio y el cierre de ayer.
+class _SalesCard extends StatelessWidget {
+  const _SalesCard({required this.sales, this.onTap});
+
+  final SalesSummary sales;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
-    final trimmed = name.trim();
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SectionCard(
+        title: DashboardLabels.todaySalesTitle,
+        trailing: Text(
+          DashboardLabels.salesCount(sales.todayCount),
+          style: EzyTextStyles.secondary.copyWith(
+            color: surfaces.textSecondary,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            EzyAmount(
+              value: sales.todayTotal,
+              size: EzyAmountSize.hero,
+              withCurrency: true,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              DashboardLabels.averageTicket(Money.format(sales.averageTicket)),
+              style: EzyTextStyles.secondary.copyWith(
+                color: surfaces.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Divider(height: 1, thickness: 1, color: surfaces.border),
+            SectionRow(
+              label: DashboardLabels.yesterday,
+              value: Money.format(sales.yesterdayTotal),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tendencia semanal: 7 barras, lunes a domingo, con hoy destacado.
+class _WeeklyTrendCard extends StatelessWidget {
+  const _WeeklyTrendCard({required this.sales});
+
+  final SalesSummary sales;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final days = sales.weeklyTrend;
+
+    // El orden del payload es fijo (lunes → domingo), así que el día de hoy es
+    // el índice del reloj del teléfono.
+    final today = DateTime.now().weekday - 1;
+    var max = 0.0;
+    for (final day in days) {
+      if (day.total > max) {
+        max = day.total;
+      }
+    }
 
     return SectionCard(
-      padding: const EdgeInsets.all(24),
+      title: DashboardLabels.weeklyTrendTitle,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          // §6: una sola pastilla de marca por pantalla.
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: EzyColors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: EzyColors.primary.withValues(alpha: 0.3),
-              ),
-            ),
-            child: Text(
-              '¡Bienvenido!',
-              style: EzyTextStyles.badge.copyWith(color: EzyColors.primary),
+          Text(
+            DashboardLabels.weeklyTrendSubtitle,
+            style: EzyTextStyles.secondary.copyWith(
+              color: surfaces.textSecondary,
             ),
           ),
           const SizedBox(height: 16),
-          Text(
-            trimmed.isEmpty ? 'Hola' : 'Hola, $trimmed',
-            style: EzyTextStyles.screenTitle.copyWith(
-              fontSize: 20,
-              color: surfaces.textPrimary,
+          SizedBox(
+            height: 104,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: <Widget>[
+                for (int i = 0; i < days.length; i++)
+                  Expanded(
+                    child: _TrendBar(
+                      day: days[i],
+                      maxTotal: max,
+                      isToday: i == today,
+                    ),
+                  ),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Estamos preparando el resumen de tu negocio: ventas del día, '
-            'apartados por vencer y órdenes de servicio abiertas.',
-            style: EzyTextStyles.body.copyWith(color: surfaces.textSecondary),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Mientras tanto, muévete con el menú lateral: el botón de tres '
-            'líneas de la cabecera lleva a Vender, Órdenes, Caja y Ventas.',
-            style: EzyTextStyles.body.copyWith(color: surfaces.textSecondary),
           ),
         ],
       ),
@@ -123,67 +261,59 @@ class _WelcomeCard extends StatelessWidget {
   }
 }
 
-/// Pistas de por dónde empezar.
-///
-/// Son filas del design system (`EzyListTile` sobre un panel) y solo se pintan
-/// las que el usuario **puede** abrir: la app no ofrece accesos que el servidor
-/// vaya a rechazar (§11.4).
-class _NextStepsCard extends ConsumerWidget {
-  const _NextStepsCard();
+/// Barra de un día de la tendencia.
+class _TrendBar extends StatelessWidget {
+  const _TrendBar({
+    required this.day,
+    required this.maxTotal,
+    required this.isToday,
+  });
+
+  final WeeklyTrendDay day;
+  final double maxTotal;
+  final bool isToday;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final permissions = ref.watch(permissionsProvider);
-    final rows =
-        <({IconData icon, String title, String subtitle, AppTab tab})>[
-          if (permissions.isTabVisible(AppTab.sell))
-            (
-              icon: Icons.shopping_cart_outlined,
-              title: 'Vender',
-              subtitle: 'Cobra con el catálogo y el carrito de la sucursal.',
-              tab: AppTab.sell,
-            ),
-          if (permissions.isTabVisible(AppTab.serviceOrders))
-            (
-              icon: Icons.build_outlined,
-              title: 'Órdenes de servicio',
-              subtitle: 'Registra el equipo y sigue su estatus.',
-              tab: AppTab.serviceOrders,
-            ),
-          if (permissions.isTabVisible(AppTab.cashRegister))
-            (
-              icon: Icons.account_balance_outlined,
-              title: 'Caja',
-              subtitle: 'Abre el turno, registra movimientos y haz el corte.',
-              tab: AppTab.cashRegister,
-            ),
-          if (permissions.isTabVisible(AppTab.sales))
-            (
-              icon: Icons.receipt_long_outlined,
-              title: 'Ventas',
-              subtitle: 'Consulta el historial, los abonos y las cancelaciones.',
-              tab: AppTab.sales,
-            ),
-        ];
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final ratio = maxTotal <= 0 ? 0.0 : (day.total / maxTotal).clamp(0.0, 1.0);
 
-    if (rows.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return SectionCard(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
         children: <Widget>[
-          for (int i = 0; i < rows.length; i++)
-            EzyListTile(
-              icon: rows[i].icon,
-              title: rows[i].title,
-              subtitle: rows[i].subtitle,
-              showDivider: i < rows.length - 1,
-              onTap: () => context.go(rows[i].tab.path),
+          Container(
+            height: 6 + (72 * ratio),
+            decoration: BoxDecoration(
+              color: isToday ? EzyColors.primary : surfaces.borderStrong,
+              borderRadius: BorderRadius.circular(4),
             ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            day.day,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: EzyTextStyles.badge.copyWith(
+              letterSpacing: 0,
+              color: isToday ? EzyColors.primary : surfaces.textSecondary,
+            ),
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _LoadingState extends StatelessWidget {
+  const _LoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 64),
+      child: Center(child: CircularProgressIndicator()),
     );
   }
 }
