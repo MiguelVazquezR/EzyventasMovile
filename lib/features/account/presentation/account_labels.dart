@@ -148,6 +148,10 @@ class AccountMoreLabels {
 
   // Suscripción (§14.4)
   static const String subscriptionTitle = 'Mi suscripción';
+  static const String subscriptionSubtitle =
+      'Administra tu plan comercial, límites y datos fiscales';
+  static const String subscriptionPlanStatus = 'Estado del plan';
+  static const String subscriptionBusiness = 'Negocio';
   static const String subscriptionGeneralData = 'Datos generales';
   static const String subscriptionCommercialName = 'Nombre comercial';
   static const String subscriptionBusinessName = 'Razón social';
@@ -160,22 +164,35 @@ class AccountMoreLabels {
   static const String subscriptionUploadDocument = 'Subir documento';
   static const String subscriptionNoDocument =
       'Aún no has subido tu constancia de situación fiscal.';
-  static const String subscriptionDocumentImageOnly =
-      'La constancia se sube como imagen (cámara o galería). Para enviar el PDF, '
-      'usa la versión web.';
+  static const String subscriptionDocumentNote =
+      'Solo imágenes o PDF (máx. 2 MB).';
   static const String subscriptionRequestInvoice = 'Solicitar factura';
   static const String subscriptionInvoiceUnavailable =
-      'El historial no incluye el identificador del pago: solicita la factura '
-      'desde la versión web.';
+      'La factura ya no está disponible para este pago.';
   static const String subscriptionRenew = 'Renovar o mejorar plan';
   static const String subscriptionRenewMessage =
-      'El pago se completa en la versión web; al volver, actualiza esta '
-      'pantalla.';
+      'La renovación se completa de forma segura en la web.';
   static const String subscriptionRefresh = 'Actualizar';
   static const String subscriptionOwnerOnly =
       'Tu usuario no tiene permiso para acceder a esta sección.';
-  static const String subscriptionModules = 'Módulos';
+  static const String subscriptionModules = 'Módulos del sistema';
   static const String subscriptionLimits = 'Límites del plan';
   static const String subscriptionNoPayments =
-      'Todavía no hay pagos registrados.';
+      'Aún no hay pagos registrados.';
+
+  // Rediseño de suscripción: leyendas, RFC, estados de documento y límites.
+  static const String subscriptionRequiredLegend = '* Obligatorio';
+  static const String subscriptionRequiredCommercialName =
+      'Escribe el nombre comercial.';
+  static const String subscriptionTaxId = 'RFC';
+  static const String subscriptionUsageServerTitle =
+      'Uso acumulado en el servidor';
+  static const String subscriptionLimitAtTop = '(Al tope)';
+  static const String subscriptionViewDocument = 'Ver documento';
+  static const String subscriptionDocumentLoaded = 'Cargada';
+  static const String subscriptionDocumentPending = 'Pendiente';
+
+  /// `9 módulos activos` del plan contratado (dato del servidor).
+  static String subscriptionActiveModules(int count) =>
+      '$count ${count == 1 ? 'módulo activo' : 'módulos activos'}';
 }

@@ -41,6 +41,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   /// Id de la suscripción con la que se rellenaron los campos.
   int? _prefilledSubscriptionId;
 
+  /// El usuario ya tocó el nombre comercial: a partir de ahí se valida en línea.
+  bool _commercialNameEdited = false;
+
   @override
   void dispose() {
     _commercialNameController.dispose();
@@ -50,6 +53,10 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     super.dispose();
   }
 
+  /// El nombre comercial es obligatorio (`*`): sin texto no se guarda.
+  bool get _hasCommercialName =>
+      _commercialNameController.text.trim().isNotEmpty;
+
   @override
   Widget build(BuildContext context) {
     final subscription = ref.watch(subscriptionProvider);
@@ -57,9 +64,19 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
     return AccountScaffold(
       title: AccountMoreLabels.subscriptionTitle,
+      subtitle: AccountMoreLabels.subscriptionSubtitle,
+      compact: true,
       onRefresh: _reload,
       body: subscription.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          children: const <Widget>[
+            Padding(
+              padding: EdgeInsets.only(top: 120),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ],
+        ),
         error: (error, stackTrace) => ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
           children: <Widget>[
@@ -101,7 +118,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     final controller = ref.read(subscriptionControllerProvider.notifier);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: <Widget>[
         if (state.errorMessage != null) ...<Widget>[
           ErrorNotice(
@@ -134,63 +151,81 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     );
   }
 
-  /// Estado de la suscripción + banner del servidor + renovar plan.
+  /// Estado de la suscripción (pastilla con el texto del servidor) + renovación.
   Widget _statusCard(SubscriptionOverview overview) {
     final surfaces = context.surfaces;
     final severity = _severity(overview);
     final status = overview.statusData;
-    final label = status.label.isEmpty ? 'Suscripción' : status.label;
+    final label = status.label.isEmpty
+        ? AccountMoreLabels.subscriptionTitle
+        : status.label;
+    final activeModules = overview.plan.modules
+        .where((module) => module.isActive)
+        .length;
 
     return SectionCard(
-      title: AccountMoreLabels.subscriptionTitle,
+      title: AccountMoreLabels.subscriptionPlanStatus,
+      trailing: _StatusPill(label: label, severity: severity),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
+          SectionCard(
+            inner: true,
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Text(
+                      AccountMoreLabels.subscriptionBusiness.toUpperCase(),
+                      style: EzyTextStyles.microLabel.copyWith(
+                        color: surfaces.textMuted,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: surfaces.panel,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: surfaces.border),
+                      ),
+                      child: Text(
+                        AccountMoreLabels.subscriptionActiveModules(
+                          activeModules,
+                        ),
+                        style: EzyTextStyles.badge.copyWith(
+                          color: surfaces.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                decoration: BoxDecoration(
-                  color: StatusPalette.soft(severity),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: StatusPalette.border(severity)),
-                ),
-                child: Text(
-                  label.toUpperCase(),
-                  style: EzyTextStyles.badge.copyWith(
-                    color: StatusPalette.text(context, severity),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
+                const SizedBox(height: 8),
+                Text(
                   overview.subscription.commercialName,
                   style: EzyTextStyles.bodyStrong.copyWith(
+                    fontWeight: FontWeight.w800,
                     color: surfaces.textPrimary,
                   ),
                 ),
-              ),
-            ],
-          ),
-          if (status.expiresLabel != null) ...<Widget>[
-            const SizedBox(height: 12),
-            Text(
-              status.expiresLabel!,
-              style: EzyTextStyles.body.copyWith(
-                color: surfaces.textSecondary,
-              ),
+                if (status.expiresAt != null) ...<Widget>[
+                  const SizedBox(height: 6),
+                  _ExpiryRow(
+                    label: status.expiresLabel ?? '',
+                    highlight: status.isWarning,
+                  ),
+                ],
+              ],
             ),
-          ],
+          ),
           if (status.warning != null) ...<Widget>[
             const SizedBox(height: 12),
-            NoticeBanner(
-              message: status.warning!,
-              tone: EzySeverity.warn,
-            ),
+            NoticeBanner(message: status.warning!, tone: EzySeverity.warn),
           ],
           if (overview.pendingPayment != null) ...<Widget>[
             const SizedBox(height: 12),
@@ -215,18 +250,18 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           const SizedBox(height: 18),
           Text(
             AccountMoreLabels.subscriptionRenewMessage,
+            textAlign: TextAlign.center,
             style: EzyTextStyles.caption.copyWith(
-              color: surfaces.textSecondary,
+              fontSize: 11,
+              color: surfaces.textMuted,
             ),
           ),
           const SizedBox(height: 10),
-          EzyButton(
+          _Ezy3dPillButton(
             label: AccountMoreLabels.subscriptionRenew,
             icon: Icons.open_in_new,
-            onPressed: () => ExternalLinks.open(
-              context,
-              AppConfig.subscriptionManageUrl,
-            ),
+            onPressed: () =>
+                ExternalLinks.open(context, AppConfig.subscriptionManageUrl),
           ),
         ],
       ),
@@ -239,9 +274,20 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     SubscriptionState state,
   ) {
     final surfaces = context.surfaces;
+    final serverError = _fieldError(state.errorFields, 'commercial_name');
+    final commercialError = !_hasCommercialName && _commercialNameEdited
+        ? AccountMoreLabels.subscriptionRequiredCommercialName
+        : serverError;
 
     return SectionCard(
       title: AccountMoreLabels.subscriptionGeneralData,
+      trailing: Text(
+        AccountMoreLabels.subscriptionRequiredLegend,
+        style: EzyTextStyles.caption.copyWith(
+          fontSize: 11,
+          color: EzyColors.primary300,
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -249,7 +295,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             label: AccountMoreLabels.subscriptionCommercialName,
             controller: _commercialNameController,
             isRequired: true,
-            errorText: _fieldError(state.errorFields, 'commercial_name'),
+            errorText: commercialError,
+            requiredMarkColor: EzyColors.danger,
+            onChanged: (_) => setState(() => _commercialNameEdited = true),
           ),
           const SizedBox(height: 16),
           EzyTextField(
@@ -266,31 +314,60 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           EzyTextField(
             label: AccountMoreLabels.subscriptionAddress,
             controller: _addressController,
+            keyboardType: TextInputType.streetAddress,
             maxLines: 2,
           ),
           if (overview.subscription.taxId != null &&
               overview.subscription.taxId!.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 12),
-            Text(
-              'RFC: ${overview.subscription.taxId}',
-              style: EzyTextStyles.caption.copyWith(
-                color: surfaces.textSecondary,
+            const SizedBox(height: 16),
+            SectionCard(
+              inner: true,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+              child: Row(
+                children: <Widget>[
+                  Text(
+                    AccountMoreLabels.subscriptionTaxId.toUpperCase(),
+                    style: EzyTextStyles.microLabel.copyWith(
+                      color: surfaces.textMuted,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      overview.subscription.taxId!,
+                      textAlign: TextAlign.right,
+                      style: EzyTextStyles.bodyStrong.copyWith(
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: surfaces.textPrimary,
+                        fontFeatures: const <FontFeature>[
+                          FontFeature.tabularFigures(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
           const SizedBox(height: 20),
-          EzyButton(
+          _Ezy3dPillButton(
             label: AccountLabels.saveChanges,
             icon: Icons.save_outlined,
             isLoading: state.isSubmitting,
-            onPressed: () => ref
-                .read(subscriptionControllerProvider.notifier)
-                .saveGeneralData(
-                  commercialName: _commercialNameController.text,
-                  businessName: _businessNameController.text,
-                  contactPhone: _contactPhoneController.text,
-                  address: _addressController.text,
-                ),
+            onPressed: _hasCommercialName
+                ? () => ref
+                      .read(subscriptionControllerProvider.notifier)
+                      .saveGeneralData(
+                        commercialName: _commercialNameController.text,
+                        businessName: _businessNameController.text,
+                        contactPhone: _contactPhoneController.text,
+                        address: _addressController.text,
+                      )
+                : null,
           ),
         ],
       ),
@@ -300,6 +377,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   /// Plan contratado: módulos y límites con su consumo.
   Widget _planCard(SubscriptionOverview overview) {
     final surfaces = context.surfaces;
+    final modules = overview.plan.modules;
+    final limits = overview.plan.limits;
 
     return SectionCard(
       title: AccountMoreLabels.subscriptionPlan,
@@ -309,52 +388,38 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           Text(
             AccountMoreLabels.subscriptionModules.toUpperCase(),
             style: EzyTextStyles.microLabel.copyWith(
+              fontWeight: FontWeight.w800,
               color: surfaces.textMuted,
             ),
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              for (final module in overview.plan.modules)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: module.isActive
-                        ? StatusPalette.soft(EzySeverity.success)
-                        : surfaces.panelInner,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: module.isActive
-                          ? StatusPalette.border(EzySeverity.success)
-                          : surfaces.border,
-                    ),
-                  ),
-                  child: Text(
-                    module.name,
-                    style: EzyTextStyles.caption.copyWith(
-                      color: module.isActive
-                          ? StatusPalette.text(context, EzySeverity.success)
-                          : surfaces.textSecondary,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          if (overview.plan.limits.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 18),
+          if (modules.isEmpty)
+            Text(
+              AccountLabels.modulesEmpty,
+              style: EzyTextStyles.caption.copyWith(
+                color: surfaces.textSecondary,
+              ),
+            )
+          else
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: <Widget>[
+                for (final module in modules) _ModulePill(module: module),
+              ],
+            ),
+          if (limits.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 16),
+            Divider(height: 1, thickness: 1, color: surfaces.border),
+            const SizedBox(height: 16),
             Text(
               AccountMoreLabels.subscriptionLimits.toUpperCase(),
               style: EzyTextStyles.microLabel.copyWith(
+                fontWeight: FontWeight.w800,
                 color: surfaces.textMuted,
               ),
             ),
-            for (final limit in overview.plan.limits)
-              _LimitRow(limit: limit),
+            for (final limit in limits) _LimitRow(limit: limit),
           ],
         ],
       ),
@@ -363,13 +428,32 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
   /// Uso actual de la suscripción (solo lectura, números del servidor).
   Widget _usageCard(SubscriptionOverview overview) {
+    final surfaces = context.surfaces;
+
     return SectionCard(
       title: AccountMoreLabels.subscriptionUsage,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          for (final row in overview.usage.rows)
-            SectionRow(label: row.$1, value: '${row.$2}'),
+          Text(
+            AccountMoreLabels.subscriptionUsageServerTitle.toUpperCase(),
+            style: EzyTextStyles.microLabel.copyWith(
+              fontWeight: FontWeight.w800,
+              color: surfaces.textMuted,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SectionCard(
+            inner: true,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                for (final row in overview.usage.rows)
+                  SectionRow(label: row.$1, value: '${row.$2}'),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -378,12 +462,15 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   /// Historial de versiones del plan con su pago.
   Widget _historyCard(SubscriptionOverview overview, SubscriptionState state) {
     final surfaces = context.surfaces;
+    final controller = ref.read(subscriptionControllerProvider.notifier);
 
     return SectionCard(
       title: AccountMoreLabels.subscriptionHistory,
+      trailing: _CountBadge(count: overview.history.length),
       child: overview.history.isEmpty
           ? Text(
               AccountMoreLabels.subscriptionNoPayments,
+              textAlign: TextAlign.center,
               style: EzyTextStyles.caption.copyWith(
                 color: surfaces.textSecondary,
               ),
@@ -393,68 +480,90 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
               children: <Widget>[
                 for (final entry in overview.history)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Row(
-                          children: <Widget>[
-                            Expanded(
-                              child: Text(
-                                'Versión ${entry.version} · '
-                                '${AppFormatters.date(entry.createdAt)}',
-                                style: EzyTextStyles.bodyStrong.copyWith(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: SectionCard(
+                      inner: true,
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  'Versión ${entry.version} · '
+                                  '${AppFormatters.date(entry.createdAt)}',
+                                  style: EzyTextStyles.bodyStrong.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: surfaces.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                entry.amountLabel,
+                                style: EzyTextStyles.moneyList.copyWith(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
                                   color: surfaces.textPrimary,
                                 ),
                               ),
-                            ),
-                            Text(
-                              entry.amountLabel,
-                              style: EzyTextStyles.moneyList.copyWith(
-                                color: surfaces.textPrimary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: <Widget>[
-                            if (entry.payment != null)
-                              Text(
-                                '${entry.payment!.status.label}'
-                                '${entry.payment!.folio == null ? '' : ' · ${entry.payment!.folio}'}',
-                                style: EzyTextStyles.caption.copyWith(
-                                  color: surfaces.textSecondary,
+                            ],
+                          ),
+                          if (entry.payment != null) ...<Widget>[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: <Widget>[
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: StatusPalette.text(
+                                      context,
+                                      _paymentSeverity(entry.payment!.status),
+                                    ),
+                                    shape: BoxShape.circle,
+                                  ),
                                 ),
-                              ),
-                            const Spacer(),
-                            if (entry.payment?.isInvoiceRequestable ?? false)
-                              EzyButton(
-                                label:
-                                    AccountMoreLabels.subscriptionRequestInvoice,
-                                variant: EzyButtonVariant.text,
-                                expand: false,
-                                isLoading: state.isSubmitting,
-                                onPressed: () => ref
-                                    .read(
-                                      subscriptionControllerProvider.notifier,
-                                    )
-                                    .requestInvoice(entry.payment!.id!),
-                              ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    '${entry.payment!.status.label}'
+                                    '${entry.payment!.folio == null ? '' : ' · ${entry.payment!.folio}'}',
+                                    style: EzyTextStyles.caption.copyWith(
+                                      color: surfaces.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
-                        ),
-                      ],
-                    ),
-                  ),
-                if (overview.history.any(
-                  (entry) =>
-                      entry.canRequestInvoice &&
-                      !(entry.payment?.isInvoiceRequestable ?? false),
-                ))
-                  Text(
-                    AccountMoreLabels.subscriptionInvoiceUnavailable,
-                    style: EzyTextStyles.caption.copyWith(
-                      color: surfaces.textMuted,
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: entry.payment?.isInvoiceRequestable ?? false
+                                ? EzyButton(
+                                    label: AccountMoreLabels
+                                        .subscriptionRequestInvoice,
+                                    variant: EzyButtonVariant.text,
+                                    expand: false,
+                                    isLoading: state.isSubmitting,
+                                    onPressed: () => controller.requestInvoice(
+                                      entry.payment!.id!,
+                                    ),
+                                  )
+                                : Text(
+                                    AccountMoreLabels
+                                        .subscriptionInvoiceUnavailable,
+                                    style: EzyTextStyles.caption.copyWith(
+                                      fontSize: 11,
+                                      fontStyle: FontStyle.italic,
+                                      color: surfaces.textMuted,
+                                    ),
+                                  ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
               ],
@@ -466,43 +575,107 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   Widget _documentsCard(SubscriptionOverview overview, SubscriptionState state) {
     final surfaces = context.surfaces;
     final documentUrl = overview.fiscalDocumentUrl;
+    final hasDocument = overview.hasFiscalDocument;
+    final fileName = hasDocument ? _documentFileName(documentUrl!) : null;
 
     return SectionCard(
       title: AccountMoreLabels.subscriptionDocuments,
+      trailing: _StatusChip(
+        label: hasDocument
+            ? AccountMoreLabels.subscriptionDocumentLoaded
+            : AccountMoreLabels.subscriptionDocumentPending,
+        severity: hasDocument ? EzySeverity.success : EzySeverity.warn,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Text(
-            overview.hasFiscalDocument
-                ? 'Tu constancia está cargada.'
-                : AccountMoreLabels.subscriptionNoDocument,
-            style: EzyTextStyles.body.copyWith(
-              color: surfaces.textBody,
+          SectionCard(
+            inner: true,
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(
+                  hasDocument
+                      ? Icons.verified_outlined
+                      : Icons.description_outlined,
+                  size: 20,
+                  color: hasDocument
+                      ? StatusPalette.text(context, EzySeverity.success)
+                      : surfaces.textMuted,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        hasDocument
+                            ? AccountMoreLabels.subscriptionDocumentLoaded
+                            : AccountMoreLabels.subscriptionNoDocument,
+                        style: EzyTextStyles.bodyStrong.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: surfaces.textPrimary,
+                        ),
+                      ),
+                      if (fileName != null) ...<Widget>[
+                        const SizedBox(height: 2),
+                        Text(
+                          fileName,
+                          style: EzyTextStyles.caption.copyWith(
+                            color: surfaces.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          if (documentUrl != null) ...<Widget>[
-            const SizedBox(height: 10),
-            EzyButton(
-              label: 'Ver documento',
-              icon: Icons.open_in_new,
-              variant: EzyButtonVariant.outline,
-              onPressed: () => ExternalLinks.open(context, documentUrl),
-            ),
-          ],
           const SizedBox(height: 14),
+          if (documentUrl != null)
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: EzyButton(
+                    label: AccountMoreLabels.subscriptionViewDocument,
+                    icon: Icons.open_in_new,
+                    variant: EzyButtonVariant.outline,
+                    height: 40,
+                    onPressed: () => ExternalLinks.open(context, documentUrl),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: EzyButton(
+                    label: AccountMoreLabels.subscriptionUploadDocument,
+                    icon: Icons.upload_file_outlined,
+                    variant: EzyButtonVariant.outline,
+                    height: 40,
+                    isLoading: state.isSubmitting,
+                    onPressed: () => _uploadDocument(),
+                  ),
+                ),
+              ],
+            )
+          else
+            EzyButton(
+              label: AccountMoreLabels.subscriptionUploadDocument,
+              icon: Icons.upload_file_outlined,
+              variant: EzyButtonVariant.outline,
+              height: 40,
+              isLoading: state.isSubmitting,
+              onPressed: () => _uploadDocument(),
+            ),
+          const SizedBox(height: 12),
           Text(
-            AccountMoreLabels.subscriptionDocumentImageOnly,
+            AccountMoreLabels.subscriptionDocumentNote,
+            textAlign: TextAlign.center,
             style: EzyTextStyles.caption.copyWith(
+              fontSize: 10,
               color: surfaces.textMuted,
             ),
-          ),
-          const SizedBox(height: 14),
-          EzyButton(
-            label: AccountMoreLabels.subscriptionUploadDocument,
-            icon: Icons.upload_file_outlined,
-            variant: EzyButtonVariant.outline,
-            isLoading: state.isSubmitting,
-            onPressed: () => _uploadDocument(),
           ),
         ],
       ),
@@ -560,9 +733,189 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
     return EzySeverity.success;
   }
+
+  /// Severidad del pago para el punto indicador del historial.
+  EzySeverity _paymentSeverity(SubscriptionPaymentStatus status) =>
+      switch (status) {
+        SubscriptionPaymentStatus.approved => EzySeverity.success,
+        SubscriptionPaymentStatus.pending => EzySeverity.warn,
+        SubscriptionPaymentStatus.rejected => EzySeverity.danger,
+        SubscriptionPaymentStatus.unknown => EzySeverity.neutral,
+      };
+
+  /// Último segmento de la URL del documento, si el servidor la expone.
+  String? _documentFileName(String url) {
+    final segments = Uri.tryParse(url)?.pathSegments;
+
+    if (segments == null || segments.isEmpty) {
+      return null;
+    }
+
+    final name = segments.last;
+
+    return name.isEmpty ? null : name;
+  }
 }
 
-/// Fila de un límite del plan con su barra de consumo.
+/// Línea de vencimiento con icono de calendario y tono ámbar si está por vencer.
+class _ExpiryRow extends StatelessWidget {
+  const _ExpiryRow({required this.label, required this.highlight});
+
+  final String label;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final color = highlight
+        ? StatusPalette.text(context, EzySeverity.warn)
+        : surfaces.textSecondary;
+
+    return Row(
+      children: <Widget>[
+        Icon(Icons.calendar_today_outlined, size: 14, color: color),
+        const SizedBox(width: 6),
+        Expanded(child: Text(label, style: EzyTextStyles.caption.copyWith(color: color))),
+      ],
+    );
+  }
+}
+
+/// Pastilla de estado de la suscripción con el texto del servidor.
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label, required this.severity});
+
+  final String label;
+  final EzySeverity severity;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = StatusPalette.text(context, severity);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: StatusPalette.soft(severity),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: StatusPalette.border(severity)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label.toUpperCase(),
+            style: EzyTextStyles.badge.copyWith(color: color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Chip de estado de una card (documento cargado / pendiente).
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label, required this.severity});
+
+  final String label;
+  final EzySeverity severity;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = StatusPalette.text(context, severity);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: StatusPalette.soft(severity),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: StatusPalette.border(severity)),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: EzyTextStyles.badge.copyWith(color: color),
+      ),
+    );
+  }
+}
+
+/// Contador numérico de una card (nº de versiones del historial).
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: surfaces.panelInner,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: surfaces.border),
+      ),
+      child: Text(
+        '$count',
+        style: EzyTextStyles.badge.copyWith(color: surfaces.textSecondary),
+      ),
+    );
+  }
+}
+
+/// Pastilla de un módulo del plan: verde con palomita si está activo.
+class _ModulePill extends StatelessWidget {
+  const _ModulePill({required this.module});
+
+  final SubscriptionModule module;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final isActive = module.isActive;
+    final color = isActive
+        ? StatusPalette.text(context, EzySeverity.success)
+        : surfaces.textMuted;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: isActive
+            ? StatusPalette.soft(EzySeverity.success)
+            : surfaces.panelInner,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: isActive
+              ? StatusPalette.border(EzySeverity.success)
+              : surfaces.border,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (isActive) ...<Widget>[
+            Icon(Icons.check, size: 12, color: color),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            module.name,
+            style: EzyTextStyles.caption.copyWith(
+              color: isActive ? color : surfaces.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fila de un límite del plan con su barra de consumo (4 px).
 class _LimitRow extends StatelessWidget {
   const _LimitRow({required this.limit});
 
@@ -571,6 +924,8 @@ class _LimitRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
+    final atTop = limit.isAtLimit || limit.usageRatio >= 0.95;
+    final value = limit.usageLabel ?? '${limit.limit}';
 
     return Padding(
       padding: const EdgeInsets.only(top: 12),
@@ -587,10 +942,14 @@ class _LimitRow extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(width: 12),
               Text(
-                limit.usageLabel ?? '${limit.limit}',
-                style: EzyTextStyles.caption.copyWith(
-                  color: limit.isAtLimit
+                atTop
+                    ? '$value ${AccountMoreLabels.subscriptionLimitAtTop}'
+                    : value,
+                style: EzyTextStyles.moneyList.copyWith(
+                  fontSize: 12,
+                  color: atTop
                       ? StatusPalette.text(context, EzySeverity.warn)
                       : surfaces.textSecondary,
                 ),
@@ -605,12 +964,126 @@ class _LimitRow extends StatelessWidget {
                 value: limit.usageRatio,
                 minHeight: 4,
                 backgroundColor: surfaces.panelInner,
-                color: limit.isAtLimit ? EzyColors.warning : EzyColors.primary,
+                color: atTop ? EzyColors.warning : EzyColors.primary,
               ),
             ),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// CTA 3D táctil en pastilla de 48 px: degradado vertical, bisel físico y base
+/// sólida pegada al borde inferior. Al pulsarlo se hunde 4 px.
+///
+/// Se pinta a mano (no `FilledButton`) porque el diseño pide el bisel de tres
+/// caras y una base sólida que un `ButtonStyle` no dibuja; el radio es la
+/// pastilla completa (`999`) que la pieza compartida del cobro no ofrece.
+class _Ezy3dPillButton extends StatefulWidget {
+  const _Ezy3dPillButton({
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.isLoading = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final bool isLoading;
+
+  static const double height = 48;
+
+  static const LinearGradient _gradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: <Color>[Color(0xFFFB9E2E), EzyColors.primary, Color(0xFFE07804)],
+    stops: <double>[0.0, 0.45, 1.0],
+  );
+
+  static const List<BoxShadow> _relief = <BoxShadow>[
+    BoxShadow(color: Color(0xFF9E4600), offset: Offset(0, 4)),
+  ];
+
+  @override
+  State<_Ezy3dPillButton> createState() => _Ezy3dPillButtonState();
+}
+
+class _Ezy3dPillButtonState extends State<_Ezy3dPillButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed != value && mounted) {
+      setState(() => _pressed = value);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final enabled = widget.onPressed != null && !widget.isLoading;
+    final branded = enabled || widget.isLoading;
+
+    return GestureDetector(
+      onTapDown: enabled ? (details) => _setPressed(true) : null,
+      onTapUp: enabled ? (details) => _setPressed(false) : null,
+      onTapCancel: enabled ? () => _setPressed(false) : null,
+      onTap: enabled ? widget.onPressed : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 90),
+        curve: Curves.easeOut,
+        height: _Ezy3dPillButton.height,
+        transform: Matrix4.translationValues(0, _pressed ? 4 : 0, 0),
+        decoration: BoxDecoration(
+          gradient: branded ? _Ezy3dPillButton._gradient : null,
+          color: branded ? null : surfaces.panelInner,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: branded ? const Color(0xFFFFBA66) : surfaces.border,
+          ),
+          boxShadow: branded && !_pressed ? _Ezy3dPillButton._relief : null,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: Center(child: _content(surfaces, branded)),
+        ),
+      ),
+    );
+  }
+
+  Widget _content(EzySurfaces surfaces, bool branded) {
+    if (widget.isLoading) {
+      return const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2.2,
+          color: EzyColors.white,
+        ),
+      );
+    }
+
+    final color = branded ? EzyColors.white : surfaces.textMuted;
+    final icon = widget.icon;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (icon != null) ...<Widget>[
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+        ],
+        Text(
+          widget.label.toUpperCase(),
+          style: EzyTextStyles.button.copyWith(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.5,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -625,3 +1098,12 @@ String? _fieldError(Map<String, List<String>> errors, String field) {
 
   return messages.first;
 }
+
+
+
+
+
+
+
+
+
