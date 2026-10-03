@@ -261,11 +261,19 @@ class CashRegisterScreen extends ConsumerWidget {
       const SizedBox(height: 16),
       _CloseShiftCta(
         isLoading: state.isSubmitting,
-        onPressed: () => showCloseShiftSheet(
-          ref.context,
-          sessionId: session.id,
-          usersCount: session.users.length,
-        ),
+        onPressed: () async {
+          // La hoja devuelve `true` cuando el cierre viajó al servidor y el
+          // cajero pulsó `Listo`: se refresca el turno para soltar la pantalla
+          // en cuanto el estado del servidor lo confirme.
+          final closed = await showCloseShiftSheet(
+            ref.context,
+            sessionId: session.id,
+            usersCount: session.users.length,
+          );
+          if (closed == true) {
+            controller.refresh();
+          }
+        },
       ),
       const SizedBox(height: 10),
       EzyButton(
