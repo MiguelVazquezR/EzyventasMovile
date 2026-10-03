@@ -57,6 +57,9 @@ class ServiceOrderActionBar extends ConsumerWidget {
           EzyPrimary3dButton(
             label: 'Cobrar ahora',
             icon: Icons.payments_outlined,
+            // El CTA de la hoja va a 48 px (la píldora del design system): el
+            // detalle ya trae el saldo y el botón no necesita más alto.
+            height: 48,
             onPressed: session == null
                 ? null
                 : () =>

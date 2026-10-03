@@ -51,29 +51,13 @@ class ServiceOrderAmountsCard extends StatelessWidget {
             emphasized: true,
           ),
           SectionRow(label: 'Pagado', value: Money.format(detail.totalPaid)),
-          if (pending > 0.01)
-            SectionRow(
-              label: 'Saldo pendiente',
-              value: Money.format(pending),
-              emphasized: true,
-              valueStyle: EzyTextStyles.moneyMedium.copyWith(
-                color: StatusPalette.text(context, EzySeverity.warn),
-              ),
-            ),
+          if (pending > 0.01) ...<Widget>[
+            const SizedBox(height: 10),
+            _BalanceBox(amount: pending),
+          ],
           if (canSeeFinancialInfo && detail.hasTechnician) ...<Widget>[
-            const Divider(height: 20),
-            SectionRow(
-              label: 'Refacciones',
-              value: Money.format(detail.partsCost),
-            ),
-            SectionRow(
-              label: 'Comisión del técnico',
-              value: Money.format(detail.technicianCommission),
-            ),
-            SectionRow(
-              label: 'Utilidad neta',
-              value: Money.format(detail.netProfit),
-            ),
+            const SizedBox(height: 12),
+            _ProfitabilityPanel(detail: detail),
           ],
         ],
       ),
@@ -136,6 +120,94 @@ class ServiceOrderPaymentsCard extends StatelessWidget {
               const Divider(height: 24),
               _PaymentRow(payment: payment),
             ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Caja del saldo pendiente: el dato que el mostrador necesita sin buscarlo
+/// entre las filas del resumen.
+class _BalanceBox extends StatelessWidget {
+  const _BalanceBox({required this.amount});
+
+  final double amount;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = StatusPalette.text(context, EzySeverity.warn);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: StatusPalette.soft(EzySeverity.warn),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: StatusPalette.border(EzySeverity.warn)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.account_balance_wallet_outlined, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Saldo pendiente',
+              style: EzyTextStyles.bodyStrong.copyWith(color: color),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            Money.format(amount),
+            style: EzyTextStyles.moneyMedium.copyWith(color: color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Rentabilidad interna de la orden (§8.5): costo de refacciones, comisión del
+/// técnico y utilidad neta. Va en un panel hundido para que estos montos no se
+/// confundan con lo que paga el cliente, y solo se pinta con
+/// `services.orders.see_financial_info`.
+class _ProfitabilityPanel extends StatelessWidget {
+  const _ProfitabilityPanel({required this.detail});
+
+  final ServiceOrderDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+    final profit = detail.netProfit;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
+      decoration: BoxDecoration(
+        color: surfaces.panelInner,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: surfaces.border),
+      ),
+      child: Column(
+        children: <Widget>[
+          SectionRow(
+            label: 'Refacciones',
+            value: Money.format(detail.partsCost),
+          ),
+          SectionRow(
+            label: 'Comisión del técnico',
+            value: Money.format(detail.technicianCommission),
+          ),
+          SectionRow(
+            label: 'Utilidad neta',
+            value: Money.format(profit),
+            valueStyle: EzyTextStyles.moneyMedium.copyWith(
+              color: StatusPalette.text(
+                context,
+                profit < 0 ? EzySeverity.danger : EzySeverity.success,
+              ),
+            ),
+          ),
         ],
       ),
     );

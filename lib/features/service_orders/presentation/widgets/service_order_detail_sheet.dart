@@ -240,6 +240,8 @@ class _SheetHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         const SizedBox(height: 8),
+        const _OrdenEyebrow(),
+        const SizedBox(height: 6),
         EzySheetHeader(
           title: detail.folio,
           subtitle: detail.itemDescription,
@@ -265,6 +267,35 @@ class _SheetHeader extends StatelessWidget {
         StatusBadge.serviceOrder(
           detail.status,
           showDot: detail.status == 'en_progreso',
+        ),
+      ],
+    );
+  }
+}
+
+/// Micro-etiqueta de la hoja: recuerda que esto es una orden de servicio y no
+/// una venta (las dos hojas se parecen mucho a primera vista).
+class _OrdenEyebrow extends StatelessWidget {
+  const _OrdenEyebrow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Container(
+          width: 6,
+          height: 6,
+          decoration: const BoxDecoration(
+            color: EzyColors.primary,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          'ORDEN DE SERVICIO',
+          style: EzyTextStyles.microLabel.copyWith(
+            color: context.surfaces.textSecondary,
+          ),
         ),
       ],
     );
