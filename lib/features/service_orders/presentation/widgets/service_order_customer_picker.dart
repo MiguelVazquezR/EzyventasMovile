@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/theme/status_palette.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_button.dart';
@@ -12,10 +10,9 @@ import '../../../../core/widgets/ezy_search_field.dart';
 import '../../../../core/widgets/ezy_selectable_tile.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/money_field.dart';
-import '../../../../core/widgets/notice_banner.dart';
-import '../../../../core/widgets/section_card.dart';
 import '../../../customers/application/customers_providers.dart';
 import '../../../customers/data/models/customer.dart';
+import 'service_order_form_controls.dart';
 
 /// Cliente elegido para la orden.
 ///
@@ -42,6 +39,10 @@ class ServiceOrderCustomerSelection {
 }
 
 /// Selector de cliente de la orden (`GET /customers?search=`).
+///
+/// La hoja sigue el prototipo validado "Tesla UI / EzyColors": alto del 90 %,
+/// buscador del design system con *debounce*, resultados en una card compacta y
+/// la captura manual al pie con el alta al vuelo en verde.
 Future<ServiceOrderCustomerSelection?> showServiceOrderCustomerPicker(
   BuildContext context, {
   String initialName = '',
@@ -119,8 +120,8 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
           EzySheetHeader(
             title: 'Cliente de la orden',
             subtitle:
-                'Puedes elegir un cliente registrado o capturar los datos a '
-                'mano.',
+                'Puedes elegir un cliente registrado o capturar los datos '
+                'a mano.',
             trailing: EzyIconButton(
               icon: Icons.close,
               tooltip: 'Cerrar',
@@ -134,37 +135,42 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
             onChanged: (value) => setState(() => _search = value.trim()),
           ),
           const SizedBox(height: 12),
-          customers.when(
-            loading: () => const Center(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(strokeWidth: 2),
+          SoCard(
+            title: 'Clientes registrados',
+            child: customers.when(
+              loading: () => const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
               ),
-            ),
-            error: (error, stackTrace) => const NoticeBanner(
-              message: 'No se pudieron cargar los clientes.',
-            ),
-            data: (page) => page.items.isEmpty
-                ? const NoticeBanner(
-                    message: 'No hay clientes que coincidan con la búsqueda.',
-                    tone: EzySeverity.info,
-                  )
-                : Column(
-                    children: <Widget>[
-                      for (final customer in page.items)
-                        _CustomerTile(
-                          customer: customer,
-                          onTap: () => Navigator.of(context).pop(
-                            ServiceOrderCustomerSelection(
-                              customerId: customer.id,
-                              name: customer.displayName,
-                              email: customer.email,
-                              phone: customer.phone,
-                            ),
+              error: (error, stackTrace) => const SoNote(
+                text: 'No se pudieron cargar los clientes.',
+                icon: Icons.error_outline,
+                color: SoColors.danger,
+              ),
+              data: (page) => page.items.isEmpty
+                  ? const SoNote(
+                      text: 'No hay clientes que coincidan con la búsqueda.',
+                      icon: Icons.person_search_outlined,
+                      color: SoColors.info,
+                    )
+                  : Column(
+                      children: <Widget>[
+                        for (
+                          var index = 0;
+                          index < page.items.length;
+                          index++
+                        ) ...<Widget>[
+                          if (index > 0) const SizedBox(height: 8),
+                          _CustomerTile(
+                            customer: page.items[index],
+                            onTap: () => _choose(page.items[index]),
                           ),
-                        ),
-                    ],
-                  ),
+                        ],
+                      ],
+                    ),
+            ),
           ),
           const SizedBox(height: 12),
           _ManualCustomerCard(
@@ -178,19 +184,34 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
             // El nombre habilita «Usar estos datos»: sin reconstruir la tarjeta
             // el botón seguiría deshabilitado después de escribirlo.
             onNameChanged: (value) => setState(() {}),
-            onApply: _nameController.text.trim().isEmpty
-                ? null
-                : () => Navigator.of(context).pop(
-                    ServiceOrderCustomerSelection(
-                      name: _nameController.text.trim(),
-                      email: _emailController.text.trim(),
-                      phone: _phoneController.text.trim(),
-                      createCustomer: _createCustomer,
-                      creditLimit: _creditLimit,
-                    ),
-                  ),
+            onApply: _nameController.text.trim().isEmpty ? null : _applyManual,
           ),
         ],
+      ),
+    );
+  }
+
+  /// Cliente registrado elegido: vuelve con su id y sus datos de contacto.
+  void _choose(Customer customer) {
+    Navigator.of(context).pop(
+      ServiceOrderCustomerSelection(
+        customerId: customer.id,
+        name: customer.displayName,
+        email: customer.email,
+        phone: customer.phone,
+      ),
+    );
+  }
+
+  /// Datos capturados a mano; con `create_customer` el servidor lo da de alta.
+  void _applyManual() {
+    Navigator.of(context).pop(
+      ServiceOrderCustomerSelection(
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        createCustomer: _createCustomer,
+        creditLimit: _creditLimit,
       ),
     );
   }
@@ -246,9 +267,7 @@ class _ManualCustomerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return SectionCard(
+    return SoCard(
       title: 'Capturar cliente',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -272,31 +291,40 @@ class _ManualCustomerCard extends StatelessWidget {
             keyboardType: TextInputType.emailAddress,
             maxLength: 255,
           ),
-          const SizedBox(height: 8),
-          // `Material` transparente: el `SectionCard` pinta su propio fondo y sin
-          // él el *ripple* del interruptor quedaría debajo del fondo.
+          const SizedBox(height: 10),
+          // `Material` transparente: el `SoCard` pinta su propio fondo y sin él
+          // el *ripple* del interruptor quedaría debajo del fondo.
           Material(
             type: MaterialType.transparency,
-            child: SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: createCustomer,
-              onChanged: onToggleCreate,
-              title: Text(
-                'Dar de alta este cliente',
-                style: EzyTextStyles.bodyStrong.copyWith(
-                  color: surfaces.textPrimary,
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        'Dar de alta este cliente',
+                        style: EzyTextStyles.bodyStrong.copyWith(
+                          color: SoColors.textPrimary(context),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'El servidor crea el cliente al guardar la orden.',
+                        style: EzyTextStyles.caption.copyWith(
+                          color: SoColors.textSecondary(context),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              subtitle: Text(
-                'El servidor crea el cliente al guardar la orden.',
-                style: EzyTextStyles.caption.copyWith(
-                  color: surfaces.textSecondary,
-                ),
-              ),
+                const SizedBox(width: 12),
+                SoSwitch(value: createCustomer, onChanged: onToggleCreate),
+              ],
             ),
           ),
           if (createCustomer) ...<Widget>[
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             MoneyField(
               label: 'Límite de crédito',
               isRequired: true,
@@ -304,11 +332,19 @@ class _ManualCustomerCard extends StatelessWidget {
               onChanged: onCreditChanged,
               helperText: 'Requerido al dar de alta un cliente nuevo.',
             ),
+            const SizedBox(height: 10),
+            const SoNote(
+              text:
+                  'El cliente se dará de alta con estos datos al guardar la '
+                  'orden.',
+              icon: Icons.person_add_alt,
+              color: SoColors.success,
+            ),
           ],
           const SizedBox(height: 12),
           EzyButton(
             label: 'Usar estos datos',
-            variant: EzyButtonVariant.text,
+            icon: Icons.check,
             onPressed: onApply,
           ),
         ],

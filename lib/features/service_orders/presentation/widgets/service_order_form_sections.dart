@@ -1,21 +1,22 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/config/app_config.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/evidence_image.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_text_field.dart';
 import '../../../../core/widgets/money_field.dart';
-import '../../../../core/widgets/section_card.dart';
 import '../../data/models/service_order_detail.dart';
 import '../../data/models/service_order_form.dart';
 import '../../data/models/service_order_item_draft.dart';
-import 'evidence_photo_strip.dart';
-import 'evidence_picker_row.dart';
+import 'service_order_evidence_picker.dart';
 import 'service_order_form_controls.dart';
 
-/// Conceptos de la orden: resumen y acceso al editor de conceptos.
+/// Conceptos de la orden (card 3 del prototipo): resumen de renglones y acceso
+/// al editor de conceptos.
+///
+/// Cada renglón se pinta dentro de un relleno interno para distinguirlo del
+/// fondo de la card; el subtotal cierra la sección. Cuando no hay conceptos se
+/// explica de dónde salen y se ofrece el botón que abre la hoja de conceptos.
 class ServiceOrderItemsSection extends StatelessWidget {
   const ServiceOrderItemsSection({
     super.key,
@@ -30,55 +31,111 @@ class ServiceOrderItemsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return SectionCard(
-      title: 'Refacciones y mano de obra',
-      trailing: TextButton(
-        onPressed: onEdit,
-        child: const Text('Editar conceptos'),
-      ),
+    return SoCard(
+      title: 'Conceptos',
+      trailing: items.isEmpty
+          ? null
+          : SoTextAction(
+              label: 'Editar',
+              icon: Icons.tune,
+              onPressed: onEdit,
+            ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          if (items.isEmpty)
-            Text(
-              'Agrega servicios del catálogo o refacciones. Los productos '
-              'descuentan stock al guardar.',
-              style: EzyTextStyles.body.copyWith(color: surfaces.textMuted),
-            )
-          else ...<Widget>[
-            for (final item in items)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
+          if (items.isEmpty) ...<Widget>[
+            const SoNote(
+              text:
+                  'Agrega servicios del catálogo o refacciones. Los productos '
+                  'descuentan stock al guardar la orden.',
+              icon: Icons.inventory_2_outlined,
+              color: SoColors.info,
+            ),
+            const SizedBox(height: 14),
+            SoOutlineButton(
+              label: 'Agregar conceptos',
+              icon: Icons.add,
+              onPressed: onEdit,
+            ),
+          ] else ...<Widget>[
+            for (final item in items) ...<Widget>[
+              _ItemLine(item: item),
+              const SizedBox(height: 8),
+            ],
+            const SizedBox(height: 4),
+            Divider(height: 1, color: SoColors.structuralBorder(context)),
+            const SizedBox(height: 12),
+            SoInfoRow(
+              label: 'Subtotal',
+              value: Money.format(subtotal),
+              emphasized: true,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Renglón del resumen: concepto, tipo, cantidad × precio y total de la línea.
+class _ItemLine extends StatelessWidget {
+  const _ItemLine({required this.item});
+
+  final ServiceOrderItemDraft item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: SoColors.inner(context),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: SoColors.structuralBorder(context)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  item.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: EzyTextStyles.bodyStrong.copyWith(
+                    color: SoColors.textPrimary(context),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
                   children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        '${Money.formatQuantity(item.quantity)} × '
-                        '${item.description}',
-                        overflow: TextOverflow.ellipsis,
-                        style: EzyTextStyles.body.copyWith(
-                          color: surfaces.textBody,
-                        ),
-                      ),
+                    SoTag(
+                      label: item.typeLabel,
+                      color: item.isPart ? SoColors.info : SoColors.primary,
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      Money.format(item.lineTotal),
-                      style: EzyTextStyles.moneyList.copyWith(
-                        color: surfaces.textPrimary,
+                    Flexible(
+                      child: Text(
+                        '${Money.formatQuantity(item.quantity)} × '
+                        '${Money.format(item.unitPrice)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: EzyTextStyles.caption.copyWith(
+                          color: SoColors.textMuted(context),
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-          ],
-          const SizedBox(height: 4),
-          SectionRow(
-            label: 'Subtotal',
-            value: Money.format(subtotal),
-            emphasized: true,
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            Money.format(item.lineTotal),
+            style: EzyTextStyles.moneyList.copyWith(
+              color: SoColors.textPrimary(context),
+            ),
           ),
         ],
       ),
@@ -86,7 +143,8 @@ class ServiceOrderItemsSection extends StatelessWidget {
   }
 }
 
-/// Descuento de la orden: tipo, valor y monto que el servidor recibe.
+/// Descuento de la orden (card 4 del prototipo): tipo, valor y monto que el
+/// servidor recibe en `discount_value`.
 class ServiceOrderDiscountSection extends StatelessWidget {
   const ServiceOrderDiscountSection({
     super.key,
@@ -95,17 +153,26 @@ class ServiceOrderDiscountSection extends StatelessWidget {
     required this.discountAmount,
     required this.onTypeChanged,
     required this.onValueChanged,
+    this.subtotal = 0,
   });
 
   final ServiceOrderDiscountType type;
   final TextEditingController controller;
   final double discountAmount;
+
+  /// Subtotal vigente; sirve para avisar cuando el descuento ya no cabe.
+  final double subtotal;
+
   final ValueChanged<ServiceOrderDiscountType> onTypeChanged;
   final ValueChanged<double> onValueChanged;
 
+  /// El servidor nunca deja el total en negativo.
+  bool get _capped =>
+      subtotal > 0 && discountAmount > 0 && discountAmount >= subtotal;
+
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
+    return SoCard(
       title: 'Descuento',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -116,7 +183,7 @@ class ServiceOrderDiscountSection extends StatelessWidget {
             labelOf: (value) => value.label,
             onSelected: onTypeChanged,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           MoneyField(
             label: type == ServiceOrderDiscountType.fixed
                 ? 'Descuento en pesos'
@@ -124,18 +191,31 @@ class ServiceOrderDiscountSection extends StatelessWidget {
             controller: controller,
             onChanged: onValueChanged,
           ),
-          const SizedBox(height: 8),
-          SectionRow(
+          const SizedBox(height: 14),
+          Divider(height: 1, color: SoColors.structuralBorder(context)),
+          const SizedBox(height: 12),
+          SoInfoRow(
             label: 'Descuento aplicado',
             value: Money.format(discountAmount),
+            emphasized: true,
+            color: discountAmount > 0 ? SoColors.success : null,
           ),
+          if (_capped) ...<Widget>[
+            const SizedBox(height: 10),
+            const SoNote(
+              text:
+                  'El descuento se limita al subtotal: el total no puede '
+                  'quedar en negativo.',
+              icon: Icons.warning_amber_outlined,
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-/// Técnico asignado y su comisión (porcentaje o monto fijo).
+/// Técnico asignado y su comisión (card 5 del prototipo).
 class ServiceOrderTechnicianSection extends StatelessWidget {
   const ServiceOrderTechnicianSection({
     super.key,
@@ -158,46 +238,40 @@ class ServiceOrderTechnicianSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return SectionCard(
+    return SoCard(
       title: 'Técnico',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          // `Material` transparente: el `SectionCard` pinta su propio fondo, así
-          // que sin él el *ripple* del interruptor quedaría debajo y Flutter
-          // avisa en debug («ListTile background color or ink splashes …»).
-          Material(
-            type: MaterialType.transparency,
-            child: SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: assign,
-              onChanged: onAssignChanged,
-              title: Text(
-                'Asignar técnico',
-                style: EzyTextStyles.bodyStrong.copyWith(
-                  color: surfaces.textPrimary,
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  'Asignar técnico',
+                  style: EzyTextStyles.bodyStrong.copyWith(
+                    color: SoColors.textPrimary(context),
+                  ),
                 ),
               ),
-            ),
+              SoSwitch(value: assign, onChanged: onAssignChanged),
+            ],
           ),
           if (assign) ...<Widget>[
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
             EzyTextField(
               label: 'Nombre del técnico',
               isRequired: true,
               controller: nameController,
               maxLength: 255,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             ServiceOrderSegmentedControl<TechnicianCommissionType>(
               values: TechnicianCommissionType.values,
               selected: commissionType,
               labelOf: (value) => value.label,
               onSelected: onCommissionTypeChanged,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             MoneyField(
               label: commissionType == TechnicianCommissionType.percentage
                   ? 'Comisión en porcentaje'
@@ -206,6 +280,14 @@ class ServiceOrderTechnicianSection extends StatelessWidget {
               controller: commissionController,
               onChanged: onCommissionValueChanged,
             ),
+            const SizedBox(height: 10),
+            const SoNote(
+              text:
+                  'La comisión por porcentaje se calcula sobre la mano de obra '
+                  'del total final.',
+              icon: Icons.percent,
+              color: SoColors.info,
+            ),
           ],
         ],
       ),
@@ -213,8 +295,8 @@ class ServiceOrderTechnicianSection extends StatelessWidget {
   }
 }
 
-/// Evidencias del formulario: las guardadas (se pueden marcar para borrar) y
-/// las fotos nuevas que suben con la orden.
+
+/// Evidencias del formulario (card 6): fotos guardadas y capturas nuevas.
 class ServiceOrderEvidenceSection extends StatelessWidget {
   const ServiceOrderEvidenceSection({
     super.key,
@@ -240,46 +322,20 @@ class ServiceOrderEvidenceSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-    final existing = detail?.initialEvidence ?? const <ServiceOrderMedia>[];
-
-    return SectionCard(
-      title: 'Evidencias',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          if (existing.isNotEmpty) ...<Widget>[
-            Text(
-              'Guardadas · toca la X para eliminarlas al guardar',
-              style: EzyTextStyles.caption.copyWith(
-                color: surfaces.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            EvidenceMediaStrip(
-              items: existing,
-              markedForDeletion: deletedMediaIds,
-              onToggleDelete: onToggleDelete,
-            ),
-            const SizedBox(height: 16),
-          ],
-          if (photos.isNotEmpty) ...<Widget>[
-            DraftEvidenceStrip(images: photos, onRemove: onRemovePhoto),
-            const SizedBox(height: 16),
-          ],
-          EvidencePickerRow(
-            remaining: AppConfig.maxEvidenceImages - photos.length,
-            isBusy: isPicking,
-            onCamera: onCamera,
-            onGallery: onGallery,
-          ),
-        ],
-      ),
+    return ServiceOrderEvidencePicker(
+      existing: detail?.initialEvidence ?? const <ServiceOrderMedia>[],
+      photos: photos,
+      deletedMediaIds: deletedMediaIds,
+      isPicking: isPicking,
+      onCamera: onCamera,
+      onGallery: onGallery,
+      onRemovePhoto: onRemovePhoto,
+      onToggleDelete: onToggleDelete,
     );
   }
 }
 
-/// Campos personalizados de la orden (`custom_field_definitions`).
+/// Campos personalizados de la orden (card 7, `custom_field_definitions`).
 ///
 /// Las definiciones solo las entrega el detalle de una orden existente, así que
 /// se renderizan al editar; en el alta no hay definiciones que mostrar.
@@ -297,7 +353,7 @@ class ServiceOrderCustomFieldsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
+    return SoCard(
       title: 'Campos personalizados',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -348,16 +404,21 @@ class _CustomFieldState extends State<_CustomField> {
     final definition = widget.definition;
 
     if (definition.isSwitch) {
-      // `Material` transparente: el `SwitchListTile` vive dentro de un
-      // `SectionCard` (con fondo propio) y sin él el *ripple* queda oculto.
-      return Material(
-        type: MaterialType.transparency,
-        child: SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: _isTruthy(widget.value),
-          onChanged: widget.onChanged,
-          title: Text(definition.name),
-        ),
+      return Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              definition.name,
+              style: EzyTextStyles.bodyStrong.copyWith(
+                color: SoColors.textPrimary(context),
+              ),
+            ),
+          ),
+          SoSwitch(
+            value: _isTruthy(widget.value),
+            onChanged: (value) => widget.onChanged(value),
+          ),
+        ],
       );
     }
 
@@ -384,3 +445,4 @@ class _CustomFieldState extends State<_CustomField> {
     return text == 'true' || text == '1';
   }
 }
+

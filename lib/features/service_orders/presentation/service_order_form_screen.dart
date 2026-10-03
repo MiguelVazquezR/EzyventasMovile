@@ -3,19 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/auth/permissions_service.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/status_palette.dart';
 import '../../../core/utils/app_formatters.dart';
 import '../../../core/utils/evidence_image.dart';
 import '../../../core/utils/money.dart';
-import '../../../core/widgets/ezy_button.dart';
 import '../../../core/widgets/ezy_text_field.dart';
 import '../../../core/widgets/money_field.dart';
 import '../../../core/widgets/notice_banner.dart';
-import '../../../core/widgets/section_card.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../cash/data/models/active_cash_session.dart';
 import '../application/service_orders_controller.dart';
@@ -24,8 +21,10 @@ import '../data/models/service_order_form.dart';
 import '../data/models/service_order_item_draft.dart';
 import 'widgets/evidence_picker_row.dart';
 import 'widgets/service_order_customer_picker.dart';
+import 'widgets/service_order_form_controls.dart';
 import 'widgets/service_order_form_sections.dart';
 import 'widgets/service_order_items_sheet.dart';
+import 'widgets/service_order_labels.dart';
 
 /// Alta y edición de una orden de servicio (`POST` / `PUT`, contrato §9).
 ///
@@ -34,6 +33,11 @@ import 'widgets/service_order_items_sheet.dart';
 /// totales que ese mismo contrato pide (`subtotal`, `discount_amount`,
 /// `final_total`). Requiere una sesión de caja abierta: sin ella se avisa y se
 /// ofrece ir a Caja en lugar de enviar la petición.
+///
+/// La pantalla sigue el prototipo validado "Tesla UI / EzyColors": cabecera fija
+/// sin `AppBar`, lienzo propio (`SoColors.canvas`), ocho cards sobre el mismo
+/// sistema de controles (`SoCard`, `SoInfoRow`, `SoPrimaryButton`) y un pie que
+/// explica qué hace el servidor al guardar.
 class ServiceOrderFormScreen extends ConsumerStatefulWidget {
   const ServiceOrderFormScreen({super.key, this.serviceOrderId});
 
@@ -64,7 +68,8 @@ class _ServiceOrderFormScreenState
   double _creditLimit = 0;
   DateTime? _promisedAt;
   bool _assignTechnician = false;
-  TechnicianCommissionType _commissionType = TechnicianCommissionType.percentage;
+  TechnicianCommissionType _commissionType =
+      TechnicianCommissionType.percentage;
   double _commissionValue = 0;
   ServiceOrderDiscountType _discountType = ServiceOrderDiscountType.fixed;
   double _discountValue = 0;
@@ -179,10 +184,26 @@ class _ServiceOrderFormScreenState
     setState(() => _items = items);
   }
 
+  /// Cupos libres de evidencia: el máximo del servidor menos las fotos que
+  /// viajarían si la orden se guardara ahora (guardadas vigentes + capturas).
+  int get _remainingSlots {
+    final kept = (_loaded?.initialEvidence ?? const <ServiceOrderMedia>[])
+        .where((media) => !_deletedMediaIds.contains(media.id))
+        .length;
+    final free = AppConfig.maxEvidenceImages - kept - _photos.length;
+
+    return free < 0 ? 0 : free;
+  }
+
   Future<void> _pickPhoto(ImageSource source) async {
+    final remaining = _remainingSlots;
+
+    if (remaining <= 0) {
+      return;
+    }
+
     setState(() => _isPicking = true);
 
-    final remaining = AppConfig.maxEvidenceImages - _photos.length;
     final picked = await captureEvidence(
       context,
       source: source,
@@ -280,13 +301,13 @@ class _ServiceOrderFormScreenState
     final id = widget.serviceOrderId;
 
     if (id == null) {
-      return _buildScaffold(_body(formState, session));
+      return _scaffold(_body(formState, session));
     }
 
     final detail = ref.watch(serviceOrderDetailProvider(id));
 
     return detail.when(
-      loading: () => _buildScaffold(
+      loading: () => _scaffold(
         const Center(
           child: Padding(
             padding: EdgeInsets.all(48),
@@ -294,7 +315,7 @@ class _ServiceOrderFormScreenState
           ),
         ),
       ),
-      error: (error, stackTrace) => _buildScaffold(
+      error: (error, stackTrace) => _scaffold(
         Padding(
           padding: const EdgeInsets.all(16),
           child: ErrorNotice(
@@ -306,21 +327,26 @@ class _ServiceOrderFormScreenState
       data: (detail) {
         _prefill(detail);
 
-        return _buildScaffold(_body(formState, session));
+        return _scaffold(_body(formState, session));
       },
     );
   }
 
-  Widget _buildScaffold(Widget body) {
-    final surfaces = context.surfaces;
+  /// Lienzo del prototipo: cabecera fija sin `AppBar` y fondo propio.
+  ///
+  /// La cabecera muestra el título y, al editar, el folio con su estatus; el
+  /// cuerpo hace scroll debajo para que las acciones nunca se pierdan.
+  Widget _scaffold(Widget body) {
+    final loaded = _loaded;
 
     return Scaffold(
+      backgroundColor: SoColors.canvas(context),
       body: SafeArea(
         bottom: false,
         child: Column(
           children: <Widget>[
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+              padding: const EdgeInsets.fromLTRB(6, 8, 16, 10),
               child: Row(
                 children: <Widget>[
                   IconButton(
@@ -328,15 +354,35 @@ class _ServiceOrderFormScreenState
                     onPressed: () => Navigator.of(context).pop(),
                     icon: Icon(
                       Icons.arrow_back,
-                      color: surfaces.textSecondary,
+                      color: SoColors.textSecondary(context),
                     ),
                   ),
+                  const SizedBox(width: 2),
                   Expanded(
-                    child: Text(
-                      _isEditing ? 'Editar orden' : 'Nueva orden',
-                      style: EzyTextStyles.screenTitle.copyWith(
-                        color: surfaces.textPrimary,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          _isEditing ? 'Editar orden' : 'Nueva orden',
+                          style: EzyTextStyles.screenTitle.copyWith(
+                            color: SoColors.textPrimary(context),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          loaded == null
+                              ? 'El folio lo genera el servidor al guardar.'
+                              : 'Folio ${loaded.summary.folio} · '
+                                    '${loaded.summary.statusLabel}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: EzyTextStyles.caption.copyWith(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: SoColors.textMuted(context),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -349,16 +395,17 @@ class _ServiceOrderFormScreenState
     );
   }
 
-  /// Secciones del formulario (§8.1 y §8.3 del documento maestro).
+  /// Cards 1 a 7 y el cierre de la pantalla (§8.1 y §8.3 del documento maestro).
   Widget _body(ServiceOrderFormState formState, ActiveCashSession? session) {
-    final surfaces = context.surfaces;
     final form = _buildFormData();
     final definitions = _customFieldDefinitions();
-    final fieldsError = !_isEditing &&
-        ref.watch(serviceOrderCustomFieldsProvider).hasError;
+    final fieldsError =
+        !_isEditing && ref.watch(serviceOrderCustomFieldsProvider).hasError;
+    final canSubmit =
+        form.isComplete && session != null && !formState.isSubmitting;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
       children: <Widget>[
         if (session == null) ...<Widget>[
           NoticeBanner(
@@ -381,63 +428,9 @@ class _ServiceOrderFormScreenState
           ),
           const SizedBox(height: 12),
         ],
-        SectionCard(
-          title: 'Cliente',
-          trailing: TextButton(
-            onPressed: _pickCustomer,
-            child: Text((_customerId ?? 0) > 0 ? 'Cambiar' : 'Seleccionar'),
-          ),
-          child: Column(
-            children: <Widget>[
-              SectionRow(
-                label: 'Cliente',
-                value: _nameController.text.trim().isEmpty
-                    ? 'Sin capturar'
-                    : _nameController.text.trim(),
-                emphasized: true,
-              ),
-              if (_createCustomer)
-                SectionRow(
-                  label: 'Alta al guardar',
-                  value: 'Crédito ${Money.format(_creditLimit)}',
-                ),
-            ],
-          ),
-        ),
+        _clientCard(),
         const SizedBox(height: 12),
-        SectionCard(
-          title: 'Equipo y fallas',
-          child: Column(
-            children: <Widget>[
-              EzyTextField(
-                label: 'Equipo recibido',
-                isRequired: true,
-                controller: _equipmentController,
-                hint: 'Ej. iPhone 13, pantalla rota',
-                maxLength: 255,
-                onChanged: (value) => setState(() {}),
-              ),
-              const SizedBox(height: 16),
-              EzyTextField(
-                label: 'Fallas reportadas',
-                isRequired: true,
-                controller: _problemsController,
-                hint: 'Ej. No enciende después de una caída',
-                maxLines: 3,
-                onChanged: (value) => setState(() {}),
-              ),
-              const SizedBox(height: 16),
-              EzyTextField(
-                label: 'Promesa de entrega',
-                controller: _promisedController,
-                readOnly: true,
-                hint: 'Seleccionar fecha…',
-                suffix: const Icon(Icons.calendar_today_outlined, size: 18),
-                onTap: _pickDate,
-              ),
-            ],
-          ),
-        ),
+        _equipmentCard(),
         const SizedBox(height: 12),
         ServiceOrderItemsSection(
           items: _items,
@@ -449,6 +442,7 @@ class _ServiceOrderFormScreenState
           type: _discountType,
           controller: _discountController,
           discountAmount: form.discountAmount,
+          subtotal: form.subtotal,
           onTypeChanged: (type) => setState(() => _discountType = type),
           onValueChanged: (value) => setState(() => _discountValue = value),
         ),
@@ -501,53 +495,187 @@ class _ServiceOrderFormScreenState
           ),
         ],
         const SizedBox(height: 12),
-        _TotalsSection(form: form),
+        _totalsCard(form),
         const SizedBox(height: 16),
-        EzyButton(
+        SoPrimaryButton(
           label: _isEditing ? 'Guardar cambios' : 'Crear orden',
           icon: Icons.save_outlined,
           isLoading: formState.isSubmitting,
-          onPressed: form.isComplete && session != null && !formState.isSubmitting
-              ? _submit
-              : null,
+          onPressed: canSubmit ? _submit : null,
         ),
-        if (!form.isComplete) ...<Widget>[
-          const SizedBox(height: 8),
-          Text(
-            'Completa el equipo, las fallas y el cliente para guardar.',
-            textAlign: TextAlign.center,
-            style: EzyTextStyles.caption.copyWith(color: surfaces.textMuted),
-          ),
-        ],
+        const SizedBox(height: 10),
+        SoNote(
+          text: form.isComplete
+              ? 'Al guardar, el servidor genera el folio, vincula la venta y '
+                    'descuenta el stock de las refacciones.'
+              : 'Completa el equipo, las fallas y el cliente para poder '
+                    'guardar la orden.',
+          icon: form.isComplete
+              ? Icons.cloud_done_outlined
+              : Icons.rule_folder_outlined,
+          color: form.isComplete ? SoColors.info : SoColors.warn,
+        ),
       ],
     );
   }
-}
 
-/// Totales que el formulario envía al servidor (`subtotal`,
-/// `discount_amount` y `final_total`).
-class _TotalsSection extends StatelessWidget {
-  const _TotalsSection({required this.form});
+  /// Card 1: cliente de la orden, con acceso al selector y aviso de alta.
+  Widget _clientCard() {
+    final name = _nameController.text.trim();
+    final contact = <String>[
+      if (_phoneController.text.trim().isNotEmpty) _phoneController.text.trim(),
+      if (_emailController.text.trim().isNotEmpty) _emailController.text.trim(),
+    ].join(' · ');
 
-  final ServiceOrderFormData form;
+    return SoCard(
+      title: 'Cliente',
+      trailing: SoTextAction(
+        label: (_customerId ?? 0) > 0 ? 'Cambiar' : 'Seleccionar',
+        icon: Icons.person_search_outlined,
+        onPressed: _pickCustomer,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          if (name.isEmpty)
+            const SoNote(
+              text:
+                  'Sin cliente asignado: búscalo en el catálogo o créalo con '
+                  '"Dar de alta" desde el selector.',
+              icon: Icons.person_outline,
+              color: SoColors.info,
+            )
+          else ...<Widget>[
+            Text(
+              name,
+              style: EzyTextStyles.bodyStrong.copyWith(
+                color: SoColors.textPrimary(context),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              contact.isEmpty ? 'Sin teléfono ni correo' : contact,
+              style: EzyTextStyles.caption.copyWith(
+                color: SoColors.textMuted(context),
+              ),
+            ),
+          ],
+          if (_createCustomer) ...<Widget>[
+            const SizedBox(height: 12),
+            SoInfoRow(
+              label: 'Alta al guardar',
+              value: 'Crédito ${Money.format(_creditLimit)}',
+              emphasized: true,
+              color: SoColors.success,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return SectionCard(
+  /// Card 2: equipo recibido, fallas reportadas y promesa de entrega.
+  Widget _equipmentCard() {
+    return SoCard(
+      title: 'Equipo y fallas',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          EzyTextField(
+            label: 'Equipo recibido',
+            isRequired: true,
+            controller: _equipmentController,
+            hint: 'Ej. iPhone 13, pantalla rota',
+            maxLength: 255,
+            onChanged: (value) => setState(() {}),
+          ),
+          const SizedBox(height: 16),
+          EzyTextField(
+            label: 'Fallas reportadas',
+            isRequired: true,
+            controller: _problemsController,
+            hint: 'Ej. No enciende después de una caída',
+            maxLines: 3,
+            onChanged: (value) => setState(() {}),
+          ),
+          const SizedBox(height: 16),
+          EzyTextField(
+            label: 'Promesa de entrega',
+            controller: _promisedController,
+            readOnly: true,
+            hint: 'Sin promesa',
+            suffix: const Icon(Icons.calendar_today_outlined, size: 18),
+            onTap: _pickDate,
+          ),
+          const SizedBox(height: 10),
+          const SoNote(
+            text:
+                'La promesa es opcional; si se vence, el listado marca la '
+                'orden como entrega tardía.',
+            icon: Icons.event_available_outlined,
+            color: SoColors.info,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Card 8: totales reactivos que el formulario manda al servidor (§9).
+  ///
+  /// Se recalculan con cada tecla (`ServiceOrderFormData.subtotal`,
+  /// `discountAmount` y `finalTotal`) para que lo que se ve sea exactamente lo
+  /// que viaja en el payload; el descuento ya viene limitado al subtotal.
+  Widget _totalsCard(ServiceOrderFormData form) {
+    final hasDiscount = form.discountAmount > 0;
+
+    return SoCard(
       title: 'Totales',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          SectionRow(label: 'Subtotal', value: Money.format(form.subtotal)),
-          if (form.discountAmount > 0)
-            SectionRow(
-              label: 'Descuento',
+          SoInfoRow(
+            label: 'Conceptos',
+            value: ServiceOrderLabels.items(_items.length),
+          ),
+          const SizedBox(height: 8),
+          SoInfoRow(label: 'Subtotal', value: Money.format(form.subtotal)),
+          if (hasDiscount) ...<Widget>[
+            const SizedBox(height: 8),
+            SoInfoRow(
+              label: _discountType == ServiceOrderDiscountType.percentage
+                  ? 'Descuento (${Money.formatQuantity(_discountValue)} %)'
+                  : 'Descuento',
               value: '- ${Money.format(form.discountAmount)}',
+              color: SoColors.tone(context, SoColors.danger),
             ),
-          const Divider(height: 20),
-          SectionRow(
-            label: 'Total de la orden',
-            value: Money.format(form.finalTotal),
-            emphasized: true,
+          ],
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: SoColors.inner(context),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: SoColors.structuralBorder(context)),
+            ),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    'Total de la orden',
+                    style: EzyTextStyles.bodyStrong.copyWith(
+                      color: SoColors.textPrimary(context),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  Money.format(form.finalTotal),
+                  style: EzyTextStyles.moneyMedium.copyWith(
+                    color: SoColors.primary,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
