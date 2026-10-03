@@ -8,6 +8,7 @@ import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/money.dart';
 import '../../../../core/widgets/ezy_bottom_sheet.dart';
 import '../../../../core/widgets/ezy_icon_button.dart';
+import '../../../../core/widgets/ezy_primary_3d_button.dart';
 import '../../../../core/widgets/notice_banner.dart';
 import '../../../../core/widgets/section_card.dart';
 import '../../../../core/widgets/status_badge.dart';
@@ -23,10 +24,18 @@ Future<void> showTransactionDetailSheet(
   BuildContext context, {
   required int transactionId,
 }) {
+  final surfaces = context.surfaces;
+
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    // La superficie la pinta la hoja (no el `Material` del modal) para poder
+    // redondear solo las esquinas de arriba, a 24 px.
+    backgroundColor: surfaces.panel,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
     builder: (sheetContext) =>
         _TransactionDetailSheet(transactionId: transactionId),
   );
@@ -68,6 +77,7 @@ class _TransactionDetailSheetState
         controller: scrollController,
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: <Widget>[
+          const _DragHandle(),
           if (detail == null)
             ..._loadingChildren(state.errorMessage, controller)
           else ...<Widget>[
@@ -124,6 +134,14 @@ class _TransactionDetailSheetState
             const SizedBox(height: 12),
             _InfoCard(detail: detail),
           ],
+          const SizedBox(height: 20),
+          EzyPrimary3dButton(
+            label: 'Cerrar',
+            icon: Icons.close,
+            height: 48,
+            maxWidth: 320,
+            onPressed: () => Navigator.of(context).pop(),
+          ),
         ],
       ),
     );
@@ -148,6 +166,28 @@ class _TransactionDetailSheetState
         ErrorNotice(message: errorMessage, onRetry: controller.refresh),
       ],
     ];
+  }
+}
+
+/// Asa de arrastre de la hoja: pastilla de 40 × 4 sobre la superficie.
+class _DragHandle extends StatelessWidget {
+  const _DragHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 14),
+      child: Center(
+        child: Container(
+          width: 40,
+          height: 4,
+          decoration: BoxDecoration(
+            color: EzyColors.gray4A,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -213,6 +253,7 @@ class _ClientCard extends StatelessWidget {
 
     return SectionCard(
       title: 'Cliente',
+      inner: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import '../../../../core/utils/status_catalog.dart';
 
 /// Etiquetas del módulo de ventas (español, sentence case).
@@ -41,6 +43,20 @@ class SalesLabels {
     'manual': 'Manual',
     'abono_a_saldo': 'Abono a saldo',
     'whatsapp': 'WhatsApp',
+  };
+
+  /// Icono del canal, para la línea de metadatos de la tarjeta del historial.
+  static IconData channelIcon(String channel) =>
+      _channelIcons[channel] ?? Icons.point_of_sale_outlined;
+
+  static const Map<String, IconData> _channelIcons = <String, IconData>{
+    'punto_de_venta': Icons.point_of_sale_outlined,
+    'tienda_en_linea': Icons.storefront_outlined,
+    'orden_de_servicio': Icons.build_outlined,
+    'cotizacion': Icons.description_outlined,
+    'manual': Icons.edit_outlined,
+    'abono_a_saldo': Icons.payments_outlined,
+    'whatsapp': Icons.chat_outlined,
   };
 
   static String status(String status) => StatusCatalog.transactionLabel(status);
