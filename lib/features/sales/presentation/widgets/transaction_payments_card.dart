@@ -24,16 +24,17 @@ class TransactionPaymentsCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final surfaces = context.surfaces;
     final canEdit =
         ref.watch(permissionsProvider).can('transactions.edit_payment') &&
         detail.canEditPayments;
+    final count = detail.payments.length;
 
     return SectionCard(
       title: 'Pagos realizados',
-      trailing: Text(
-        detail.payments.isEmpty ? '—' : Money.format(detail.paidAmount),
-        style: EzyTextStyles.moneyList.copyWith(color: surfaces.textPrimary),
+      trailing: _CountTag(
+        label: count == 0
+            ? 'Sin registros'
+            : '$count registro${count == 1 ? '' : 's'}',
       ),
       child: detail.payments.isEmpty
           ? const NoticeBanner(
@@ -56,7 +57,7 @@ class TransactionPaymentsCard extends ConsumerWidget {
   }
 }
 
-/// Un pago de la venta (método, fecha, cuenta, monto y acciones).
+/// Un pago de la venta (método, monto, fecha, cuenta y acciones).
 class TransactionPaymentRow extends ConsumerWidget {
   const TransactionPaymentRow({
     super.key,
@@ -72,9 +73,12 @@ class TransactionPaymentRow extends ConsumerWidget {
     final surfaces = context.surfaces;
     final tone = payment.isRefund ? EzySeverity.danger : EzySeverity.success;
     final color = StatusPalette.text(context, tone);
+    final applied = payment.status.trim().isEmpty
+        ? 'Aplicado'
+        : payment.status.trim();
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: surfaces.panelInner,
         borderRadius: BorderRadius.circular(16),
@@ -93,24 +97,34 @@ class TransactionPaymentRow extends ConsumerWidget {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
               Text(
                 payment.isRefund
                     ? '-${Money.format(payment.amount.abs())}'
                     : '+${Money.format(payment.amount)}',
-                style: EzyTextStyles.moneyList.copyWith(color: color),
+                style: _mono(14, FontWeight.w800, color),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            AppFormatters.dateTime(payment.paymentDate),
-            style: EzyTextStyles.secondary.copyWith(
-              color: surfaces.textSecondary,
-            ),
+          const SizedBox(height: 6),
+          Row(
+            children: <Widget>[
+              _AppliedTag(label: applied, severity: tone),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  AppFormatters.dateTime(payment.paymentDate),
+                  textAlign: TextAlign.right,
+                  style: EzyTextStyles.secondary.copyWith(
+                    color: surfaces.textSecondary,
+                  ),
+                ),
+              ),
+            ],
           ),
           if (payment.bankAccount != null)
             Padding(
-              padding: const EdgeInsets.only(top: 4),
+              padding: const EdgeInsets.only(top: 6),
               child: Text(
                 payment.bankAccount!.label,
                 style: EzyTextStyles.caption.copyWith(
@@ -124,12 +138,13 @@ class TransactionPaymentRow extends ConsumerWidget {
               child: Text(
                 payment.notes!,
                 style: EzyTextStyles.caption.copyWith(
+                  fontStyle: FontStyle.italic,
                   color: surfaces.textMuted,
                 ),
               ),
             ),
           if (canEdit) ...<Widget>[
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             Row(
               children: <Widget>[
                 EzyIconButton(
@@ -145,7 +160,7 @@ class TransactionPaymentRow extends ConsumerWidget {
                   size: 36,
                   iconSize: 18,
                   tooltip: 'Eliminar pago',
-                  color: EzyColors.danger,
+                  color: const Color(0xFFF80505),
                   onTap: () => _confirmDelete(context, ref),
                 ),
               ],
@@ -174,3 +189,69 @@ class TransactionPaymentRow extends ConsumerWidget {
     }
   }
 }
+
+/// Badge de estado del pago («APLICADO») con el tinte de su severidad.
+class _AppliedTag extends StatelessWidget {
+  const _AppliedTag({required this.label, required this.severity});
+
+  final String label;
+  final EzySeverity severity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: StatusPalette.soft(severity),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: StatusPalette.border(severity)),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: EzyTextStyles.badge.copyWith(
+          fontSize: 9.5,
+          color: StatusPalette.text(context, severity),
+        ),
+      ),
+    );
+  }
+}
+
+/// Etiqueta del número de registros en la cabecera de la card.
+class _CountTag extends StatelessWidget {
+  const _CountTag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaces = context.surfaces;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: surfaces.panelInner,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: surfaces.border),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: EzyTextStyles.badge.copyWith(
+          fontSize: 9.5,
+          color: surfaces.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+/// Monto en fuente monoespaciada con cifras tabulares.
+TextStyle _mono(double size, FontWeight weight, Color color) => TextStyle(
+  fontFamily: 'monospace',
+  fontSize: size,
+  fontWeight: weight,
+  color: color,
+  fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+);
+
+
