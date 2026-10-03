@@ -253,5 +253,3 @@ TextStyle _mono(double size, FontWeight weight, Color color) => TextStyle(
   color: color,
   fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
 );
-
-
