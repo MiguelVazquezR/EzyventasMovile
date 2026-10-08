@@ -61,7 +61,7 @@ Map<String, dynamic> detailFixture() => <String, dynamic>{
     <String, dynamic>{
       'key': 'garantia',
       'name': 'Con garantía',
-      'type': 'switch',
+      'type': 'boolean',
       'options': null,
       'is_required': false,
     },
@@ -219,8 +219,8 @@ void main() {
       expect(detail.transaction?.folio, 'OS-V-006');
       expect(detail.transaction?.payments.single.amount, 700);
       expect(detail.activities.single.causerName, 'María López');
-      expect(detail.customFieldDefinitions.first.isSwitch, isFalse);
-      expect(detail.customFieldDefinitions.last.isSwitch, isTrue);
+      expect(detail.customFieldDefinitions.first.isBoolean, isFalse);
+      expect(detail.customFieldDefinitions.last.isBoolean, isTrue);
       expect(detail.allEvidence.length, 2);
     });
 

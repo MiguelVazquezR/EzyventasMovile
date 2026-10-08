@@ -16,6 +16,7 @@ import '../../../core/widgets/notice_banner.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../cash/data/models/active_cash_session.dart';
 import '../application/service_orders_controller.dart';
+import '../data/models/custom_fields_bag.dart';
 import '../data/models/service_order_detail.dart';
 import '../data/models/service_order_form.dart';
 import '../data/models/service_order_item_draft.dart';
@@ -74,7 +75,13 @@ class _ServiceOrderFormScreenState
   ServiceOrderDiscountType _discountType = ServiceOrderDiscountType.fixed;
   double _discountValue = 0;
   List<ServiceOrderItemDraft> _items = const <ServiceOrderItemDraft>[];
-  Map<String, dynamic> _customFields = const <String, dynamic>{};
+
+  /// Bolsa `custom_fields` del formulario (§2.2): se inicializa con una entrada
+  /// por definición (§5) y se reenvía **completa** en el `POST`/`PUT`.
+  CustomFieldsBag? _customFieldsBag;
+
+  /// La bolsa ya se armó con definiciones reales (el alta las carga async).
+  bool _customFieldsBagIsComplete = false;
   List<EvidenceImage> _photos = <EvidenceImage>[];
   final Set<int> _deletedMediaIds = <int>{};
   ServiceOrderDetail? _loaded;
@@ -127,7 +134,6 @@ class _ServiceOrderFormScreenState
     _discountType = ServiceOrderDiscountType.fromValue(detail.discountType);
     _discountValue = detail.discountValue;
     _discountController.text = MoneyField.format(_discountValue);
-    _customFields = Map<String, dynamic>.of(detail.customFields);
   }
 
   Future<void> _pickCustomer() async {
@@ -225,14 +231,38 @@ class _ServiceOrderFormScreenState
   /// En la edición vienen dentro del detalle de la orden; en el alta se piden a
   /// `GET /service-orders/custom-fields` (§9), porque todavía no hay orden de la
   /// que sacarlos.
-  List<ServiceOrderCustomFieldDefinition> _customFieldDefinitions() {
+  List<CustomFieldDefinition> _customFieldDefinitions() {
     if (_isEditing) {
       return _loaded?.customFieldDefinitions ??
-          const <ServiceOrderCustomFieldDefinition>[];
+          const <CustomFieldDefinition>[];
     }
 
     return ref.watch(serviceOrderCustomFieldsProvider).asData?.value ??
-        const <ServiceOrderCustomFieldDefinition>[];
+        const <CustomFieldDefinition>[];
+  }
+
+  /// Bolsa inicializada una sola vez con las definiciones y lo ya guardado (§5).
+  ///
+  /// No se deriva al vuelo del formulario: se guarda en el estado y se reenvía
+  /// completa, que es lo que el `PUT` espera (reemplaza el JSON entero). En el
+  /// alta las definiciones llegan por red, así que la bolsa se rearma la primera
+  /// vez que el endpoint responde con contenido.
+  CustomFieldsBag _customFieldsBagFor(List<CustomFieldDefinition> definitions) {
+    final bag = _customFieldsBag;
+
+    if (bag != null && (_customFieldsBagIsComplete || definitions.isEmpty)) {
+      return bag;
+    }
+
+    final initialized = CustomFieldsBag.initialFor(
+      definitions,
+      stored: _loaded?.customFields ?? const <String, dynamic>{},
+    );
+
+    _customFieldsBag = initialized;
+    _customFieldsBagIsComplete = definitions.isNotEmpty;
+
+    return initialized;
   }
 
   /// Arma el payload del contrato con lo capturado en pantalla.
@@ -258,7 +288,7 @@ class _ServiceOrderFormScreenState
       items: _items,
       discountType: _discountType,
       discountValue: _discountValue,
-      customFields: _customFields,
+      customFields: _customFieldsBag?.toJson() ?? const <String, dynamic>{},
       evidence: _photos,
       deletedMediaIds: _deletedMediaIds.toList(growable: false),
     );
@@ -399,6 +429,7 @@ class _ServiceOrderFormScreenState
   Widget _body(ServiceOrderFormState formState, ActiveCashSession? session) {
     final form = _buildFormData();
     final definitions = _customFieldDefinitions();
+    final customFields = _customFieldsBagFor(definitions);
     final fieldsError =
         !_isEditing && ref.watch(serviceOrderCustomFieldsProvider).hasError;
     final canSubmit =
@@ -477,12 +508,9 @@ class _ServiceOrderFormScreenState
           const SizedBox(height: 12),
           ServiceOrderCustomFieldsSection(
             definitions: definitions,
-            values: _customFields,
+            values: customFields.values,
             onChanged: (key, value) => setState(
-              () => _customFields = <String, dynamic>{
-                ..._customFields,
-                key: value,
-              },
+              () => _customFieldsBag = customFields.withValue(key, value),
             ),
           ),
         ] else if (fieldsError) ...<Widget>[

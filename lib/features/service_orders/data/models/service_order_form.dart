@@ -165,6 +165,40 @@ String? _blankToNull(String? value) {
   return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
 }
 
+/// Un valor de `custom_fields` en notación de corchetes para `multipart`
+/// (doc 04 §6.2): el servidor guarda los escalares como texto, así que el
+/// booleano va como `1`/`0`, los arreglos con índice y los objetos anidados
+/// (`{"type":"pattern","value":[…]}`) por clave.
+///
+/// Un arreglo vacío no se expresa: la clave se omite y la app lo lee como `[]`.
+Map<String, dynamic> multipartCustomFieldFields(String key, Object? value) {
+  if (value is bool) {
+    return <String, dynamic>{key: value ? 1 : 0};
+  }
+
+  if (value is List) {
+    final fields = <String, dynamic>{};
+
+    for (var index = 0; index < value.length; index++) {
+      fields.addAll(multipartCustomFieldFields('$key[$index]', value[index]));
+    }
+
+    return fields;
+  }
+
+  if (value is Map) {
+    final fields = <String, dynamic>{};
+
+    value.forEach((child, item) {
+      fields.addAll(multipartCustomFieldFields('$key[$child]', item));
+    });
+
+    return fields;
+  }
+
+  return <String, dynamic>{key: value};
+}
+
 /// Cuerpo de la petición con las claves exactas del contrato.
 extension ServiceOrderFormPayload on ServiceOrderFormData {
   /// [multipart] usa claves con corchetes (`items[0][quantity]`); en JSON los
@@ -253,14 +287,12 @@ extension ServiceOrderFormPayload on ServiceOrderFormData {
       final nested = <String, dynamic>{};
 
       customFields.forEach((key, value) {
-        final stored = value is bool
-            ? _boolField(value, multipart: multipart)
-            : value;
-
         if (multipart) {
-          fields['custom_fields[$key]'] = stored;
+          fields.addAll(multipartCustomFieldFields('custom_fields[$key]', value));
         } else {
-          nested[key] = stored;
+          // JSON: los tipos reales tal cual (§6.1). Un booleano falso viaja como
+          // `false` de verdad, nunca como el string `"false"`.
+          nested[key] = value;
         }
       });
 

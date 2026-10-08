@@ -451,6 +451,22 @@ de una orden (`01-contrato-api-v1.md` §9).
   El cuerpo viaja como **multipart** cuando hay fotos y como **JSON** cuando no las hay, para no
   convertir a texto los numeros ni los booleanos (`multipart/form-data` exige `1`/`0` en los
   booleanos porque Laravel no acepta la cadena `"true"`).
+- **Campos personalizados** (`04-campos-personalizados-ordenes-servicio.md`): los siete tipos del
+  catalogo (`text`, `number`, `textarea`, `boolean`, `select`, `checkbox` y `pattern`) tienen su
+  **editor propio** (`buildCustomFieldEditor`) y su **lectura propia** (`CustomFieldsReadCard`), asi
+  que ninguno se pinta como texto generico ni se muestra el JSON crudo. El modelo vive en
+  `data/models/custom_field_definition.dart` (indexado por `key`, no por `name`), el valor tipado en
+  `custom_field_value.dart` (union sellada) y `custom_fields_bag.dart` (bolsa `key -> valor` que se
+  reenvia completa en el `PUT`, con las claves huerfanas al final). Los normalizadores de lectura
+  (`custom_field_normalizers.dart`: `isBlank`, `normalizeBool`, `normalizeList`, `normalizeNumber`,
+  `normalizePattern`) son el unico lugar donde se tolera que el servidor devuelva `true`, `1`, `"1"` o
+  `"true"`; el tipo lo dicta siempre la definicion y un tipo nuevo degrada a texto. El tipo `pattern`
+  usa el tablero 3x3 reutilizable `PatternInput` (numeracion de la web, `readOnly` para el detalle, y el tablero se queda con el gesto en cuanto el dedo toca la cuadricula -bloquea el scroll del formulario- para poder trazar en cualquier direccion) y
+  emite siempre `{"type":"pattern"|"password","value":…}`, nunca `null`. La seccion se titula
+  **"Detalles adicionales"** y solo se pinta si `custom_fields` trae al menos una clave. Cubierto por
+  `custom_field_normalizers_test.dart`, `custom_fields_bag_test.dart`,
+  `custom_field_editor_test.dart`, `custom_fields_read_view_test.dart`, `pattern_input_test.dart` y
+  `service_order_form_screen_test.dart`.
 - **Anticipos** (`POST .../payments`): mismo flujo que el abono de una venta (pago mixto y saldo a
   favor) contra la orden; el servidor resuelve o crea la venta vinculada. Con `transactions.add_payment`
   y turno abierto. Si la orden no tiene venta (`transaction: null`), \"Cobrar ahora\" llama primero a

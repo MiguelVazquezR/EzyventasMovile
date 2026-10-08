@@ -2,7 +2,13 @@ import '../../../../core/utils/app_formatters.dart';
 import '../../../../core/utils/json_reader.dart';
 import '../../../../core/utils/money.dart';
 import '../../../sales/data/models/transaction_detail.dart';
+import 'custom_field_definition.dart';
 import 'service_order_summary.dart';
+
+// El modelo de la definición vive en `custom_field_definition.dart`; se reexpone
+// aquí para no romper a los llamadores que ya importan este archivo.
+export 'custom_field_definition.dart'
+    show CustomFieldDefinition, CustomFieldTypes, ServiceOrderCustomFieldDefinition;
 
 /// Cliente de la orden (`customer` del detalle). `balance` es **texto decimal**
 /// (negativo = debe, positivo = saldo a favor).
@@ -269,42 +275,6 @@ class ServiceOrderActivity {
   final String? causerName;
   final DateTime? createdAt;
 }
-
-/// Definición de un campo personalizado de la orden
-/// (`custom_field_definitions`, `module = service_orders`).
-class ServiceOrderCustomFieldDefinition {
-  const ServiceOrderCustomFieldDefinition({
-    required this.key,
-    required this.name,
-    required this.type,
-    required this.options,
-    required this.isRequired,
-  });
-
-  factory ServiceOrderCustomFieldDefinition.fromJson(
-    Map<String, dynamic> json,
-  ) => ServiceOrderCustomFieldDefinition(
-    key: JsonReader.stringOr(json['key'], ''),
-    name: JsonReader.stringOr(json['name'], ''),
-    type: JsonReader.stringOr(json['type'], 'text'),
-    options: JsonReader.stringList(json['options']),
-    isRequired: JsonReader.boolean(json['is_required']),
-  );
-
-  final String key;
-  final String name;
-
-  /// `text`, `number`, `switch` (o el tipo que devuelva el servidor).
-  final String type;
-
-  /// Opciones cuando el campo es una lista (puede venir vacía).
-  final List<String> options;
-  final bool isRequired;
-
-  bool get isSwitch => type == 'switch';
-  bool get isNumber => type == 'number';
-}
-
 
 /// Detalle completo de una orden (`GET /service-orders/{id}`, contrato §9).
 ///

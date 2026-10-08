@@ -228,6 +228,34 @@ void main() {
       expect(fields.containsKey('custom_fields'), isFalse);
     });
 
+    test('en multipart el checkbox y el patrón viajan con corchetes (§6.2)', () {
+      const form = ServiceOrderFormData(
+        customerId: 8,
+        customerName: 'Ana Ramírez',
+        itemDescription: 'iPhone 13',
+        reportedProblems: 'No enciende',
+        customFields: <String, dynamic>{
+          'garantia': false,
+          'accesorios': <String>['Funda', 'Mica'],
+          'patron': <String, dynamic>{
+            'type': 'pattern',
+            'value': <int>[1, 4, 5],
+          },
+        },
+      );
+
+      final fields = form.toFields(isUpdate: false, multipart: true, sessionId: 41);
+
+      // El booleano falso viaja como 0, nunca como el string "false".
+      expect(fields['custom_fields[garantia]'], 0);
+      expect(fields['custom_fields[accesorios][0]'], 'Funda');
+      expect(fields['custom_fields[accesorios][1]'], 'Mica');
+      expect(fields['custom_fields[patron][type]'], 'pattern');
+      expect(fields['custom_fields[patron][value][0]'], 1);
+      expect(fields['custom_fields[patron][value][2]'], 5);
+      expect(fields.containsKey('custom_fields'), isFalse);
+    });
+
     test('la edición envía diagnóstico y evidencias por borrar', () {
       final fields = form.toFields(isUpdate: true, multipart: false);
 

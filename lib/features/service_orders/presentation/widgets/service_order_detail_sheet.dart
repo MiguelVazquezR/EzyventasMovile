@@ -17,6 +17,7 @@ import '../../../auth/application/auth_controller.dart';
 import '../../application/service_orders_controller.dart';
 import '../../data/models/service_order_detail.dart';
 import 'evidence_photo_strip.dart';
+import 'custom_fields_read_view.dart';
 import 'service_order_actions.dart';
 import 'service_order_amounts_card.dart';
 import 'service_order_customer_cards.dart';
@@ -231,7 +232,10 @@ class _ServiceOrderDetailSheetState
         ],
         if (detail.customFields.isNotEmpty) ...<Widget>[
           const SizedBox(height: 12),
-          _CustomFieldsCard(detail: detail),
+          CustomFieldsReadCard(
+            definitions: detail.customFieldDefinitions,
+            values: detail.customFields,
+          ),
         ],
       ],
       _DetailTab.payments => <Widget>[
@@ -444,49 +448,6 @@ class _EvidenceCard extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-/// Campos personalizados capturados en la orden.
-class _CustomFieldsCard extends StatelessWidget {
-  const _CustomFieldsCard({required this.detail});
-
-  final ServiceOrderDetail detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final names = <String, String>{
-      for (final definition in detail.customFieldDefinitions)
-        definition.key: definition.name,
-    };
-
-    return SectionCard(
-      title: 'Campos personalizados',
-      child: Column(
-        children: <Widget>[
-          for (final entry in detail.customFields.entries)
-            SectionRow(
-              label: names[entry.key] ?? entry.key,
-              value: _value(entry.value),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// Los `switch` se guardan como `1`/`0` o `true`/`false` según el cliente.
-  static String _value(Object? value) {
-    if (value is bool) {
-      return value ? 'Sí' : 'No';
-    }
-
-    final text = value?.toString() ?? '—';
-
-    return switch (text) {
-      'true' || '1' => 'Sí',
-      'false' || '0' => 'No',
-      _ => text,
-    };
   }
 }
 

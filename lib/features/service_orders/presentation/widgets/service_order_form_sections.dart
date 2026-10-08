@@ -8,6 +8,7 @@ import '../../../../core/widgets/money_field.dart';
 import '../../data/models/service_order_detail.dart';
 import '../../data/models/service_order_form.dart';
 import '../../data/models/service_order_item_draft.dart';
+import 'custom_field_editor.dart';
 import 'service_order_evidence_picker.dart';
 import 'service_order_form_controls.dart';
 
@@ -335,10 +336,12 @@ class ServiceOrderEvidenceSection extends StatelessWidget {
   }
 }
 
-/// Campos personalizados de la orden (card 7, `custom_field_definitions`).
+/// Campos personalizados de la orden (card 7) — «Detalles adicionales».
 ///
-/// Las definiciones solo las entrega el detalle de una orden existente, así que
-/// se renderizan al editar; en el alta no hay definiciones que mostrar.
+/// Un editor por definición, elegido por el **tipo** de la definición con
+/// [buildCustomFieldEditor] (el mismo renderizador que usa la vista de lectura).
+/// En la edición las definiciones vienen del detalle de la orden; en el alta, de
+/// `GET /service-orders/custom-fields` (§9).
 class ServiceOrderCustomFieldsSection extends StatelessWidget {
   const ServiceOrderCustomFieldsSection({
     super.key,
@@ -347,23 +350,32 @@ class ServiceOrderCustomFieldsSection extends StatelessWidget {
     required this.onChanged,
   });
 
-  final List<ServiceOrderCustomFieldDefinition> definitions;
+  final List<CustomFieldDefinition> definitions;
+
+  /// Bolsa `key → valor` ya inicializada (§5).
   final Map<String, dynamic> values;
   final void Function(String key, Object? value) onChanged;
 
   @override
   Widget build(BuildContext context) {
     return SoCard(
-      title: 'Campos personalizados',
+      title: 'Detalles adicionales',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          Text(
+            'Información personalizada del servicio',
+            style: EzyTextStyles.caption.copyWith(
+              color: SoColors.textMuted(context),
+            ),
+          ),
+          const SizedBox(height: 14),
           for (var index = 0; index < definitions.length; index++) ...<Widget>[
             if (index > 0) const SizedBox(height: 16),
-            _CustomField(
-              definition: definitions[index],
-              value: values[definitions[index].key],
-              onChanged: (value) => onChanged(definitions[index].key, value),
+            buildCustomFieldEditor(
+              definitions[index],
+              values[definitions[index].key],
+              (value) => onChanged(definitions[index].key, value),
             ),
           ],
         ],
@@ -372,77 +384,5 @@ class ServiceOrderCustomFieldsSection extends StatelessWidget {
   }
 }
 
-/// Campo personalizado según su tipo (`text`, `number`, `switch`).
-class _CustomField extends StatefulWidget {
-  const _CustomField({
-    required this.definition,
-    required this.value,
-    required this.onChanged,
-  });
 
-  final ServiceOrderCustomFieldDefinition definition;
-  final Object? value;
-  final ValueChanged<Object?> onChanged;
-
-  @override
-  State<_CustomField> createState() => _CustomFieldState();
-}
-
-class _CustomFieldState extends State<_CustomField> {
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.value?.toString() ?? '',
-  );
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final definition = widget.definition;
-
-    if (definition.isSwitch) {
-      return Row(
-        children: <Widget>[
-          Expanded(
-            child: Text(
-              definition.name,
-              style: EzyTextStyles.bodyStrong.copyWith(
-                color: SoColors.textPrimary(context),
-              ),
-            ),
-          ),
-          SoSwitch(
-            value: _isTruthy(widget.value),
-            onChanged: (value) => widget.onChanged(value),
-          ),
-        ],
-      );
-    }
-
-    return EzyTextField(
-      label: definition.name,
-      isRequired: definition.isRequired,
-      controller: _controller,
-      keyboardType: definition.isNumber
-          ? const TextInputType.numberWithOptions(decimal: true)
-          : null,
-      maxLength: 255,
-      onChanged: (raw) =>
-          widget.onChanged(definition.isNumber ? Money.parseInput(raw) : raw),
-    );
-  }
-
-  static bool _isTruthy(Object? value) {
-    if (value is bool) {
-      return value;
-    }
-
-    final text = value?.toString();
-
-    return text == 'true' || text == '1';
-  }
-}
 
