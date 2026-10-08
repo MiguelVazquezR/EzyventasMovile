@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/auth/permissions_service.dart';
-import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
@@ -17,7 +16,6 @@ import '../../data/models/service_order_detail.dart';
 import '../../data/models/service_order_status.dart';
 import 'service_order_labels.dart';
 import 'service_order_payment_sheet.dart';
-import 'service_order_status_sheet.dart';
 
 /// Dock de acciones del detalle de la orden: el bloque héroe de la hoja.
 ///
@@ -30,7 +28,8 @@ import 'service_order_status_sheet.dart';
 /// * **CTA principal**: `Cobrar ahora` mientras quede saldo y haya turno de
 ///   caja abierto; `Entregar orden` cuando la orden ya está pagada y sigue
 ///   abierta en el taller.
-/// * **Píldoras de acción rápida**: estatus, edición y borrado, según permisos.
+/// * **Píldoras de acción rápida**: cancelación y borrado, según permisos. El
+///   cambio de estatus vive en el stepper de la hoja, no aquí.
 ///
 /// La app oculta lo que el usuario no puede hacer; el servidor siempre
 /// revalida (`403`).
@@ -52,7 +51,6 @@ class ServiceOrderHeroDock extends ConsumerWidget {
 
     final canPay = permissions.can('transactions.add_payment');
     final canChangeStatus = permissions.can('services.orders.change_status');
-    final canEdit = permissions.can('services.orders.edit');
     final canDelete = permissions.can('services.orders.delete');
     final showMoney =
         canPay || permissions.can('services.orders.see_financial_info');
@@ -69,17 +67,10 @@ class ServiceOrderHeroDock extends ConsumerWidget {
     final pills = <Widget>[
       if (canChangeStatus && !detail.isCancelled)
         _DockPill(
-          icon: Icons.sync_alt_outlined,
-          label: 'Cambiar estatus',
-          onTap: isSubmitting ? null : () => _changeStatus(context, ref),
-        ),
-      if (canEdit && detail.isEditable)
-        _DockPill(
-          icon: Icons.edit_outlined,
-          label: 'Editar orden',
-          onTap: isSubmitting
-              ? null
-              : () => context.push(serviceOrderEditPath(detail.id)),
+          icon: Icons.close,
+          label: 'Cancelar orden',
+          tone: EzySeverity.danger,
+          onTap: isSubmitting ? null : () => _confirmCancel(context, ref),
         ),
       if (canDelete)
         _DockPill(
@@ -108,14 +99,15 @@ class ServiceOrderHeroDock extends ConsumerWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      // Dock compacto: la sección fija no debe comerse el documento (§12).
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           if (showMoney) ...<Widget>[
             _BalanceHeadline(amount: detail.pendingAmount),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
           ],
           if (showPayment) ...<Widget>[
             // Una orden antigua todavía no tiene venta: el cobro la crea
@@ -184,9 +176,10 @@ class ServiceOrderHeroDock extends ConsumerWidget {
             ),
           ],
           if (pills.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 12),
-            // `Wrap` y no una tira con scroll: las tres píldoras se ven
-            // completas (una barra horizontal escondería «Eliminar orden»).
+            const SizedBox(height: 8),
+            // `Wrap` y no una tira con scroll: las dos píldoras se ven
+            // completas lado a lado (una barra horizontal escondería
+            // «Eliminar orden»).
             Wrap(spacing: 8, runSpacing: 8, children: pills),
           ],
         ],
@@ -194,32 +187,28 @@ class ServiceOrderHeroDock extends ConsumerWidget {
     );
   }
 
-  /// Cambia el estatus en la hoja dedicada y, si el nuevo estatus es
-  /// `entregado` con saldo pendiente, abre el cobro (§8.2).
-  ///
-  /// La hoja de estatus sigue siendo necesaria: el stepper del detalle avanza
-  /// el flujo, pero **cancelar** la orden pide la confirmación que explica que
-  /// se devuelve el inventario.
-  static Future<void> _changeStatus(BuildContext context, WidgetRef ref) async {
-    final detail = ref.read(serviceOrderDetailControllerProvider).detail;
-
-    if (detail == null) {
-      return;
-    }
-
-    final shouldCollect = await showServiceOrderStatusSheet(
+  /// Cancela la orden con confirmación explícita: el servidor devuelve el stock
+  /// de las refacciones y ajusta la venta vinculada, así que no puede ser un
+  /// toque silencioso (mismo aviso que la hoja de estatus).
+  static Future<void> _confirmCancel(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showEzyConfirmDialog(
       context,
-      detail: detail,
+      title: 'Cancelar orden',
+      message:
+          '¿Seguro que quieres cancelar esta orden? El inventario de las '
+          'refacciones se devolverá al stock y la venta vinculada se ajustará.',
+      confirmLabel: 'Cancelar orden',
+      cancelLabel: 'Regresar',
+      isDestructive: true,
     );
 
-    if (!shouldCollect || !context.mounted) {
+    if (!confirmed || !context.mounted) {
       return;
     }
 
-    final updated =
-        ref.read(serviceOrderDetailControllerProvider).detail ?? detail;
-
-    await confirmServiceOrderPayment(context, ref, detail: updated);
+    await ref
+        .read(serviceOrderDetailControllerProvider.notifier)
+        .changeStatus(ServiceOrderStatus.cancelled.value);
   }
 
   /// Cierra la hoja y lleva al turno de caja para abrirlo.
@@ -390,7 +379,7 @@ class _BalanceHeadline extends StatelessWidget {
   }
 }
 
-/// Píldora de acción rápida del dock (38 px, radio 999).
+/// Píldora de acción rápida del dock (34 px, radio 999).
 ///
 /// Hermana de `EzyChip`, pero con un tono propio para la acción destructiva:
 /// el `tone` de `EzyChip` describe el estatus de un **dato**, no una acción
@@ -423,8 +412,8 @@ class _DockPill extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: severity == null
               ? surfaces.panelInner

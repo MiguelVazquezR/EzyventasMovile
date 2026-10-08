@@ -24,6 +24,7 @@ class _GlassPanel extends StatelessWidget {
     this.padding = const EdgeInsets.all(16),
     this.radius = 20,
     this.glow,
+    this.solid = false,
     this.onTap,
   });
 
@@ -33,6 +34,13 @@ class _GlassPanel extends StatelessWidget {
 
   /// Color del estado: tiñe el borde y el arranque del degradado.
   final Color? glow;
+
+  /// Fondo **opaco** (`surfaces.panel`) en lugar del degradado translúcido.
+  ///
+  /// Lo usan los paneles que flotan **sobre** contenido (los accesos rápidos y
+  /// la barra de caja): con el fondo translúcido se leían los textos de la lista
+  /// por debajo y el icono naranja perdía contraste.
+  final bool solid;
 
   final VoidCallback? onTap;
 
@@ -51,17 +59,20 @@ class _GlassPanel extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(radius),
           border: Border.all(color: border),
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: <Color>[
-              tint == null
-                  ? surfaces.textPrimary.withValues(alpha: 0.03)
-                  : tint.withValues(alpha: 0.14),
-              surfaces.panel,
-            ],
-            stops: const <double>[0, 0.6],
-          ),
+          color: solid ? surfaces.panel : null,
+          gradient: solid
+              ? null
+              : LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: <Color>[
+                    tint == null
+                        ? surfaces.textPrimary.withValues(alpha: 0.03)
+                        : tint.withValues(alpha: 0.14),
+                    surfaces.panel,
+                  ],
+                  stops: const <double>[0, 0.6],
+                ),
         ),
         child: Padding(padding: padding, child: child),
       ),
@@ -511,6 +522,9 @@ class _QuickAction extends StatelessWidget {
 
     return _GlassPanel(
       radius: 18,
+      // Fondo blanco sólido (el panel del tema en oscuro): el icono naranja se
+      // lee mejor y no se transparenta lo que hay detrás.
+      solid: true,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
       onTap: onTap,
       child: Column(
@@ -1146,6 +1160,8 @@ class DashboardCashBar extends StatelessWidget {
       radius: 24,
       padding: const EdgeInsets.all(16),
       glow: StatusPalette.base(tone),
+      // Opaca: la lista pasa por debajo y con el fondo translúcido se leía.
+      solid: true,
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

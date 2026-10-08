@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/auth/permissions_service.dart';
 import '../../../core/widgets/app_drawer_scope.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../account/application/account_providers.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../home/application/dashboard_controller.dart';
 import 'widgets/app_drawer.dart';
 
 /// Cascarón de navegación: menú lateral (`EzyAppDrawer`) sobre el índice de
@@ -34,9 +36,13 @@ class _AppShellState extends ConsumerState<AppShell>
   /// `Scaffold` del cascarón: es el dueño del `Drawer`.
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  /// Pestaña que se está viendo: al **volver** a «Inicio» se refresca el tablero.
+  late int _tabIndex;
+
   @override
   void initState() {
     super.initState();
+    _tabIndex = widget.navigationShell.currentIndex;
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -61,6 +67,23 @@ class _AppShellState extends ConsumerState<AppShell>
   @override
   Widget build(BuildContext context) {
     final tabs = ref.watch(visibleTabsProvider);
+    final tabIndex = widget.navigationShell.currentIndex;
+
+    if (tabIndex != _tabIndex) {
+      _tabIndex = tabIndex;
+
+      // Inicio guarda datos que cambian desde otras pestañas (abrir o cerrar el
+      // turno, cobrar, mover stock): al volver se vuelven a pedir. El refresco
+      // conserva lo que ya se ve (no hay parpadeo) y va en microtask porque
+      // `refresh` toca el provider y aquí todavía se está construyendo.
+      if (AppTab.values[tabIndex] == AppTab.home) {
+        Future<void>.microtask(() {
+          if (mounted) {
+            ref.read(dashboardControllerProvider.notifier).refresh();
+          }
+        });
+      }
+    }
 
     return Scaffold(
       key: _scaffoldKey,

@@ -235,18 +235,26 @@ class _StoreOrderSheetState extends ConsumerState<_StoreOrderSheet> {
 
 /// Asa de arrastre de la hoja (§1): 40 × 5 px en el lienzo, no dentro de la
 /// cabecera, para que la banda blanca empiece a ras de ella.
+///
+/// El tono es el del asa del cobro (`dragHandleColor`), el estándar de las
+/// hojas: un gris medio más oscuro que `borderStrong`, que sobre el lienzo
+/// quedaba casi invisible.
 class _SheetDragHandle extends StatelessWidget {
   const _SheetDragHandle();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 40,
-      height: 5,
-      margin: const EdgeInsets.only(top: 10, bottom: 12),
-      decoration: BoxDecoration(
-        color: context.surfaces.borderStrong,
-        borderRadius: BorderRadius.circular(999),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Center(
+      child: Container(
+        width: 40,
+        height: 5,
+        margin: const EdgeInsets.only(top: 10, bottom: 12),
+        decoration: BoxDecoration(
+          color: isDark ? EzyColors.gray77 : EzyColors.gray9A,
+          borderRadius: BorderRadius.circular(999),
+        ),
       ),
     );
   }
@@ -267,7 +275,9 @@ class _OrderHeader extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      // El borde derecho baja a 10 px (el resto del contenido va a 16): la X se
+      // lee pegada a la esquina de la hoja y no al centro de la banda.
+      padding: const EdgeInsets.fromLTRB(16, 0, 10, 12),
       decoration: BoxDecoration(
         color: surfaces.panel,
         border: Border(bottom: BorderSide(color: surfaces.border)),
@@ -277,29 +287,37 @@ class _OrderHeader extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Flexible(
-                child: Text(
-                  isComanda ? 'Comanda' : 'Pedido',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: EzyTextStyles.screenTitle.copyWith(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: surfaces.textPrimary,
-                  ),
+              // Título y estatus se reparten el ancho disponible; la X no lo
+              // toca, así queda anclada al extremo derecho de la cabecera.
+              Expanded(
+                child: Row(
+                  children: <Widget>[
+                    Flexible(
+                      child: Text(
+                        isComanda ? 'Comanda' : 'Pedido',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: EzyTextStyles.screenTitle.copyWith(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: surfaces.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _SheetChip(
+                      label: 'Por entregar',
+                      fontSize: 11,
+                      letterSpacing: 0.2,
+                      color: StatusPalette.text(context, EzySeverity.info),
+                      background: StatusPalette.soft(EzySeverity.info),
+                      borderColor: StatusPalette.border(EzySeverity.info),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              _SheetChip(
-                label: 'Por entregar',
-                fontSize: 11,
-                letterSpacing: 0.2,
-                color: StatusPalette.text(context, EzySeverity.info),
-                background: StatusPalette.soft(EzySeverity.info),
-                borderColor: StatusPalette.border(EzySeverity.info),
-              ),
-              const Spacer(),
               const SizedBox(width: 8),
               EzyIconButton(
                 icon: Icons.close,

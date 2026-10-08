@@ -8,7 +8,8 @@ import 'package:flutter/material.dart';
 /// **El orden del enum es el orden de las ramas** del
 /// `StatefulShellRoute.indexedStack` (`app_router.dart`) y el que usa el menú
 /// lateral (`EzyAppDrawer`) para listarlas. `home` va primero: es el destino por
-/// defecto tras el login.
+/// defecto tras el login. El cascarón usa ese mismo orden para saber cuándo el
+/// usuario vuelve a «Inicio» y refrescar el tablero.
 ///
 /// **Menú lateral.** Desde que la navegación vive en el `Drawer` no hay barra
 /// inferior: todas las pestañas visibles se pintan igual en el panel, sin el caso

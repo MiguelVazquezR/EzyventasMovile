@@ -494,22 +494,25 @@ class _CartHeader extends StatelessWidget {
   }
 }
 
-/// Asa de la hoja (§1): 40 × 5 px, totalmente redondeada, en el borde fuerte.
+/// Asa de la hoja (§1): 40 × 5 px, totalmente redondeada, en el gris del tema.
 ///
 /// Se dibuja aquí en lugar de usar la del tema porque el carrito la quiere en su
-/// propio tono; el resto de hojas sigue con la suya.
+/// propio tono —el mismo que el asa del cobro (`dragHandleColor`), un gris medio
+/// más oscuro que `borderStrong`—; el resto de hojas sigue con la suya.
 class _DragHandle extends StatelessWidget {
   const _DragHandle();
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Center(
       child: Container(
         width: 40,
         height: 5,
         margin: const EdgeInsets.only(top: 10, bottom: 12),
         decoration: BoxDecoration(
-          color: context.surfaces.borderStrong,
+          color: isDark ? EzyColors.gray77 : EzyColors.gray9A,
           borderRadius: BorderRadius.circular(999),
         ),
       ),

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/permissions_service.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/status_palette.dart';
 import '../../../core/utils/app_formatters.dart';
 import '../../../core/widgets/app_screen_header.dart';
@@ -29,12 +30,18 @@ class HomeScreen extends ConsumerWidget {
   /// tape la última tarjeta (alto de la barra más su margen).
   static const double _cashBarGap = 264;
 
+  /// Alto del desvanecido que se pinta bajo la barra de caja: el contenido que
+  /// pasa por detrás se disuelve en el fondo de la pantalla en lugar de leerse
+  /// tras la tarjeta (la barra en sí es opaca, pero el hueco de sus lados no).
+  static const double _cashBarFade = _cashBarGap + 24;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(dashboardControllerProvider);
     final controller = ref.read(dashboardControllerProvider.notifier);
     final accessContext = ref.watch(authControllerProvider).context;
     final permissions = ref.watch(permissionsProvider);
+    final surfaces = context.surfaces;
 
     final dashboard = state.dashboard;
     final generatedAt = dashboard?.generatedAt;
@@ -107,6 +114,30 @@ class HomeScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
+                  if (dashboard != null)
+                    // Desvanecido: sin él, lo que queda bajo el hueco que rodea
+                    // la tarjeta se leía entero hasta el borde de la pantalla.
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: _cashBarFade,
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: <Color>[
+                                surfaces.background.withValues(alpha: 0),
+                                surfaces.background,
+                              ],
+                              stops: const <double>[0, 0.55],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   if (dashboard != null)
                     Positioned(
                       left: 16,

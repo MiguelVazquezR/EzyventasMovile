@@ -40,6 +40,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// Deja la sesión abierta en este teléfono (marcado por defecto).
   bool _keepSession = true;
 
+  /// Interruptor temporal: oculta el acceso biométrico y el aviso TLS hasta
+  /// que se termine su implementación (no borra el código, solo no se pinta).
+  static const bool _quickLoginVisible = false;
+
   /// El banner de error del servidor se puede ocultar sin perder su texto.
   bool _errorHidden = false;
 
@@ -214,7 +218,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final surfaces = context.surfaces;
     final state = ref.watch(authControllerProvider);
-    final showBiometricTile = _biometricsAvailable;
+    final showBiometricTile = _quickLoginVisible && _biometricsAvailable;
 
     return Scaffold(
       body: SafeArea(
@@ -265,8 +269,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                             const SizedBox(height: 16),
                           ],
-                          const _SecurityBanner(),
-                          const SizedBox(height: 16),
+                          if (_quickLoginVisible) ...<Widget>[
+                            const _SecurityBanner(),
+                            const SizedBox(height: 16),
+                          ],
                           _buildFields(state),
                           if (showBiometricTile) ...<Widget>[
                             const SizedBox(height: 16),

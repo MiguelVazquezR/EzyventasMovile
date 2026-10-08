@@ -598,12 +598,12 @@ class _PaymentTile extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        // Cada pago es una pieza blanca que flota dentro de su sección, con la
-        // misma sombra que las tarjetas del carrito.
+        // Cada pago es una pieza dentro de su sección: sin sombra —la sombra la
+        // lleva la sección «Pagos» completa, y las dos juntas se confundían—,
+        // solo un filo gris claro que la despega del panel.
         color: surfaces.panel,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: surfaces.border),
-        boxShadow: EzyColors.cardShadow,
+        border: Border.all(color: surfaces.borderStrong),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

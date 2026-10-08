@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../core/router/app_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/status_palette.dart';
@@ -40,6 +42,9 @@ Future<void> showServiceOrderDetailSheet(
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
+    // El asa del tema quedaría fuera del recorte de la hoja (el fondo del modal
+    // es transparente): se apaga y la pinta la propia hoja.
+    showDragHandle: false,
     builder: (sheetContext) =>
         _ServiceOrderDetailSheet(serviceOrderId: serviceOrderId),
   );
@@ -107,6 +112,16 @@ class _ServiceOrderDetailSheetState
                         detail: detail,
                         onRefresh: controller.refresh,
                         onClose: () => Navigator.of(context).pop(),
+                        // Editar baja a la cabecera (a la izquierda de
+                        // «Actualizar»), donde el dedo lo alcanza sin soltar el
+                        // scroll; sin permiso o con la orden cerrada no se pinta.
+                        onEdit:
+                            permissions.can('services.orders.edit') &&
+                                detail.isEditable
+                            ? () => context.push(
+                                serviceOrderEditPath(detail.id),
+                              )
+                            : null,
                       ),
                       if (state.notice != null) ...<Widget>[
                         const SizedBox(height: 12),
@@ -268,12 +283,15 @@ class _ServiceOrderDetailSheetState
 /// Barra de arrastre de la hoja (40×4 px, §12).
 ///
 /// Va como primera pieza del `ListView` para que acompañe al contenido y deje
-/// libres las esquinas redondeadas de 24 px.
+/// libres las esquinas redondeadas de 24 px. El tono es el del asa del cobro
+/// (`dragHandleColor`), el estándar de las hojas.
 class _DragHandle extends StatelessWidget {
   const _DragHandle();
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.only(top: 10, bottom: 4),
       child: Center(
@@ -281,7 +299,7 @@ class _DragHandle extends StatelessWidget {
           width: 40,
           height: 4,
           decoration: BoxDecoration(
-            color: context.surfaces.borderStrong,
+            color: isDark ? EzyColors.gray77 : EzyColors.gray9A,
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -290,21 +308,26 @@ class _DragHandle extends StatelessWidget {
   }
 }
 
-/// Cabecera del detalle: folio, equipo, estatus y acciones de refresco.
+/// Cabecera del detalle: folio, equipo, estatus y acciones de la orden.
 ///
 /// El folio va como título de hoja (el mismo `EzySheetHeader` que las demás
 /// hojas del design system), el equipo debajo, el estatus con `StatusBadge` y
-/// las dos acciones (`Actualizar` y `Cerrar`) como `EzyIconButton`.
+/// las acciones (`Editar`, `Actualizar` y `Cerrar`) como `EzyIconButton`.
 class _SheetHeader extends StatelessWidget {
   const _SheetHeader({
     required this.detail,
     required this.onRefresh,
     required this.onClose,
+    this.onEdit,
   });
 
   final ServiceOrderDetail detail;
   final VoidCallback onRefresh;
   final VoidCallback onClose;
+
+  /// Abre el formulario de edición; `null` sin `services.orders.edit` o con la
+  /// orden ya cerrada.
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -320,6 +343,14 @@ class _SheetHeader extends StatelessWidget {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              if (onEdit != null) ...<Widget>[
+                EzyIconButton(
+                  icon: Icons.edit_outlined,
+                  tooltip: 'Editar orden',
+                  onTap: onEdit,
+                ),
+                const SizedBox(width: 8),
+              ],
               EzyIconButton(
                 icon: Icons.refresh,
                 tooltip: 'Actualizar',

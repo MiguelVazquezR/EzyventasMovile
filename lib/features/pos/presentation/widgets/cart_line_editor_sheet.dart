@@ -141,6 +141,19 @@ class _CartLineEditorSheetState extends ConsumerState<_CartLineEditorSheet> {
     });
   }
 
+  /// Acceso rápido del descuento: el porcentaje se vuelve monto —redondeado a
+  /// centavos— y queda escrito en el campo, además de aplicado a la línea.
+  void _applyDiscountPreset(double percent) {
+    final amount = Money.round2(widget.line.listPrice * percent / 100);
+    final text = Money.formatPlain(amount);
+
+    _discountController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    _setDiscount(amount);
+  }
+
   /// «Volver al precio del catálogo» (§7): devuelve la línea a su precio de
   /// catálogo —promoción o mayoreo— conservando la cantidad capturada y cierra la
   /// hoja, porque no queda nada más que guardar.
@@ -223,6 +236,7 @@ class _CartLineEditorSheetState extends ConsumerState<_CartLineEditorSheet> {
                 controller: _discountController,
                 errorText: _discountError,
                 onChanged: _setDiscount,
+                onPreset: _applyDiscountPreset,
               ),
               const SizedBox(height: 12),
               _BreakdownCard(
@@ -249,13 +263,17 @@ class _CartLineEditorSheetState extends ConsumerState<_CartLineEditorSheet> {
   }
 }
 
-/// Asa de arrastre (§2): 40 × 5 px, esquinas completas y el gris fuerte del
-/// sistema sobre el lienzo de la hoja.
+/// Asa de arrastre (§2): 40 × 5 px, esquinas completas y el gris del asa del
+/// sistema —el mismo del cobro— sobre el lienzo de la hoja.
 class _DragHandle extends StatelessWidget {
   const _DragHandle();
 
   @override
   Widget build(BuildContext context) {
+    // El tono del asa es el que el tema le da a las hojas que la usan
+    // (`dragHandleColor`): gris medio, más oscuro que `borderStrong`.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.only(top: 10, bottom: 6),
       child: Center(
@@ -263,7 +281,7 @@ class _DragHandle extends StatelessWidget {
           width: 40,
           height: 5,
           decoration: BoxDecoration(
-            color: context.surfaces.borderStrong,
+            color: isDark ? EzyColors.gray77 : EzyColors.gray9A,
             borderRadius: BorderRadius.circular(999),
           ),
         ),
@@ -787,6 +805,7 @@ class _DiscountCard extends StatelessWidget {
     required this.controller,
     required this.errorText,
     required this.onChanged,
+    required this.onPreset,
   });
 
   final CartLine line;
@@ -796,16 +815,17 @@ class _DiscountCard extends StatelessWidget {
   final String? errorText;
   final ValueChanged<double> onChanged;
 
-  /// Presets en pesos: `$0` y los cortes de `$5`, `$10` y `$15`, acotados al
-  /// precio de lista para no ofrecer un descuento que el catálogo rechaza.
-  List<double> get _presets {
-    const candidates = <double>[0, 5, 10, 15];
-    final usable = candidates
-        .where((value) => value <= line.listPrice)
-        .toList(growable: false);
+  /// Acceso rápido: recibe el porcentaje del precio de lista y la hoja se encarga
+  /// del monto en pesos (lo escribe en el campo y lo aplica).
+  final ValueChanged<double> onPreset;
 
-    return usable.isEmpty ? const <double>[0] : usable;
-  }
+  /// Accesos rápidos: los cortes de descuento que el mostrador usa todo el día,
+  /// en porcentaje del precio de lista.
+  static const List<double> _presetPercents = <double>[5, 10, 20, 50];
+
+  /// Monto en pesos que representa [percent] del precio de lista.
+  double _presetAmount(double percent) =>
+      Money.round2(line.listPrice * percent / 100);
 
   /// Porcentaje del precio de lista que representa el descuento capturado.
   double get _percent =>
@@ -851,7 +871,9 @@ class _DiscountCard extends StatelessWidget {
               color: surfaces.textMuted,
             ),
           ),
-          if (enabled) ...<Widget>[
+          // Los accesos rápidos son porcentaje del precio de lista: sin precio no
+          // hay monto que calcular.
+          if (enabled && line.listPrice > 0) ...<Widget>[
             const SizedBox(height: 12),
             Text(
               'ACCESOS RÁPIDOS:',
@@ -864,13 +886,13 @@ class _DiscountCard extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: <Widget>[
-                for (final preset in _presets) ...<Widget>[
-                  if (preset != _presets.first) const SizedBox(width: 8),
+                for (final percent in _presetPercents) ...<Widget>[
+                  if (percent != _presetPercents.first) const SizedBox(width: 8),
                   Expanded(
                     child: _PresetChip(
-                      label: Money.format(preset),
-                      selected: discount == preset,
-                      onTap: () => onChanged(preset),
+                      label: '${percent.toInt()}%',
+                      selected: discount == _presetAmount(percent),
+                      onTap: () => onPreset(percent),
                     ),
                   ),
                 ],
