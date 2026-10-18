@@ -122,7 +122,7 @@ class EzyAppDrawer extends ConsumerWidget {
       if (user?.isSubscriptionOwner ?? false)
         _DrawerRow(
           icon: Icons.workspace_premium_outlined,
-          title: AccountLabels.subscription,
+          title: 'Mi cuenta',
           subtitle: AccountLabels.subscriptionSubtitle,
           onTap: () => _push(context, subscriptionPath),
         ),

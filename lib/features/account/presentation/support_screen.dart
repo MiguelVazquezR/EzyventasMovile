@@ -21,8 +21,7 @@ import 'widgets/support_welcome_card.dart';
 /// cambiarlo en `config/support.php` no requiere publicar una versión nueva de la
 /// app. Los canales se abren con el manejador del sistema.
 ///
-/// El Centro de ayuda aún no está disponible: se muestra con la pastilla ámbar
-/// «Viene pronto» y el botón de acceso deshabilitado.
+/// El Centro de ayuda se abre en el navegador externo (`url_launcher`).
 class SupportScreen extends ConsumerWidget {
   const SupportScreen({super.key});
 
@@ -137,7 +136,10 @@ class _SupportBody extends StatelessWidget {
       if (content.hasWelcome) SupportWelcomeCard(welcome: content),
       if (content.hasSchedule) SupportScheduleCard(rows: content.schedule),
       if (content.hasChannels) SupportChannelsCard(channels: content.channels),
-      SupportHelpCenterCard(topics: content.helpTopics),
+      SupportHelpCenterCard(
+        topics: content.helpTopics,
+        url: content.helpCenterUrl,
+      ),
     ];
 
     return ListView(

@@ -16,12 +16,6 @@ class SupportPalette {
   static const Color accentSoft = Color(0x24F68C0F); // 14 %
   static const Color accentBorder = Color(0x4DF68C0F); // 30 %
 
-  /// Ámbar de aviso («Viene pronto», `#F59E0B`).
-  static const Color warnSoft = Color(0x24F59E0B); // 14 %
-  static const Color warnBorder = Color(0x59F59E0B); // 35 %
-  static const Color warnBannerSoft = Color(0x1AF59E0B); // 10 %
-  static const Color warnBannerBorder = Color(0x4DF59E0B); // 30 %
-
   /// Rojo de peligro (`#F80505`), banner de error.
   static const Color dangerSoft = Color(0x1FF80505); // 12 %
   static const Color dangerBorder = Color(0x4DF80505); // 30 %
@@ -42,18 +36,6 @@ class SupportPalette {
   /// Avisos ámbar con contraste: `#FCD34D` (oscuro) / `#B45309` (claro).
   static Color warnText(BuildContext context) =>
       isDark(context) ? EzyColors.warnTextDark : EzyColors.warnTextLight;
-
-  /// Botón deshabilitado «Abrir centro de ayuda».
-  static Color disabledBackground(BuildContext context) => isDark(context)
-      ? const Color(0x296B7280)
-      : EzyColors.borderLight;
-
-  static Color disabledBorder(BuildContext context) => isDark(context)
-      ? const Color(0x596B7280)
-      : EzyColors.borderLightStrong;
-
-  static Color disabledText(BuildContext context) =>
-      isDark(context) ? const Color(0xCC9CA3AF) : EzyColors.neutral;
 }
 
 /// Card del Centro de soporte: radio 16, borde de 1 px y `elevation: 0`.

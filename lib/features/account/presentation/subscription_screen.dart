@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_exception.dart';
@@ -7,10 +6,7 @@ import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/status_palette.dart';
-import '../../../core/utils/app_formatters.dart';
-import '../../../core/utils/evidence_image.dart';
 import '../../../core/utils/external_links.dart';
-import '../../../core/widgets/ezy_button.dart';
 import '../../../core/widgets/ezy_text_field.dart';
 import '../../../core/widgets/notice_banner.dart';
 import '../../../core/widgets/section_card.dart';
@@ -21,9 +17,9 @@ import 'widgets/account_scaffold.dart';
 
 /// "Mi suscripción" (contrato §11b.5, solo propietario).
 ///
-/// Estado, datos generales editables, plan con su consumo, uso, historial de
-/// pagos con solicitud de factura y documento fiscal. Renovar o mejorar el plan
-/// **no** se reimplementa: abre el checkout de la web en el navegador externo.
+/// Estado con acceso libre, datos generales editables, plan con su consumo y
+/// uso. El botón de límites abre el WhatsApp de soporte: el costo y las
+/// instrucciones los da el equipo por ese canal.
 class SubscriptionScreen extends ConsumerStatefulWidget {
   const SubscriptionScreen({super.key});
 
@@ -143,10 +139,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
         _planCard(overview),
         const SizedBox(height: 12),
         _usageCard(overview),
-        const SizedBox(height: 12),
-        _historyCard(overview, state),
-        const SizedBox(height: 12),
-        _documentsCard(overview, state),
       ],
     );
   }
@@ -213,13 +205,24 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                     color: surfaces.textPrimary,
                   ),
                 ),
-                if (status.expiresAt != null) ...<Widget>[
-                  const SizedBox(height: 6),
-                  _ExpiryRow(
-                    label: status.expiresLabel ?? '',
-                    highlight: status.isWarning,
-                  ),
-                ],
+                const SizedBox(height: 6),
+                Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.verified_outlined,
+                      size: 16,
+                      color: EzyColors.primary300,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      AccountMoreLabels.subscriptionFreeAccess,
+                      style: EzyTextStyles.caption.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: surfaces.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -259,9 +262,9 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           const SizedBox(height: 10),
           _Ezy3dPillButton(
             label: AccountMoreLabels.subscriptionRenew,
-            icon: Icons.open_in_new,
+            icon: Icons.chat_outlined,
             onPressed: () =>
-                ExternalLinks.open(context, AppConfig.subscriptionManageUrl),
+                ExternalLinks.open(context, AppConfig.supportWhatsAppUrl),
           ),
         ],
       ),
@@ -459,265 +462,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     );
   }
 
-  /// Historial de versiones del plan con su pago.
-  Widget _historyCard(SubscriptionOverview overview, SubscriptionState state) {
-    final surfaces = context.surfaces;
-    final controller = ref.read(subscriptionControllerProvider.notifier);
-
-    return SectionCard(
-      title: AccountMoreLabels.subscriptionHistory,
-      trailing: _CountBadge(count: overview.history.length),
-      child: overview.history.isEmpty
-          ? Text(
-              AccountMoreLabels.subscriptionNoPayments,
-              textAlign: TextAlign.center,
-              style: EzyTextStyles.caption.copyWith(
-                color: surfaces.textSecondary,
-              ),
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                for (final entry in overview.history)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: SectionCard(
-                      inner: true,
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: Text(
-                                  'Versión ${entry.version} · '
-                                  '${AppFormatters.date(entry.createdAt)}',
-                                  style: EzyTextStyles.bodyStrong.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: surfaces.textPrimary,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                entry.amountLabel,
-                                style: EzyTextStyles.moneyList.copyWith(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w900,
-                                  color: surfaces.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (entry.payment != null) ...<Widget>[
-                            const SizedBox(height: 6),
-                            Row(
-                              children: <Widget>[
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    color: StatusPalette.text(
-                                      context,
-                                      _paymentSeverity(entry.payment!.status),
-                                    ),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    '${entry.payment!.status.label}'
-                                    '${entry.payment!.folio == null ? '' : ' · ${entry.payment!.folio}'}',
-                                    style: EzyTextStyles.caption.copyWith(
-                                      color: surfaces.textSecondary,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: entry.payment?.isInvoiceRequestable ?? false
-                                ? EzyButton(
-                                    label: AccountMoreLabels
-                                        .subscriptionRequestInvoice,
-                                    variant: EzyButtonVariant.text,
-                                    expand: false,
-                                    isLoading: state.isSubmitting,
-                                    onPressed: () => controller.requestInvoice(
-                                      entry.payment!.id!,
-                                    ),
-                                  )
-                                : Text(
-                                    AccountMoreLabels
-                                        .subscriptionInvoiceUnavailable,
-                                    style: EzyTextStyles.caption.copyWith(
-                                      fontSize: 11,
-                                      fontStyle: FontStyle.italic,
-                                      color: surfaces.textMuted,
-                                    ),
-                                  ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-    );
-  }
-
-  /// Documento fiscal (`POST /subscription/documents`).
-  Widget _documentsCard(SubscriptionOverview overview, SubscriptionState state) {
-    final surfaces = context.surfaces;
-    final documentUrl = overview.fiscalDocumentUrl;
-    final hasDocument = overview.hasFiscalDocument;
-    final fileName = hasDocument ? _documentFileName(documentUrl!) : null;
-
-    return SectionCard(
-      title: AccountMoreLabels.subscriptionDocuments,
-      trailing: _StatusChip(
-        label: hasDocument
-            ? AccountMoreLabels.subscriptionDocumentLoaded
-            : AccountMoreLabels.subscriptionDocumentPending,
-        severity: hasDocument ? EzySeverity.success : EzySeverity.warn,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          SectionCard(
-            inner: true,
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Icon(
-                  hasDocument
-                      ? Icons.verified_outlined
-                      : Icons.description_outlined,
-                  size: 20,
-                  color: hasDocument
-                      ? StatusPalette.text(context, EzySeverity.success)
-                      : surfaces.textMuted,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        hasDocument
-                            ? AccountMoreLabels.subscriptionDocumentLoaded
-                            : AccountMoreLabels.subscriptionNoDocument,
-                        style: EzyTextStyles.bodyStrong.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: surfaces.textPrimary,
-                        ),
-                      ),
-                      if (fileName != null) ...<Widget>[
-                        const SizedBox(height: 2),
-                        Text(
-                          fileName,
-                          style: EzyTextStyles.caption.copyWith(
-                            color: surfaces.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (documentUrl != null)
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: EzyButton(
-                    label: AccountMoreLabels.subscriptionViewDocument,
-                    icon: Icons.open_in_new,
-                    variant: EzyButtonVariant.outline,
-                    height: 40,
-                    onPressed: () => ExternalLinks.open(context, documentUrl),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: EzyButton(
-                    label: AccountMoreLabels.subscriptionUploadDocument,
-                    icon: Icons.upload_file_outlined,
-                    variant: EzyButtonVariant.outline,
-                    height: 40,
-                    isLoading: state.isSubmitting,
-                    onPressed: () => _uploadDocument(),
-                  ),
-                ),
-              ],
-            )
-          else
-            EzyButton(
-              label: AccountMoreLabels.subscriptionUploadDocument,
-              icon: Icons.upload_file_outlined,
-              variant: EzyButtonVariant.outline,
-              height: 40,
-              isLoading: state.isSubmitting,
-              onPressed: () => _uploadDocument(),
-            ),
-          const SizedBox(height: 12),
-          Text(
-            AccountMoreLabels.subscriptionDocumentNote,
-            textAlign: TextAlign.center,
-            style: EzyTextStyles.caption.copyWith(
-              fontSize: 10,
-              color: surfaces.textMuted,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Sube la constancia fiscal como imagen (cámara o galería, máx. 2 MB).
-  Future<void> _uploadDocument() async {
-    EvidencePickResult result;
-
-    try {
-      result = await EvidencePicker.pickFromGallery(
-        limit: 1,
-        maxKb: AppConfig.maxEvidenceImageKb,
-      );
-    } on PlatformException {
-      result = const EvidencePickResult.empty();
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    final document = result.images.isEmpty ? null : result.images.first;
-
-    if (document == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No pudimos preparar el documento. Intenta con otra imagen.',
-          ),
-        ),
-      );
-
-      return;
-    }
-
-    await ref
-        .read(subscriptionControllerProvider.notifier)
-        .uploadFiscalDocument(document);
-  }
-
   /// Severidad del estado: expirada o suspendida (rojo), por vencer (ámbar),
   /// activa (verde). Se calcula con los datos del servidor, nunca con texto
   /// inventado.
@@ -734,52 +478,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     return EzySeverity.success;
   }
 
-  /// Severidad del pago para el punto indicador del historial.
-  EzySeverity _paymentSeverity(SubscriptionPaymentStatus status) =>
-      switch (status) {
-        SubscriptionPaymentStatus.approved => EzySeverity.success,
-        SubscriptionPaymentStatus.pending => EzySeverity.warn,
-        SubscriptionPaymentStatus.rejected => EzySeverity.danger,
-        SubscriptionPaymentStatus.unknown => EzySeverity.neutral,
-      };
-
-  /// Último segmento de la URL del documento, si el servidor la expone.
-  String? _documentFileName(String url) {
-    final segments = Uri.tryParse(url)?.pathSegments;
-
-    if (segments == null || segments.isEmpty) {
-      return null;
-    }
-
-    final name = segments.last;
-
-    return name.isEmpty ? null : name;
-  }
 }
 
-/// Línea de vencimiento con icono de calendario y tono ámbar si está por vencer.
-class _ExpiryRow extends StatelessWidget {
-  const _ExpiryRow({required this.label, required this.highlight});
-
-  final String label;
-  final bool highlight;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-    final color = highlight
-        ? StatusPalette.text(context, EzySeverity.warn)
-        : surfaces.textSecondary;
-
-    return Row(
-      children: <Widget>[
-        Icon(Icons.calendar_today_outlined, size: 14, color: color),
-        const SizedBox(width: 6),
-        Expanded(child: Text(label, style: EzyTextStyles.caption.copyWith(color: color))),
-      ],
-    );
-  }
-}
 
 /// Pastilla de estado de la suscripción con el texto del servidor.
 class _StatusPill extends StatelessWidget {
@@ -818,56 +518,6 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
-/// Chip de estado de una card (documento cargado / pendiente).
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label, required this.severity});
-
-  final String label;
-  final EzySeverity severity;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = StatusPalette.text(context, severity);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      decoration: BoxDecoration(
-        color: StatusPalette.soft(severity),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: StatusPalette.border(severity)),
-      ),
-      child: Text(
-        label.toUpperCase(),
-        style: EzyTextStyles.badge.copyWith(color: color),
-      ),
-    );
-  }
-}
-
-/// Contador numérico de una card (nº de versiones del historial).
-class _CountBadge extends StatelessWidget {
-  const _CountBadge({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaces = context.surfaces;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-      decoration: BoxDecoration(
-        color: surfaces.panelInner,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: surfaces.border),
-      ),
-      child: Text(
-        '$count',
-        style: EzyTextStyles.badge.copyWith(color: surfaces.textSecondary),
-      ),
-    );
-  }
-}
 
 /// Pastilla de un módulo del plan: verde con palomita si está activo.
 class _ModulePill extends StatelessWidget {

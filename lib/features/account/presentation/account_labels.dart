@@ -11,7 +11,7 @@ class AccountLabels {
   static const String profile = 'Mi perfil';
   static const String profileSubtitle = 'Foto, nombre, correo y contraseña';
   static const String subscription = 'Mi suscripción';
-  static const String subscriptionSubtitle = 'Estado, plan, pagos y documentos';
+  static const String subscriptionSubtitle = 'Estado, plan y límites';
   static const String support = 'Centro de soporte';
   static const String supportSubtitle = 'Correo, WhatsApp y centro de ayuda';
   static const String notifications = 'Notificaciones';
@@ -134,22 +134,15 @@ class AccountMoreLabels {
   static const String supportRefresh = 'Actualizar';
   static const String supportChannelsDirect = 'Canales de contacto directo';
   static const String supportHelpCenterGuides = 'Centro de ayuda y guías';
-  static const String supportSoonUpper = 'VIENE PRONTO';
-  static const String supportHelpCenterActionSoon =
-      'Abrir centro de ayuda (Viene pronto)';
   static const String supportLoading = 'Consultando canales de soporte…';
   static const String supportErrorTitle = 'No pudimos conectar con soporte';
   static const String supportErrorSubtitle =
       'Revisa tu conexión para cargar los canales actualizados.';
-  static const String supportHelpBanner =
-      'Estamos preparando la base de conocimientos interactiva con tutoriales '
-      'paso a paso y videos explicativos. Estará disponible en la próxima '
-      'actualización.';
 
   // Suscripción (§14.4)
   static const String subscriptionTitle = 'Mi suscripción';
   static const String subscriptionSubtitle =
-      'Administra tu plan comercial, límites y datos fiscales';
+      'Administra tu plan comercial, límites y datos del negocio';
   static const String subscriptionPlanStatus = 'Estado del plan';
   static const String subscriptionBusiness = 'Negocio';
   static const String subscriptionGeneralData = 'Datos generales';
@@ -169,9 +162,10 @@ class AccountMoreLabels {
   static const String subscriptionRequestInvoice = 'Solicitar factura';
   static const String subscriptionInvoiceUnavailable =
       'La factura ya no está disponible para este pago.';
-  static const String subscriptionRenew = 'Renovar o mejorar plan';
+  static const String subscriptionRenew = 'Necesito aumentar los límites';
   static const String subscriptionRenewMessage =
-      'La renovación se completa de forma segura en la web.';
+      'Después de 90 días de inactividad, la cuenta será borrada.';
+  static const String subscriptionFreeAccess = 'Acceso libre';
   static const String subscriptionRefresh = 'Actualizar';
   static const String subscriptionOwnerOnly =
       'Tu usuario no tiene permiso para acceder a esta sección.';

@@ -86,6 +86,9 @@ class AppConfig {
   /// en el navegador externo.
   static String get subscriptionManageUrl => '$webBaseUrl/subscription/manage';
 
+  /// WhatsApp de soporte para solicitar límites adicionales (plan Free).
+  static const String supportWhatsAppUrl = 'https://wa.me/523321705650';
+
   /// Sitio web público de EzyVentas.
   ///
   /// Es fijo a propósito: el login del teléfono abre el sitio de producción
@@ -94,6 +97,9 @@ class AppConfig {
 
   /// Login de la web (el enlace que ofrece la pantalla de inicio de sesión).
   static const String webLoginUrl = '$websiteUrl/login';
+
+  /// Centro de ayuda de la web (`url_launcher` → navegador externo).
+  static const String helpCenterUrl = '$websiteUrl/centro-ayuda';
 
 
   /// URL de un medio del servidor lista para descargar desde este dispositivo.

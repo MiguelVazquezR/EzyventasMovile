@@ -30,7 +30,7 @@ La URL base **nunca** se escribe dentro de un widget: se inyecta con `--dart-def
 `https://ezyventas2.test/api/v1` (entorno local). El release debe sobreescribirlo:
 
 ```bash
-flutter build apk --release --dart-define=API_BASE_URL=https://app.ezyventas.com/api/v1
+flutter build apk --release --dart-define=API_BASE_URL=https://ezyventas.com/api/v1
 ```
 
 | Variable | Default | Uso |
